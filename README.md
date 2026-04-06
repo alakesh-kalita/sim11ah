@@ -61,6 +61,16 @@ SIM11AH_PROJECT/
 │
 ├── sim11ah/
 │   ├── mac/
+│   │   ├── common.py                # Shared MAC utilities and helpers
+│   │   ├── context.py               # MAC context/state management
+│   │   ├── dcf.py                   # DCF contention logic
+│   │   ├── facade.py                # MAC layer interface/controller
+│   │   ├── raw.py                   # RAW scheduling core
+│   │   ├── raw_metrics.py           # RAW-specific metrics collection
+│   │   ├── raw_policy_static.py     # Static RAW allocation policy
+│   │   ├── raw_policy_adaptive.py   # Adaptive RAW slot sizing policy (proposed)
+│   │   └── raw_policy_adaptive_old.py # Legacy adaptive policy (for comparison)
+│   │
 │   ├── phy.py
 │   ├── net.py
 │   ├── tp.py
