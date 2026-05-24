@@ -292,12 +292,6 @@ sim11ah_project/
 │   ├── main_gui.py       # GUI entry point
 │   ├── main_cli.py       # Headless CLI runner
 │   └── main_test_*.py    # Ad-hoc test scripts
-├── paper/
-│   ├── sim11ah_ieee_paper.tex      # Full IEEE-format paper (LaTeX)
-│   ├── run_paper_experiments.py    # Reproduces Tables II–IV
-│   ├── run_relay_experiments.py    # Reproduces Table VI (relay evaluation)
-│   ├── sweep_experiment.py         # Parameter sweep
-│   └── analytical_validation.py   # Analytical model comparison
 ├── analysis/
 │   ├── plot_simulator_results.py   # Main results plots
 │   ├── plot_critical_comparison.py # Critical traffic comparison
@@ -363,7 +357,7 @@ If you use sim11ah in your research, please cite:
   title   = {sim11ah: A Discrete-Event Simulator for IEEE 802.11ah
              MAC/PHY Optimization in Dense IoT Deployments},
   author  = {Kalita, Alakesh},
-  journal = {IEEE Access},
+  journal = {Not Communicated yet},
   year    = {2026},
 }
 ```
