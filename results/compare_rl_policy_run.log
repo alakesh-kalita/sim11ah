@@ -1,380 +1,0 @@
-================================================================================
-  IEEE 802.11ah — All RL Algorithms vs All Baselines
-  Baselines : ['no_raw', 'static', 'laca']
-  RL modes  : ['tabular', 'tab_ddqn', 'dqn', 'ddqn', 'ppo']
-  N=[100, 200, 400, 600, 800, 1000]  seeds=[42, 7, 99]
-  144 total runs  |  Sim=120s  Traffic=5.0s  Pkt=128B  MCS0
-================================================================================
-
-  === Baseline: no_raw ===
-  [  1/144]  no_raw          N= 100  seed=42  elapsed=0s  ETA=0s    [  2/144]  no_raw          N= 100  seed=7  elapsed=40s  ETA=2811s    [  3/144]  no_raw          N= 100  seed=99  elapsed=78s  ETA=3677s  
-  no_raw          N= 100  PDR=0.6001  tput=12.3kb/s  delay=1930ms  ee=5.57kbit/J
-  [  4/144]  no_raw          N= 200  seed=42  elapsed=118s  ETA=4115s    [  5/144]  no_raw          N= 200  seed=7  elapsed=191s  ETA=5301s    [  6/144]  no_raw          N= 200  seed=99  elapsed=268s  ETA=6167s  
-  no_raw          N= 200  PDR=0.2447  tput=10.0kb/s  delay=2812ms  ee=2.35kbit/J
-  [  7/144]  no_raw          N= 400  seed=42  elapsed=344s  ETA=6737s    [  8/144]  no_raw          N= 400  seed=7  elapsed=466s  ETA=7925s    [  9/144]  no_raw          N= 400  seed=99  elapsed=587s  ETA=8805s  
-  no_raw          N= 400  PDR=0.1290  tput=10.6kb/s  delay=2869ms  ee=1.26kbit/J
-  [ 10/144]  no_raw          N= 600  seed=42  elapsed=716s  ETA=9591s    [ 11/144]  no_raw          N= 600  seed=7  elapsed=849s  ETA=10271s    [ 12/144]  no_raw          N= 600  seed=99  elapsed=990s  ETA=10894s  
-  no_raw          N= 600  PDR=0.0854  tput=10.5kb/s  delay=2945ms  ee=0.84kbit/J
-  [ 13/144]  no_raw          N= 800  seed=42  elapsed=1130s  ETA=11389s    [ 14/144]  no_raw          N= 800  seed=7  elapsed=1268s  ETA=11777s    [ 15/144]  no_raw          N= 800  seed=99  elapsed=1404s  ETA=12078s  
-  no_raw          N= 800  PDR=0.0633  tput=10.4kb/s  delay=2850ms  ee=0.62kbit/J
-  [ 16/144]  no_raw          N=1000  seed=42  elapsed=1540s  ETA=12320s    [ 17/144]  no_raw          N=1000  seed=7  elapsed=1681s  ETA=12555s    [ 18/144]  no_raw          N=1000  seed=99  elapsed=1830s  ETA=12807s  
-  no_raw          N=1000  PDR=0.0492  tput=10.1kb/s  delay=2883ms  ee=0.49kbit/J
-
-  === Baseline: static ===
-  [ 19/144]  static          N= 100  seed=42  elapsed=1983s  ETA=13049s    [ 20/144]  static          N= 100  seed=7  elapsed=1987s  ETA=12318s    [ 21/144]  static          N= 100  seed=99  elapsed=1990s  ETA=11657s  
-  static          N= 100  PDR=0.4989  tput=10.2kb/s  delay=3052ms  ee=28.09kbit/J
-  [ 22/144]  static          N= 200  seed=42  elapsed=1993s  ETA=11055s    [ 23/144]  static          N= 200  seed=7  elapsed=2016s  ETA=10606s    [ 24/144]  static          N= 200  seed=99  elapsed=2024s  ETA=10120s  
-  static          N= 200  PDR=0.4721  tput=19.3kb/s  delay=3177ms  ee=26.18kbit/J
-  [ 25/144]  static          N= 400  seed=42  elapsed=2031s  ETA=9670s    [ 26/144]  static          N= 400  seed=7  elapsed=2049s  ETA=9298s    [ 27/144]  static          N= 400  seed=99  elapsed=2066s  ETA=8951s  
-  static          N= 400  PDR=0.3658  tput=30.0kb/s  delay=3289ms  ee=19.23kbit/J
-  [ 28/144]  static          N= 600  seed=42  elapsed=2082s  ETA=8627s    [ 29/144]  static          N= 600  seed=7  elapsed=2108s  ETA=8360s    [ 30/144]  static          N= 600  seed=99  elapsed=2135s  ETA=8112s  
-  static          N= 600  PDR=0.2623  tput=32.2kb/s  delay=3695ms  ee=12.63kbit/J
-  [ 31/144]  static          N= 800  seed=42  elapsed=3060s  ETA=11154s    [ 32/144]  static          N= 800  seed=7  elapsed=3091s  ETA=10819s    [ 33/144]  static          N= 800  seed=99  elapsed=3852s  ETA=12958s  
-  static          N= 800  PDR=0.1894  tput=31.0kb/s  delay=3727ms  ee=8.51kbit/J
-  [ 34/144]  static          N=1000  seed=42  elapsed=3884s  ETA=12565s    [ 35/144]  static          N=1000  seed=7  elapsed=3924s  ETA=12219s    [ 36/144]  static          N=1000  seed=99  elapsed=3963s  ETA=11889s  
-  static          N=1000  PDR=0.1475  tput=30.2kb/s  delay=3695ms  ee=6.01kbit/J
-
-  === Baseline: laca ===
-  [ 37/144]  laca            N= 100  seed=42  elapsed=4003s  ETA=11577s    [ 38/144]  laca            N= 100  seed=7  elapsed=4005s  ETA=11172s    [ 39/144]  laca            N= 100  seed=99  elapsed=4011s  ETA=10799s  
-  laca            N= 100  PDR=1.0000  tput=20.5kb/s  delay=687ms  ee=54.91kbit/J
-  [ 40/144]  laca            N= 200  seed=42  elapsed=4013s  ETA=10435s    [ 41/144]  laca            N= 200  seed=7  elapsed=4020s  ETA=10099s    [ 42/144]  laca            N= 200  seed=99  elapsed=4027s  ETA=9779s  
-  laca            N= 200  PDR=0.9398  tput=38.5kb/s  delay=1909ms  ee=43.31kbit/J
-  [ 43/144]  laca            N= 400  seed=42  elapsed=4034s  ETA=9475s    [ 44/144]  laca            N= 400  seed=7  elapsed=4049s  ETA=9203s    [ 45/144]  laca            N= 400  seed=99  elapsed=4065s  ETA=8944s  
-  laca            N= 400  PDR=0.3835  tput=31.4kb/s  delay=3749ms  ee=19.66kbit/J
-  [ 46/144]  laca            N= 600  seed=42  elapsed=4081s  ETA=8695s    [ 47/144]  laca            N= 600  seed=7  elapsed=4107s  ETA=8476s    [ 48/144]  laca            N= 600  seed=99  elapsed=4132s  ETA=8265s  
-  laca            N= 600  PDR=0.2224  tput=27.3kb/s  delay=4974ms  ee=10.89kbit/J
-  [ 49/144]  laca            N= 800  seed=42  elapsed=4158s  ETA=8061s    [ 50/144]  laca            N= 800  seed=7  elapsed=4195s  ETA=7886s    [ 51/144]  laca            N= 800  seed=99  elapsed=4232s  ETA=7717s  
-  laca            N= 800  PDR=0.1497  tput=24.5kb/s  delay=5912ms  ee=6.67kbit/J
-  [ 52/144]  laca            N=1000  seed=42  elapsed=4268s  ETA=7551s    [ 53/144]  laca            N=1000  seed=7  elapsed=4317s  ETA=7413s    [ 54/144]  laca            N=1000  seed=99  elapsed=4366s  ETA=7277s  
-  laca            N=1000  PDR=0.1109  tput=22.7kb/s  delay=7274ms  ee=4.43kbit/J
-
-  === RL: tabular ===
-  [ 55/144]  tabular         N= 100  seed=42  elapsed=4417s  ETA=7148s    [ 56/144]  tabular         N= 100  seed=7  elapsed=4419s  ETA=6945s    [ 57/144]  tabular         N= 100  seed=99  elapsed=4428s  ETA=6759s  
-  tabular         N= 100  PDR=0.9403  tput=19.3kb/s  delay=1180ms  ee=52.10kbit/J
-  [ 58/144]  tabular         N= 200  seed=42  elapsed=4431s  ETA=6570s    [ 59/144]  tabular         N= 200  seed=7  elapsed=4438s  ETA=6393s    [ 60/144]  tabular         N= 200  seed=99  elapsed=4445s  ETA=6223s  
-  tabular         N= 200  PDR=0.8235  tput=33.7kb/s  delay=2062ms  ee=41.33kbit/J
-  [ 61/144]  tabular         N= 400  seed=42  elapsed=4453s  ETA=6060s    [ 62/144]  tabular         N= 400  seed=7  elapsed=4466s  ETA=5907s    [ 63/144]  tabular         N= 400  seed=99  elapsed=4480s  ETA=5760s  
-  tabular         N= 400  PDR=0.4364  tput=35.7kb/s  delay=4020ms  ee=23.74kbit/J
-  [ 64/144]  tabular         N= 600  seed=42  elapsed=4495s  ETA=5618s    [ 65/144]  tabular         N= 600  seed=7  elapsed=4515s  ETA=5487s    [ 66/144]  tabular         N= 600  seed=99  elapsed=4538s  ETA=5363s  
-  tabular         N= 600  PDR=0.2783  tput=34.2kb/s  delay=4858ms  ee=14.29kbit/J
-  [ 67/144]  tabular         N= 800  seed=42  elapsed=4561s  ETA=5242s    [ 68/144]  tabular         N= 800  seed=7  elapsed=4590s  ETA=5131s    [ 69/144]  tabular         N= 800  seed=99  elapsed=4618s  ETA=5020s  
-  tabular         N= 800  PDR=0.1790  tput=29.3kb/s  delay=8081ms  ee=9.00kbit/J
-  [ 70/144]  tabular         N=1000  seed=42  elapsed=4646s  ETA=4912s    [ 71/144]  tabular         N=1000  seed=7  elapsed=4688s  ETA=4821s    [ 72/144]  tabular         N=1000  seed=99  elapsed=4732s  ETA=4732s  
-  tabular         N=1000  PDR=0.1336  tput=27.4kb/s  delay=8725ms  ee=5.96kbit/J
-
-  === RL: tab_ddqn ===
-  [ 73/144]  tab_ddqn        N= 100  seed=42  elapsed=4775s  ETA=4644s    [ 74/144]  tab_ddqn        N= 100  seed=7  elapsed=4777s  ETA=4519s    [ 75/144]  tab_ddqn        N= 100  seed=99  elapsed=4779s  ETA=4397s  
-  tab_ddqn        N= 100  PDR=0.9956  tput=20.4kb/s  delay=1051ms  ee=60.27kbit/J
-  [ 76/144]  tab_ddqn        N= 200  seed=42  elapsed=4781s  ETA=4278s    [ 77/144]  tab_ddqn        N= 200  seed=7  elapsed=4795s  ETA=4173s    [ 78/144]  tab_ddqn        N= 200  seed=99  elapsed=4805s  ETA=4066s  
-  tab_ddqn        N= 200  PDR=0.7529  tput=30.8kb/s  delay=2149ms  ee=38.58kbit/J
-  [ 79/144]  tab_ddqn        N= 400  seed=42  elapsed=4812s  ETA=3959s    [ 80/144]  tab_ddqn        N= 400  seed=7  elapsed=4828s  ETA=3862s    [ 81/144]  tab_ddqn        N= 400  seed=99  elapsed=4843s  ETA=3767s  
-  tab_ddqn        N= 400  PDR=0.3627  tput=29.7kb/s  delay=4049ms  ee=19.48kbit/J
-  [ 82/144]  tab_ddqn        N= 600  seed=42  elapsed=4858s  ETA=3673s    [ 83/144]  tab_ddqn        N= 600  seed=7  elapsed=4880s  ETA=3586s    [ 84/144]  tab_ddqn        N= 600  seed=99  elapsed=4903s  ETA=3502s  
-  tab_ddqn        N= 600  PDR=0.2387  tput=29.3kb/s  delay=5642ms  ee=12.56kbit/J
-  [ 85/144]  tab_ddqn        N= 800  seed=42  elapsed=4924s  ETA=3418s    [ 86/144]  tab_ddqn        N= 800  seed=7  elapsed=4953s  ETA=3341s    [ 87/144]  tab_ddqn        N= 800  seed=99  elapsed=4983s  ETA=3264s  
-  tab_ddqn        N= 800  PDR=0.1796  tput=29.4kb/s  delay=7549ms  ee=9.15kbit/J
-  [ 88/144]  tab_ddqn        N=1000  seed=42  elapsed=5010s  ETA=3188s    [ 89/144]  tab_ddqn        N=1000  seed=7  elapsed=5053s  ETA=3123s    [ 90/144]  tab_ddqn        N=1000  seed=99  elapsed=5092s  ETA=3055s  
-  tab_ddqn        N=1000  PDR=0.1297  tput=26.6kb/s  delay=9854ms  ee=5.75kbit/J
-
-  === RL: dqn ===
-  [ 91/144]  dqn             N= 100  seed=42  elapsed=5134s  ETA=2990s    [ 92/144]  dqn             N= 100  seed=7  elapsed=5139s  ETA=2905s    [ 93/144]  dqn             N= 100  seed=99  elapsed=5141s  ETA=2819s  
-  dqn             N= 100  PDR=0.9517  tput=19.5kb/s  delay=1336ms  ee=58.09kbit/J
-  [ 94/144]  dqn             N= 200  seed=42  elapsed=5143s  ETA=2736s    [ 95/144]  dqn             N= 200  seed=7  elapsed=5152s  ETA=2657s    [ 96/144]  dqn             N= 200  seed=99  elapsed=5158s  ETA=2579s  
-  dqn             N= 200  PDR=0.7065  tput=28.9kb/s  delay=2737ms  ee=40.41kbit/J
-  [ 97/144]  dqn             N= 400  seed=42  elapsed=5164s  ETA=2502s    [ 98/144]  dqn             N= 400  seed=7  elapsed=5179s  ETA=2431s    [ 99/144]  dqn             N= 400  seed=99  elapsed=5192s  ETA=2360s  
-  dqn             N= 400  PDR=0.4043  tput=33.1kb/s  delay=4040ms  ee=21.86kbit/J
-  [100/144]  dqn             N= 600  seed=42  elapsed=5210s  ETA=2292s    [101/144]  dqn             N= 600  seed=7  elapsed=5227s  ETA=2225s    [102/144]  dqn             N= 600  seed=99  elapsed=5244s  ETA=2159s  
-  dqn             N= 600  PDR=0.1891  tput=23.2kb/s  delay=7595ms  ee=11.37kbit/J
-  [103/144]  dqn             N= 800  seed=42  elapsed=5262s  ETA=2094s    [104/144]  dqn             N= 800  seed=7  elapsed=5292s  ETA=2035s    [105/144]  dqn             N= 800  seed=99  elapsed=5324s  ETA=1978s  
-  dqn             N= 800  PDR=0.1957  tput=32.1kb/s  delay=6360ms  ee=9.19kbit/J
-  [106/144]  dqn             N=1000  seed=42  elapsed=6251s  ETA=2241s    [107/144]  dqn             N=1000  seed=7  elapsed=7247s  ETA=2506s    [108/144]  dqn             N=1000  seed=99  elapsed=7287s  ETA=2429s  
-  dqn             N=1000  PDR=0.1564  tput=32.0kb/s  delay=7923ms  ee=6.83kbit/J
-
-  === RL: ddqn ===
-  [109/144]  ddqn            N= 100  seed=42  elapsed=7325s  ETA=2352s    [110/144]  ddqn            N= 100  seed=7  elapsed=7328s  ETA=2265s    [111/144]  ddqn            N= 100  seed=99  elapsed=7334s  ETA=2180s  
-  ddqn            N= 100  PDR=0.9967  tput=20.4kb/s  delay=1196ms  ee=64.29kbit/J
-  [112/144]  ddqn            N= 200  seed=42  elapsed=7336s  ETA=2096s    [113/144]  ddqn            N= 200  seed=7  elapsed=7343s  ETA=2015s    [114/144]  ddqn            N= 200  seed=99  elapsed=7349s  ETA=1934s  
-  ddqn            N= 200  PDR=0.8494  tput=34.8kb/s  delay=2196ms  ee=45.12kbit/J
-  [115/144]  ddqn            N= 400  seed=42  elapsed=7355s  ETA=1855s    [116/144]  ddqn            N= 400  seed=7  elapsed=7369s  ETA=1779s    [117/144]  ddqn            N= 400  seed=99  elapsed=7381s  ETA=1703s  
-  ddqn            N= 400  PDR=0.3875  tput=31.7kb/s  delay=3977ms  ee=21.77kbit/J
-  [118/144]  ddqn            N= 600  seed=42  elapsed=7397s  ETA=1630s    [119/144]  ddqn            N= 600  seed=7  elapsed=7414s  ETA=1557s    [120/144]  ddqn            N= 600  seed=99  elapsed=7433s  ETA=1487s  
-  ddqn            N= 600  PDR=0.2170  tput=26.7kb/s  delay=7128ms  ee=12.49kbit/J
-  [121/144]  ddqn            N= 800  seed=42  elapsed=7454s  ETA=1417s    [122/144]  ddqn            N= 800  seed=7  elapsed=7480s  ETA=1349s    [123/144]  ddqn            N= 800  seed=99  elapsed=7520s  ETA=1284s  
-  ddqn            N= 800  PDR=0.1794  tput=29.4kb/s  delay=6820ms  ee=8.84kbit/J
-  [124/144]  ddqn            N=1000  seed=42  elapsed=7554s  ETA=1218s    [125/144]  ddqn            N=1000  seed=7  elapsed=7587s  ETA=1153s    [126/144]  ddqn            N=1000  seed=99  elapsed=7619s  ETA=1088s  
-  ddqn            N=1000  PDR=0.1185  tput=24.3kb/s  delay=14730ms  ee=5.70kbit/J
-
-  === RL: ppo ===
-  [127/144]  ppo             N= 100  seed=42  elapsed=7653s  ETA=1024s    [128/144]  ppo             N= 100  seed=7  elapsed=7658s  ETA=957s    [129/144]  ppo             N= 100  seed=99  elapsed=7661s  ETA=891s  
-  ppo             N= 100  PDR=0.9603  tput=19.7kb/s  delay=1399ms  ee=57.43kbit/J
-  [130/144]  ppo             N= 200  seed=42  elapsed=7679s  ETA=827s    [131/144]  ppo             N= 200  seed=7  elapsed=7710s  ETA=765s    [132/144]  ppo             N= 200  seed=99  elapsed=7736s  ETA=703s  
-  ppo             N= 200  PDR=0.7214  tput=29.5kb/s  delay=2790ms  ee=39.94kbit/J
-  [133/144]  ppo             N= 400  seed=42  elapsed=7743s  ETA=640s    [134/144]  ppo             N= 400  seed=7  elapsed=7760s  ETA=579s    [135/144]  ppo             N= 400  seed=99  elapsed=7774s  ETA=518s  
-  ppo             N= 400  PDR=0.3902  tput=32.0kb/s  delay=4598ms  ee=22.24kbit/J
-  [136/144]  ppo             N= 600  seed=42  elapsed=7788s  ETA=458s    [137/144]  ppo             N= 600  seed=7  elapsed=7812s  ETA=399s    [138/144]  ppo             N= 600  seed=99  elapsed=7835s  ETA=341s  
-  ppo             N= 600  PDR=0.2515  tput=30.9kb/s  delay=6257ms  ee=13.77kbit/J
-  [139/144]  ppo             N= 800  seed=42  elapsed=7883s  ETA=284s    [140/144]  ppo             N= 800  seed=7  elapsed=7956s  ETA=227s    [141/144]  ppo             N= 800  seed=99  elapsed=7985s  ETA=170s  
-  ppo             N= 800  PDR=0.1247  tput=20.4kb/s  delay=11296ms  ee=6.30kbit/J
-  [142/144]  ppo             N=1000  seed=42  elapsed=8076s  ETA=114s    [143/144]  ppo             N=1000  seed=7  elapsed=8144s  ETA=57s    [144/144]  ppo             N=1000  seed=99  elapsed=8273s  ETA=0s  
-  ppo             N=1000  PDR=0.1340  tput=27.5kb/s  delay=10020ms  ee=5.96kbit/J
-
-  Total wall-clock: 8329.4s
-
-
-================================================================================
-  SECTION 1 — BASELINE POLICIES
-================================================================================
-
-===========================================
-  PDR  (↑ better)
--------------------------------------------
-     N        NoRAW       Static         LACA
--------------------------------------------
-   100       0.6001       0.4989       1.0000*
-   200       0.2447       0.4721       0.9398*
-   400       0.1290       0.3658       0.3835*
-   600       0.0854       0.2623*      0.2224
-   800       0.0633       0.1894*      0.1497
-  1000       0.0492       0.1475*      0.1109
-===========================================
-  (* = best in row)
-
-===========================================
-  Throughput (kb/s)  (↑ better)
--------------------------------------------
-     N        NoRAW       Static         LACA
--------------------------------------------
-   100        12.29        10.22        20.48*
-   200        10.02        19.34        38.49*
-   400        10.56        29.96        31.42*
-   600        10.50        32.24*       27.32
-   800        10.37        31.04*       24.53
-  1000        10.07        30.21*       22.71
-===========================================
-  (* = best in row)
-
-===========================================
-  Avg Delay (ms)  (↓ better)
--------------------------------------------
-     N        NoRAW       Static         LACA
--------------------------------------------
-   100       1929.8       3051.6        686.9*
-   200       2811.9       3177.1       1909.3*
-   400       2869.2*      3288.7       3749.3
-   600       2944.9*      3694.9       4974.5
-   800       2849.5*      3727.5       5911.8
-  1000       2883.0*      3694.8       7274.2
-===========================================
-  (* = best in row)
-
-===========================================
-  Energy Efficiency (kbit/J)  (↑ better)
--------------------------------------------
-     N        NoRAW       Static         LACA
--------------------------------------------
-   100         5.57        28.09        54.91*
-   200         2.35        26.18        43.31*
-   400         1.26        19.23        19.66*
-   600         0.84        12.63*       10.89
-   800         0.62         8.51*        6.67
-  1000         0.49         6.01*        4.43
-===========================================
-  (* = best in row)
-
-===========================================
-  Jain Fairness  (↑ better)
--------------------------------------------
-     N        NoRAW       Static         LACA
--------------------------------------------
-   100       0.9814       0.7788       1.0000*
-   200       0.9669       0.7312       0.9918*
-   400       0.8775*      0.6701       0.7521
-   600       0.8065*      0.7184       0.6550
-   800       0.7993*      0.7133       0.6145
-  1000       0.7993*      0.7125       0.6121
-===========================================
-  (* = best in row)
-
-
-================================================================================
-  SECTION 2 — RL ALGORITHMS
-================================================================================
-
-===================================================================
-  PDR  (↑ better)
--------------------------------------------------------------------
-     N      Tabular      TabDDQN          DQN         DDQN          PPO
--------------------------------------------------------------------
-   100       0.9403       0.9956       0.9517       0.9967*      0.9603
-   200       0.8235       0.7529       0.7065       0.8494*      0.7214
-   400       0.4364*      0.3627       0.4043       0.3875       0.3902
-   600       0.2783*      0.2387       0.1891       0.2170       0.2515
-   800       0.1790       0.1796       0.1957*      0.1794       0.1247
-  1000       0.1336       0.1297       0.1564*      0.1185       0.1340
-===================================================================
-  (* = best in row)
-
-===================================================================
-  Throughput (kb/s)  (↑ better)
--------------------------------------------------------------------
-     N      Tabular      TabDDQN          DQN         DDQN          PPO
--------------------------------------------------------------------
-   100        19.26        20.39        19.49        20.41*       19.67
-   200        33.73        30.84        28.94        34.79*       29.55
-   400        35.75*       29.72        33.12        31.74        31.97
-   600        34.20*       29.33        23.24        26.66        30.91
-   800        29.33        29.42        32.07*       29.40        20.43
-  1000        27.36        26.55        32.03*       24.27        27.45
-===================================================================
-  (* = best in row)
-
-===================================================================
-  Avg Delay (ms)  (↓ better)
--------------------------------------------------------------------
-     N      Tabular      TabDDQN          DQN         DDQN          PPO
--------------------------------------------------------------------
-   100       1179.6       1051.3*      1335.7       1196.0       1399.0
-   200       2062.0*      2148.8       2736.9       2195.8       2790.1
-   400       4020.2       4048.7       4039.9       3977.4*      4598.1
-   600       4858.5*      5642.0       7594.5       7128.0       6257.0
-   800       8081.2       7548.8       6360.3*      6820.1      11295.6
-  1000       8725.0       9853.9       7923.3*     14729.6      10020.0
-===================================================================
-  (* = best in row)
-
-===================================================================
-  Collision Rate  (↓ better)
--------------------------------------------------------------------
-     N      Tabular      TabDDQN          DQN         DDQN          PPO
--------------------------------------------------------------------
-   100       0.2771       0.2184       0.2066       0.1899*      0.2345
-   200       0.4223       0.4499       0.3666       0.3263*      0.3695
-   400       0.4259       0.4741       0.4386       0.4305       0.4231*
-   600       0.4455       0.4482       0.3464*      0.3829       0.3762
-   800       0.4304       0.4213       0.4203       0.4379       0.3875*
-  1000       0.4527       0.4347       0.3568       0.2662*      0.3665
-===================================================================
-  (* = best in row)
-
-===================================================================
-  Retry Rate  (↓ better)
--------------------------------------------------------------------
-     N      Tabular      TabDDQN          DQN         DDQN          PPO
--------------------------------------------------------------------
-   100       0.2771       0.2184       0.2066       0.1899*      0.2345
-   200       0.4223       0.4497       0.3666       0.3263*      0.3695
-   400       0.4258       0.4739       0.4384       0.4304       0.4230*
-   600       0.4454       0.4482       0.3464*      0.3829       0.3761
-   800       0.4304       0.4213       0.4202       0.4377       0.3875*
-  1000       0.4527       0.4347       0.3568       0.2662*      0.3665
-===================================================================
-  (* = best in row)
-
-===================================================================
-  Energy Efficiency (kbit/J)  (↑ better)
--------------------------------------------------------------------
-     N      Tabular      TabDDQN          DQN         DDQN          PPO
--------------------------------------------------------------------
-   100        52.10        60.27        58.09        64.29*       57.43
-   200        41.33        38.58        40.41        45.12*       39.94
-   400        23.74*       19.48        21.86        21.77        22.24
-   600        14.29*       12.56        11.37        12.49        13.77
-   800         9.00         9.15         9.19*        8.84         6.30
-  1000         5.96         5.75         6.83*        5.70         5.96
-===================================================================
-  (* = best in row)
-
-===================================================================
-  Jain Fairness  (↑ better)
--------------------------------------------------------------------
-     N      Tabular      TabDDQN          DQN         DDQN          PPO
--------------------------------------------------------------------
-   100       0.9975       0.9998       0.9978       0.9999*      0.9981
-   200       0.9784       0.9599       0.9695       0.9913*      0.9665
-   400       0.8098*      0.7642       0.8033       0.7938       0.8004
-   600       0.7054       0.7186       0.7634       0.7459       0.7645*
-   800       0.6928       0.7029       0.7117*      0.6742       0.7045
-  1000       0.6665       0.6698       0.7069       0.7583*      0.7274
-===================================================================
-  (* = best in row)
-
-===================================================================
-  CI Width PDR  (↓ = more stable across seeds)
--------------------------------------------------------------------
-     N      Tabular      TabDDQN          DQN         DDQN          PPO
--------------------------------------------------------------------
-   100       0.4208       0.0253*      0.3484       0.0287       0.1916
-   200       0.2747*      0.6016       0.7898       0.4962       0.5658
-   400       0.2037       0.2003       0.2051       0.2601       0.0571*
-   600       0.0891*      0.1758       0.2385       0.2441       0.1302
-   800       0.1401       0.0840       0.0693*      0.1728       0.1812
-  1000       0.0865       0.0780*      0.1010       0.1369       0.1162
-===================================================================
-  (* = most stable)
-
-
-================================================================================
-  SECTION 3 — Δ (RL − BEST BASELINE)  positive = RL wins
-================================================================================
-
-===================================================================
-  Δ PDR  (RL − best baseline, ↑ means RL wins)
--------------------------------------------------------------------
-     N      Tabular      TabDDQN          DQN         DDQN          PPO
--------------------------------------------------------------------
-   100      -0.0597      -0.0044      -0.0483      -0.0033      -0.0397
-   200      -0.1162      -0.1869      -0.2333      -0.0903      -0.2184
-   400      +0.0529      -0.0208      +0.0208      +0.0040      +0.0067
-   600      +0.0160      -0.0237      -0.0732      -0.0454      -0.0108
-   800      -0.0104      -0.0098      +0.0063      -0.0100      -0.0647
-  1000      -0.0140      -0.0179      +0.0089      -0.0290      -0.0135
-===================================================================
-
-===================================================================
-  Δ Energy Efficiency (kbit/J)  (RL − best baseline, ↑ means RL wins)
--------------------------------------------------------------------
-     N      Tabular      TabDDQN          DQN         DDQN          PPO
--------------------------------------------------------------------
-   100        -2.81        +5.37        +3.19        +9.38        +2.52
-   200        -1.97        -4.73        -2.89        +1.82        -3.37
-   400        +4.08        -0.19        +2.20        +2.11        +2.57
-   600        +1.67        -0.07        -1.26        -0.13        +1.15
-   800        +0.49        +0.64        +0.68        +0.33        -2.21
-  1000        -0.06        -0.26        +0.82        -0.32        -0.05
-===================================================================
-
-===================================================================
-  Δ Avg Delay (ms)  (RL − best baseline, ↓ means RL wins)
--------------------------------------------------------------------
-     N      Tabular      TabDDQN          DQN         DDQN          PPO
--------------------------------------------------------------------
-   100       +492.7       +364.4       +648.9       +509.1       +712.1
-   200       +152.7       +239.6       +827.7       +286.6       +880.9
-   400      +1151.0      +1179.5      +1170.6      +1108.1      +1728.9
-   600      +1913.5      +2697.1      +4649.6      +4183.1      +3312.1
-   800      +5231.7      +4699.3      +3510.8      +3970.6      +8446.0
-  1000      +5842.0      +6970.8      +5040.2     +11846.5      +7136.9
-===================================================================
-
-================================================================================
-  SECTION 4 — WIN COUNT (best value per N × metric)
-================================================================================
-
-  Tracked: ['pdr', 'tput_kbps', 'avg_delay_ms', 'col_rate', 'retry_rate', 'fairness', 'ee_kbit_j']  (42 chances)
-
-  Policy            Wins       %  Bar
-  ------------------------------------------------------------
-  NoRAW                8   19.0%  ########
-  Static               0    0.0%  
-  LACA                10   23.8%  ##########
-  Tabular              6   14.3%  ######  ← RL
-  TabDDQN              0    0.0%    ← RL
-  DQN                  8   19.0%  ########  ← RL
-  DDQN                 6   14.3%  ######  ← RL
-  PPO                  4    9.5%  ####  ← RL
-
-================================================================================
-  Results : /Users/alakeshkalita/sim11ah_project/scripts/../results/rl_policy_comparison.csv
-  Per-seed: /Users/alakeshkalita/sim11ah_project/scripts/../results/rl_policy_comparison_seeds.csv
-================================================================================
-

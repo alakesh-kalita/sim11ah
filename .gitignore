@@ -21,3 +21,17 @@ dist/
 # regenerate from uav/*.ipynb + uav/build_cluster_csvs.py)
 uav/predicted_path_image/
 uav/_position_matrix_cache_*.npz
+
+# Paper drafts, reviewer-response doc, and simulation results -- kept locally,
+# not published to the GitHub repo.
+/paper/
+/results/
+/MA-PRAW_response_to_reviewers.md
+/results_scaling.csv
+/interval_summary.csv
+/uav_cluster_data.csv
+/uav_cluster_data_demand.csv
+/uav_cluster_data_distance.csv
+/uav_cluster_data_oracle.csv
+/uav_cluster_data_predicted.csv
+/uav_cluster_data_random.csv

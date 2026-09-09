@@ -13,10 +13,10 @@ A discrete-event simulator for the IEEE 802.11ah (Wi-Fi HaLow) sub-1 GHz MAC/PHY
 - [Quick Start](#quick-start)
   - [GUI Dashboard](#gui-dashboard)
   - [CLI Batch Runner](#cli-batch-runner)
-  - [Paper Experiments](#paper-experiments)
 - [Configuration Parameters](#configuration-parameters)
 - [Traffic Models](#traffic-models)
 - [Topology Modes](#topology-modes)
+- [Deployment Scenarios](#deployment-scenarios)
 - [RAW Scheduling Policies](#raw-scheduling-policies)
 - [Project Structure](#project-structure)
 - [Protocol Implementation Details](#protocol-implementation-details)
@@ -139,27 +139,6 @@ python scripts/main_cli.py \
   --out-csv results/my_run.csv
 ```
 
-### Paper Experiments
-
-Reproduce all tables and figures from the paper:
-
-```bash
-# Main scaling sweep (Tables II–IV, Figs. 4–7)
-python paper/run_paper_experiments.py
-
-# Relay topology evaluation (Table VI, Fig. 8)
-python paper/run_relay_experiments.py
-
-# Analytical validation sweep
-python paper/sweep_experiment.py
-
-# Generate plots
-python analysis/plot_simulator_results.py
-python analysis/plot_critical_comparison.py
-```
-
-Results are written to `paper/paper_results.csv` and `paper/relay_results.csv`.
-
 ---
 
 ## Configuration Parameters
@@ -263,6 +242,40 @@ AP ────┤
 
 ---
 
+## Deployment Scenarios
+
+The 3D visualizer (`ui/web3d/`) ships with preset node-deployment scenes spanning different environments, each showing live AP/relay/STA placement and association state:
+
+<table>
+<tr>
+<td align="center"><img src="docs/screenshots/01_open_area_default.png" width="260"><br><sub><b>Open Area</b> — Default</sub></td>
+<td align="center"><img src="docs/screenshots/02_paddy_field_delta_plains.png" width="260"><br><sub><b>Paddy Field</b> — Delta Plains</sub></td>
+<td align="center"><img src="docs/screenshots/03_paddy_field_river_valley.png" width="260"><br><sub><b>Paddy Field</b> — River Valley</sub></td>
+</tr>
+<tr>
+<td align="center"><img src="docs/screenshots/04_paddy_field_highland_terraces.png" width="260"><br><sub><b>Paddy Field</b> — Highland Terraces</sub></td>
+<td align="center"><img src="docs/screenshots/05_industrial_site_logistics_park.png" width="260"><br><sub><b>Industrial Site</b> — Logistics Park</sub></td>
+<td align="center"><img src="docs/screenshots/06_industrial_site_process_plant.png" width="260"><br><sub><b>Industrial Site</b> — Process Plant</sub></td>
+</tr>
+<tr>
+<td align="center"><img src="docs/screenshots/07_industrial_site_business_park.png" width="260"><br><sub><b>Industrial Site</b> — Business Park</sub></td>
+<td align="center"><img src="docs/screenshots/08_smart_city_downtown_grid.png" width="260"><br><sub><b>Smart City</b> — Downtown Grid</sub></td>
+<td align="center"><img src="docs/screenshots/09_smart_city_business_district.png" width="260"><br><sub><b>Smart City</b> — Business District</sub></td>
+</tr>
+<tr>
+<td align="center"><img src="docs/screenshots/10_smart_city_suburban_corridor.png" width="260"><br><sub><b>Smart City</b> — Suburban Corridor</sub></td>
+<td align="center"><img src="docs/screenshots/11_military_zone_forward_operating_base.png" width="260"><br><sub><b>Military Zone</b> — Forward Operating Base</sub></td>
+<td align="center"><img src="docs/screenshots/12_smart_city_uav_cinematic_tour.png" width="260"><br><sub><b>Smart City</b> — UAV Cinematic Tour</sub></td>
+</tr>
+<tr>
+<td align="center"><img src="docs/screenshots/13_smart_city_ism_real_map.png" width="260"><br><sub><b>Smart City</b> — ISM Real-Map Digital Twin</sub></td>
+</tr>
+</table>
+
+Each scene overlays live simulation stats (PDR, throughput, avg. delay, node count) and an AP/Relay/Associated-STA/Unassociated-STA legend directly on the 3D view.
+
+---
+
 ## RAW Scheduling Policies
 
 | Policy | Key | Description |
@@ -292,19 +305,12 @@ sim11ah_project/
 │   ├── main_gui.py       # GUI entry point
 │   ├── main_cli.py       # Headless CLI runner
 │   └── main_test_*.py    # Ad-hoc test scripts
-├── paper/
-│   ├── sim11ah_ieee_paper.tex      # Full IEEE-format paper (LaTeX)
-│   ├── run_paper_experiments.py    # Reproduces Tables II–IV
-│   ├── run_relay_experiments.py    # Reproduces Table VI (relay evaluation)
-│   ├── sweep_experiment.py         # Parameter sweep
-│   └── analytical_validation.py   # Analytical model comparison
 ├── analysis/
 │   ├── plot_simulator_results.py   # Main results plots
 │   ├── plot_critical_comparison.py # Critical traffic comparison
 │   └── plot_uav*.py                # UAV cluster analysis plots
 ├── data/
 │   └── uav_cluster_data.csv        # UAV cluster assignment data
-├── results/                        # Saved simulation output CSVs and PDFs
 ├── tests/
 │   └── test_packet_interval.py     # Unit tests
 └── pyproject.toml
