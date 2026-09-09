@@ -18,6 +18,7 @@ A discrete-event simulator for the IEEE 802.11ah (Wi-Fi HaLow) sub-1 GHz MAC/PHY
 - [Topology Modes](#topology-modes)
 - [Deployment Scenarios](#deployment-scenarios)
 - [RAW Scheduling Policies](#raw-scheduling-policies)
+  - [Benchmark Schemes (Reimplemented Baselines)](#benchmark-schemes-reimplemented-baselines)
 - [Project Structure](#project-structure)
 - [Protocol Implementation Details](#protocol-implementation-details)
 - [Requirements](#requirements)
@@ -282,13 +283,28 @@ Each scene overlays live simulation stats (PDR, throughput, avg. delay, node cou
 |---|---|---|
 | Static | `static` | Fixed equal-duration slots, round-robin STA assignment |
 | Adaptive | `adaptive` | Slot count and duration adjust based on observed load |
-| Cluster Adaptive | `cluster_adaptive` | Groups STAs by traffic class; assigns dedicated slots per cluster |
+| Cluster Adaptive | `cluster_adaptive` | Groups STAs by traffic class; assigns dedicated slots per cluster (MA-PRAW) |
 | Cluster CSV | `cluster_csv` | Reads cluster assignments from `uav_cluster_data.csv` |
+| Traffic-Split | `traffic_split` | Dynamically re-splits groups and per-group slot durations from CUSUM-EWMA demand, Bianchi-sized slots |
+| Traffic-Aware | `traffic_aware` | Demand-proportional slot allocation on top of AID grouping + EWMA/CUSUM prediction |
+| RL (Q-learning) | `rl` | Pre-trained phase-based Q-learning policy over slot-count/duration actions |
 
 **Recommended settings for best PDR:**
 - N ≤ 50: `raw_enable=False` (DCF alone suffices, RAW overhead hurts)
 - 50 < N ≤ 100: `static` RAW, 4 slots, 20 ms slot duration
 - N > 100: `adaptive` or `cluster_adaptive` RAW
+
+### Benchmark Schemes (Reimplemented Baselines)
+
+Three published RAW-scheduling algorithms from the literature are reimplemented for head-to-head comparison against the policies above, run under identical UAV mobility/traffic conditions:
+
+| Scheme | Key | Source | Core mechanism |
+|---|---|---|---|
+| Chang et al. (2019) | `chang2019` | S.-Y. Chang, C.-Y. Lin, B.-S. Lin, Y.-S. Chen, "Traffic-Aware Sensor Grouping for IEEE 802.11ah Networks: Regression Based Analysis and Design," *IEEE Trans. Mobile Computing*, vol. 18, no. 3, pp. 674–687, Mar. 2019. [DOI: 10.1109/TMC.2018.2840149](https://doi.org/10.1109/TMC.2018.2840149) | Per-STA channel-time demand `D_i = L_i·N_i/r_i`, regression-based contention-success-probability model to size RAW sub-slots per group |
+| LACA | `laca` | H. Taramit, L. Orozco-Barbosa, A. Haqiq, J. J. Camacho Escoto, J. Gomez, "Load-Aware Channel Allocation for IEEE 802.11ah-Based Networks," *IEEE Access*, vol. 11, pp. 24484–24496, 2023. [DOI: 10.1109/ACCESS.2023.3251896](https://doi.org/10.1109/ACCESS.2023.3251896) | Two-level renewal-process slot-duration algorithm (Algorithm 1): per-station renewal cycles with decreasing contender count as stations succeed |
+| E-TAROA | `etaroa` | Y. Tian, P. Santi, C. Latre, J. Famaey, "Accurate Sensor Traffic Estimation for Station Grouping in Highly Dense IEEE 802.11ah Networks," *ACM SenSys*, 2017 | Enhanced traffic-aware RAW optimization allocation with improved per-station traffic estimation for grouping |
+
+Evaluation scripts: `scripts/eval_chang2019_baseline.py`, `scripts/eval_etaroa.py`, and the multi-policy sweep in `scripts/compare_raw_policies.py` (8-way comparison: `none`, `static`, `adaptive`, `cluster_csv`, `traffic_split`, `laca`, `chang2019`, `rl`).
 
 ---
 
