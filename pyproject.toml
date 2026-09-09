@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sim11ah"
+version = "0.1.0"
+description = "IEEE 802.11ah (Wi-Fi HaLow) discrete-event network simulator"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["sim11ah*", "analysis*", "ui*"]

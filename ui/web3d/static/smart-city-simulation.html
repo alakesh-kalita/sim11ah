@@ -1,0 +1,2900 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IIT (ISM) Campus Digital Twin</title>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css">
+  <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f7f8fa;
+      --muted: #9fa6b2;
+      --panel: #17191d;
+      --panel-raised: #202329;
+      --line: rgba(255, 255, 255, 0.10);
+      --green: #56c884;
+      --teal: #3fc3c6;
+      --amber: #f2b64a;
+      --red: #ef6f65;
+      --blue: #5c98e6;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      overflow: hidden;
+      background: #101114;
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+
+    button {
+      font: inherit;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: minmax(296px, 326px) minmax(0, 1fr);
+      width: 100vw;
+      height: 100vh;
+      min-height: 540px;
+    }
+
+    .panel {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+      padding: 16px;
+      overflow-y: auto;
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      box-shadow: 14px 0 34px rgba(0, 0, 0, 0.20);
+      z-index: 5;
+      scrollbar-width: thin;
+      scrollbar-color: #3a3e46 transparent;
+    }
+
+    .brand {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.15;
+      font-weight: 750;
+    }
+
+    .subtitle {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0;
+    }
+
+    .live-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      flex: 0 0 auto;
+      align-self: flex-start;
+      padding: 7px 9px;
+      border: 1px solid rgba(86, 200, 132, 0.34);
+      border-radius: 6px;
+      background: rgba(86, 200, 132, 0.10);
+      color: #d9fbe6;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .pulse {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 0 0 rgba(86, 200, 132, 0.72);
+      animation: pulse 1.4s infinite;
+    }
+
+    @keyframes pulse {
+      70% {
+        box-shadow: 0 0 0 8px rgba(86, 200, 132, 0);
+      }
+      100% {
+        box-shadow: 0 0 0 0 rgba(95, 199, 129, 0);
+      }
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin: 14px 0;
+    }
+
+    .metric {
+      min-width: 0;
+      padding: 10px 11px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel-raised);
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0;
+      white-space: nowrap;
+    }
+
+    .metric .value {
+      margin-top: 6px;
+      font-size: 21px;
+      line-height: 1;
+      font-weight: 750;
+    }
+
+    .metric .value small {
+      margin-left: 3px;
+      font-size: 10px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .controls {
+      display: grid;
+      gap: 8px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel-raised);
+    }
+
+    /* Same E417/E240/E102 codes the desktop 2D topology canvas shows on
+       any node that hasn't joined (_diagnose_unjoined in
+       topology_canvas.py) -- one explanatory panel, shown always so it
+       reads as a reference key rather than something that pops in/out. */
+    .error-legend {
+      margin-top: 12px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel-raised);
+    }
+
+    .error-legend .title {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 8px;
+      letter-spacing: 0.3px;
+    }
+
+    .error-legend .row {
+      display: grid;
+      grid-template-columns: 44px 1fr;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      padding: 3px 0;
+    }
+
+    .error-legend .code {
+      font-weight: 800;
+      font-size: 11px;
+    }
+
+    .error-legend .desc {
+      color: var(--muted);
+    }
+
+    .control-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 7px;
+    }
+
+    .action {
+      min-height: 36px;
+      border: 1px solid rgba(246, 242, 232, 0.17);
+      border-radius: 6px;
+      background: #2a2e35;
+      color: var(--ink);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 650;
+      transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+    }
+
+    .action:hover {
+      transform: translateY(-1px);
+      border-color: rgba(246, 242, 232, 0.32);
+      background: #343943;
+    }
+
+    .action.primary {
+      border-color: rgba(77, 193, 194, 0.48);
+      background: rgba(77, 193, 194, 0.15);
+      color: #e4ffff;
+    }
+
+    .action.warning {
+      border-color: rgba(236, 107, 95, 0.48);
+      background: rgba(236, 107, 95, 0.15);
+      color: #ffe2df;
+    }
+
+    .action.wide {
+      width: 100%;
+    }
+
+    .slider-row {
+      display: grid;
+      gap: 6px;
+      margin-top: 2px;
+    }
+
+    .slider-label {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--amber);
+    }
+
+    .map-shell {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      background: #cfd6d0;
+      isolation: isolate;
+    }
+
+    .map-shell::after {
+      position: absolute;
+      inset: 0;
+      z-index: 3;
+      pointer-events: none;
+      content: "";
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14), inset 18px 0 30px rgba(14, 20, 18, 0.08);
+    }
+
+    .tile-map,
+    #agentCanvas,
+    #twinCanvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .tile-map {
+      overflow: hidden;
+      background: #d8dfd5;
+      transition: filter 300ms ease;
+      will-change: filter;
+    }
+
+    .tile-map .maplibregl-canvas {
+      outline: none;
+    }
+
+    .map-shell.is-raining .tile-map {
+      filter: saturate(0.72) brightness(0.82) contrast(1.04);
+    }
+
+    #agentCanvas {
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    #twinCanvas {
+      z-index: 3;
+      pointer-events: none;
+    }
+
+    .topbar {
+      position: absolute;
+      left: 18px;
+      right: 18px;
+      top: 16px;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      pointer-events: none;
+      z-index: 4;
+    }
+
+    .glass-line {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+      padding: 7px 9px;
+      border: 1px solid rgba(31, 43, 35, 0.16);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.90);
+      color: #222b22;
+      box-shadow: 0 8px 24px rgba(30, 36, 31, 0.16);
+      backdrop-filter: blur(10px);
+    }
+
+    .glass-line span,
+    .glass-line a {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: inherit;
+      font-size: 11px;
+      font-weight: 700;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .glass-line a {
+      pointer-events: auto;
+    }
+
+    .key {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .view-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      pointer-events: auto;
+    }
+
+    .layer-switch {
+      display: inline-grid;
+      grid-template-columns: 1fr 1fr;
+      padding: 2px;
+      border: 1px solid rgba(31, 43, 35, 0.14);
+      border-radius: 6px;
+      background: rgba(244, 246, 244, 0.92);
+    }
+
+    .layer-button {
+      min-width: 66px;
+      min-height: 30px;
+      padding: 0 10px;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      color: #4f5a52;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .layer-button[aria-pressed="true"] {
+      background: #202924;
+      color: #ffffff;
+      box-shadow: 0 2px 7px rgba(25, 31, 27, 0.20);
+    }
+
+    .time-chip {
+      min-width: 50px;
+      justify-content: center;
+    }
+
+    .map-tools {
+      position: absolute;
+      right: 18px;
+      bottom: 46px;
+      display: grid;
+      gap: 8px;
+      z-index: 4;
+    }
+
+    .map-tool {
+      width: 40px;
+      height: 40px;
+      border: 1px solid rgba(31, 43, 35, 0.18);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.92);
+      color: #222b22;
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: 750;
+      box-shadow: 0 8px 22px rgba(38, 45, 38, 0.16);
+    }
+
+    .map-tool:hover {
+      background: #ffffff;
+    }
+
+    .scale-bar {
+      position: absolute;
+      right: 70px;
+      bottom: 49px;
+      z-index: 4;
+      min-width: 70px;
+      color: #ffffff;
+      font-size: 10px;
+      font-weight: 700;
+      text-align: center;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.82);
+    }
+
+    .scale-line {
+      height: 7px;
+      margin-top: 2px;
+      border-right: 2px solid #ffffff;
+      border-bottom: 2px solid #ffffff;
+      border-left: 2px solid #ffffff;
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.72));
+    }
+
+    .attribution {
+      position: absolute;
+      left: 10px;
+      bottom: 8px;
+      z-index: 4;
+      max-width: calc(100% - 120px);
+      padding: 3px 6px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.88);
+      color: #26302a;
+      font-size: 9px;
+    }
+
+    .lab-watermark {
+      position: absolute;
+      right: 10px;
+      bottom: 8px;
+      z-index: 4;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.88);
+      color: #26302a;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      pointer-events: none;
+    }
+
+    .attribution a {
+      color: #1c5f8f;
+    }
+
+    @media (max-width: 900px) {
+      body {
+        overflow: auto;
+      }
+
+      .app {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(470px, 62vh) auto;
+        min-height: 100vh;
+        height: auto;
+      }
+
+      .map-shell {
+        order: 1;
+      }
+
+      .panel {
+        order: 2;
+        overflow: visible;
+        border-right: 0;
+        border-top: 1px solid var(--line);
+      }
+    }
+
+    @media (max-width: 520px) {
+      .app {
+        grid-template-rows: minmax(460px, 58vh) auto;
+      }
+
+      .panel {
+        padding: 14px;
+      }
+
+      .metrics,
+      .control-row {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .topbar {
+        left: 10px;
+        right: 10px;
+        top: 10px;
+        align-items: flex-start;
+      }
+
+      .glass-line {
+        max-width: calc(100vw - 20px);
+      }
+
+      .topbar > .glass-line:first-child {
+        display: none;
+      }
+
+      .view-controls {
+        margin-left: auto;
+      }
+
+      .layer-button {
+        min-width: 58px;
+        padding: 0 8px;
+      }
+
+      .scale-bar {
+        right: 60px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="panel" aria-label="IIT ISM digital twin dashboard">
+      <header class="brand">
+        <div>
+          <h1>IIT (ISM) Campus Twin</h1>
+          <div class="subtitle">Live mobility and network operations</div>
+        </div>
+        <div class="live-pill"><span class="pulse"></span> Live</div>
+      </header>
+
+      <section class="metrics" aria-label="Campus metrics">
+        <div class="metric">
+          <div class="label">Crowd Flow</div>
+          <div class="value"><span id="crowdValue">48</span><small>%</small></div>
+        </div>
+        <div class="metric">
+          <div class="label">AQI</div>
+          <div class="value"><span id="aqiValue">42</span><small>AQI</small></div>
+        </div>
+        <div class="metric">
+          <div class="label">Solar Energy</div>
+          <div class="value"><span id="energyValue">74</span><small>%</small></div>
+        </div>
+        <div class="metric">
+          <div class="label">Shuttle Speed</div>
+          <div class="value"><span id="speedValue">21</span><small>km/h</small></div>
+        </div>
+        <div class="metric">
+          <div class="label">UAV Coverage</div>
+          <div class="value"><span id="coverageValue">82</span><small>%</small></div>
+        </div>
+        <div class="metric">
+          <div class="label">Packet Latency</div>
+          <div class="value"><span id="latencyValue">18</span><small>ms</small></div>
+        </div>
+      </section>
+
+      <section class="controls" aria-label="Simulation controls">
+        <div class="control-row">
+          <button class="action primary" id="toggleBtn" type="button">Pause</button>
+          <button class="action" id="addBtn" type="button">Add Shuttles</button>
+        </div>
+        <div class="control-row">
+          <button class="action warning" id="medicalBtn" type="button">Medical</button>
+          <button class="action" id="rainBtn" type="button">Rain</button>
+        </div>
+        <button class="action wide" id="linksBtn" type="button">Show Coverage</button>
+        <label class="slider-row" for="crowdRange">
+          <span class="slider-label"><span>Class Rush</span><span id="rushValue">45%</span></span>
+          <input id="crowdRange" type="range" min="0" max="100" value="45">
+        </label>
+      </section>
+
+      <section class="error-legend" aria-label="Not-joined error codes">
+        <div class="title">NOT JOINED — WHY?</div>
+        <div class="row"><span class="code" style="color:#ef6f65">E417</span><span class="desc">Out of Range</span></div>
+        <div class="row"><span class="code" style="color:#ef6f65">E240</span><span class="desc">Weak Signal</span></div>
+        <div class="row"><span class="code" style="color:#f2b64a">E102</span><span class="desc">Connecting</span></div>
+      </section>
+    </aside>
+
+    <main class="map-shell" id="mapShell" aria-label="Real IIT ISM map digital twin">
+      <div class="tile-map" id="tileMap" aria-hidden="true"></div>
+      <canvas id="agentCanvas" role="img" aria-label="Animated 3D campus vehicles, students, and UAVs"></canvas>
+      <canvas id="twinCanvas"></canvas>
+
+      <div class="topbar">
+        <div class="glass-line">
+          <span><i class="key" style="background:#4dc1c2"></i> Shuttle</span>
+          <span><i class="key" style="background:#f0b44e"></i> Students</span>
+          <span><i class="key" style="background:#5fc781"></i> Sensor</span>
+          <span><i class="key" style="background:#9d8cff"></i> UAV Relay</span>
+          <span><i class="key" style="background:#ec6b5f"></i> Emergency Vehicle</span>
+          <span><i class="key" style="background:#5c98e6"></i> AP</span>
+          <span><i class="key" style="background:#56c884"></i> STA Associated</span>
+          <span><i class="key" style="background:#ef6f65"></i> STA Unassociated</span>
+        </div>
+        <div class="view-controls">
+          <div class="layer-switch" aria-label="Map appearance">
+            <button class="layer-button" id="planViewBtn" type="button" aria-pressed="false">Plan</button>
+            <button class="layer-button" id="twinViewBtn" type="button" aria-pressed="true">3D Twin</button>
+          </div>
+          <div class="glass-line time-chip">
+            <span id="campusClock">08:12</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="map-tools" aria-label="Map controls">
+        <button class="map-tool" id="zoomInBtn" type="button" aria-label="Zoom in" title="Zoom in">+</button>
+        <button class="map-tool" id="zoomOutBtn" type="button" aria-label="Zoom out" title="Zoom out">−</button>
+        <button class="map-tool" id="recenterBtn" type="button" aria-label="Recenter on IIT ISM" title="Recenter">⌖</button>
+      </div>
+
+      <div class="scale-bar" aria-hidden="true">
+        <span id="scaleLabel">100 m</span>
+        <div class="scale-line" id="scaleLine"></div>
+      </div>
+
+      <div class="attribution" id="mapAttribution">
+        © OpenFreeMap · © OpenMapTiles · © OpenStreetMap contributors
+      </div>
+      <div class="lab-watermark">WiNDS Lab</div>
+    </main>
+  </div>
+
+  <script type="module">
+    import * as THREE from "https://unpkg.com/three@0.160.1/build/three.module.js";
+
+    const shell = document.getElementById("mapShell");
+    const tileMap = document.getElementById("tileMap");
+    const agentCanvas = document.getElementById("agentCanvas");
+    const canvas = document.getElementById("twinCanvas");
+    const ctx = canvas.getContext("2d");
+
+    const ui = {
+      crowd: document.getElementById("crowdValue"),
+      aqi: document.getElementById("aqiValue"),
+      energy: document.getElementById("energyValue"),
+      speed: document.getElementById("speedValue"),
+      coverage: document.getElementById("coverageValue"),
+      latency: document.getElementById("latencyValue"),
+      range: document.getElementById("crowdRange"),
+      rushValue: document.getElementById("rushValue"),
+      toggle: document.getElementById("toggleBtn"),
+      add: document.getElementById("addBtn"),
+      medical: document.getElementById("medicalBtn"),
+      rain: document.getElementById("rainBtn"),
+      links: document.getElementById("linksBtn"),
+      clock: document.getElementById("campusClock"),
+      zoomIn: document.getElementById("zoomInBtn"),
+      zoomOut: document.getElementById("zoomOutBtn"),
+      recenter: document.getElementById("recenterBtn"),
+      planView: document.getElementById("planViewBtn"),
+      twinView: document.getElementById("twinViewBtn"),
+      attribution: document.getElementById("mapAttribution"),
+      scaleLabel: document.getElementById("scaleLabel"),
+      scaleLine: document.getElementById("scaleLine")
+    };
+
+    let campusMap = null;
+
+    const mapState = {
+      center: { lat: 23.8133, lon: 86.4419 },
+      home: { lat: 23.8133, lon: 86.4419 },
+      zoom: 17.2,
+      viewMode: "twin",
+      vectorSourceId: null,
+      tileSize: 256,
+      width: 0,
+      height: 0
+    };
+
+    const sim = {
+      time: 0,
+      minutes: 8 * 60 + 12,
+      paused: false,
+      rain: false,
+      medicalUntil: 0,
+      rush: 0.45,
+      showLinks: false
+    };
+
+    const fleetTypes = {
+      shuttle: { label: "EV Shuttles", color: "#4dc1c2", length: 18, speedMps: 6.2 },
+      scooter: { label: "Scooties", color: "#db5f8a", length: 11, speedMps: 7.4 },
+      bus: { label: "Campus Buses", color: "#f0b44e", length: 23, speedMps: 5.2 },
+      van: { label: "Security Vans", color: "#7b91a4", length: 16, speedMps: 6.0 },
+      service: { label: "Service Vehicles", color: "#a77b5c", length: 16, speedMps: 4.6 },
+      ambulance: { label: "Ambulance", color: "#ec6b5f", length: 18, speedMps: 9.2 }
+    };
+
+    const agent3D = {
+      ready: false,
+      renderer: null,
+      scene: null,
+      camera: null,
+      geometry: null,
+      materials: new Map(),
+      vehicleModels: [],
+      pedestrianModels: [],
+      uavModels: [],
+      apModel: null,
+      audited: false
+    };
+
+    function agentMaterial(color, options = {}) {
+      const key = [color, options.metalness || 0, options.roughness ?? 0.65, options.emissive || "", options.opacity ?? 1].join("|");
+      if (agent3D.materials.has(key)) return agent3D.materials.get(key);
+      const material = new THREE.MeshStandardMaterial({
+        color,
+        metalness: options.metalness || 0,
+        roughness: options.roughness ?? 0.65,
+        transparent: (options.opacity ?? 1) < 1,
+        opacity: options.opacity ?? 1,
+        emissive: options.emissive || 0x000000,
+        emissiveIntensity: options.emissive ? 1.6 : 0,
+        depthWrite: (options.opacity ?? 1) >= 1
+      });
+      agent3D.materials.set(key, material);
+      return material;
+    }
+
+    function addAgentMesh(parent, geometry, material, scale, position, rotation = null) {
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.scale.set(scale[0], scale[1], scale[2]);
+      mesh.position.set(position[0], position[1], position[2]);
+      if (rotation) mesh.rotation.set(rotation[0], rotation[1], rotation[2]);
+      parent.add(mesh);
+      return mesh;
+    }
+
+    function addAgentShadow(root, length, width, opacity = 0.2) {
+      const shadow = addAgentMesh(
+        root,
+        agent3D.geometry.circle,
+        new THREE.MeshBasicMaterial({ color: 0x18201d, transparent: true, opacity, depthWrite: false }),
+        [length * 0.52, width * 0.62, 1],
+        [1.8, 2.3, -1]
+      );
+      shadow.renderOrder = -1;
+      return shadow;
+    }
+
+    function createScooterModel(vehicle) {
+      const root = new THREE.Group();
+      addAgentShadow(root, 12, 5, 0.24);
+      const tilt = new THREE.Group();
+      root.add(tilt);
+
+      const body = agentMaterial(fleetTypes[vehicle.typeName].color, { metalness: 0.18, roughness: 0.42 });
+      const rubber = agentMaterial("#171a1d", { roughness: 0.88 });
+      const chrome = agentMaterial("#c9d4d7", { metalness: 0.72, roughness: 0.25 });
+      const seat = agentMaterial("#29252b", { roughness: 0.78 });
+      const skin = agentMaterial("#b97859", { roughness: 0.92 });
+      const riderShirt = agentMaterial("#304f67", { roughness: 0.78 });
+
+      const wheels = [];
+      [-4.3, 4.3].forEach(x => {
+        const wheel = addAgentMesh(tilt, agent3D.geometry.cylinder, rubber, [1.7, 0.72, 1.7], [x, 0, 2.1]);
+        wheels.push(wheel);
+      });
+      addAgentMesh(tilt, agent3D.geometry.box, body, [7.2, 2.1, 1.5], [0, 0, 2.8]);
+      addAgentMesh(tilt, agent3D.geometry.box, seat, [3.2, 2.3, 0.65], [-1.4, 0, 4]);
+      addAgentMesh(tilt, agent3D.geometry.cylinder, chrome, [0.3, 3.2, 0.3], [3.2, 0, 5.2], [0, 0, Math.PI / 2]);
+      addAgentMesh(tilt, agent3D.geometry.box, chrome, [0.35, 5, 0.35], [3.35, 0, 7.3]);
+      addAgentMesh(tilt, agent3D.geometry.box, riderShirt, [2.8, 2.6, 4], [-0.5, 0, 7.2], [0, -0.16, 0]);
+      addAgentMesh(tilt, agent3D.geometry.sphere, skin, [1.65, 1.65, 1.65], [0.5, 0, 10.3]);
+      const lamp = addAgentMesh(tilt, agent3D.geometry.sphere, agentMaterial("#f9f2c4", { emissive: "#fff1a8", roughness: 0.3 }), [0.7, 0.7, 0.7], [4.2, 0, 4.5]);
+
+      root.userData = { tilt, wheels, lamp, kind: "scooter" };
+      return root;
+    }
+
+    function createVehicleModel(vehicle) {
+      if (vehicle.typeName === "scooter") return createScooterModel(vehicle);
+
+      const root = new THREE.Group();
+      const dimensions = {
+        shuttle: [20, 8.8, 4.3],
+        bus: [27, 9.6, 5.2],
+        van: [18, 8.7, 4.7],
+        service: [17, 8.4, 4.2],
+        ambulance: [20, 9, 4.8]
+      }[vehicle.typeName] || [18, 8.6, 4.3];
+      const [length, width, height] = dimensions;
+      addAgentShadow(root, length, width, vehicle.typeName === "bus" ? 0.26 : 0.22);
+      const tilt = new THREE.Group();
+      root.add(tilt);
+
+      const body = agentMaterial(fleetTypes[vehicle.typeName].color, { metalness: 0.24, roughness: 0.38 });
+      const lower = agentMaterial("#293136", { metalness: 0.3, roughness: 0.52 });
+      const glass = agentMaterial("#183b4d", { metalness: 0.28, roughness: 0.22, opacity: 0.9 });
+      const rubber = agentMaterial("#15181a", { roughness: 0.92 });
+      const hub = agentMaterial("#98a4a8", { metalness: 0.78, roughness: 0.28 });
+      const roof = agentMaterial(vehicle.typeName === "ambulance" ? "#f7f7f2" : "#e8ece8", { metalness: 0.12, roughness: 0.38 });
+      const headlights = agentMaterial("#fff4b8", { emissive: "#ffe58b", roughness: 0.25 });
+      const taillights = agentMaterial("#d83e36", { emissive: "#ff382e", roughness: 0.28 });
+
+      addAgentMesh(tilt, agent3D.geometry.box, lower, [length, width, 2.2], [0, 0, 2.3]);
+      addAgentMesh(tilt, agent3D.geometry.box, body, [length * 0.94, width * 0.96, height], [0, 0, 4.2]);
+      const cabinLength = vehicle.typeName === "bus" ? length * 0.78 : length * 0.52;
+      const cabinX = vehicle.typeName === "bus" ? -0.3 : -length * 0.08;
+      addAgentMesh(tilt, agent3D.geometry.box, roof, [cabinLength, width * 0.82, height * 0.72], [cabinX, 0, 7.2]);
+      addAgentMesh(tilt, agent3D.geometry.box, glass, [0.45, width * 0.72, height * 0.5], [cabinX + cabinLength * 0.49, 0, 7.25], [0, -0.13, 0]);
+      [-1, 1].forEach(side => {
+        addAgentMesh(tilt, agent3D.geometry.box, glass, [cabinLength * 0.78, 0.28, height * 0.46], [cabinX, side * width * 0.43, 7.25]);
+      });
+
+      const wheels = [];
+      [-length * 0.33, length * 0.33].forEach(x => {
+        [-1, 1].forEach(side => {
+          const wheel = addAgentMesh(tilt, agent3D.geometry.cylinder, rubber, [1.45, 0.9, 1.45], [x, side * width * 0.53, 2.25]);
+          addAgentMesh(wheel, agent3D.geometry.cylinder, hub, [0.56, 1.02, 0.56], [0, 0, 0]);
+          wheels.push(wheel);
+        });
+      });
+      [-1, 1].forEach(side => {
+        addAgentMesh(tilt, agent3D.geometry.box, headlights, [0.45, 1.5, 0.8], [length * 0.49, side * width * 0.27, 4]);
+        addAgentMesh(tilt, agent3D.geometry.box, taillights, [0.4, 1.25, 0.75], [-length * 0.49, side * width * 0.28, 4]);
+      });
+
+      let beacon = null;
+      if (["van", "service", "ambulance"].includes(vehicle.typeName)) {
+        const beaconColor = vehicle.typeName === "ambulance" ? "#ec3e39" : vehicle.typeName === "service" ? "#f5a623" : "#4a90ff";
+        beacon = addAgentMesh(tilt, agent3D.geometry.cylinder, agentMaterial(beaconColor, { emissive: beaconColor, opacity: 0.92 }), [1.15, 0.45, 1.15], [0, 0, 9.8], [Math.PI / 2, 0, 0]);
+      }
+      if (vehicle.typeName === "ambulance") {
+        const red = agentMaterial("#d83e36", { emissive: "#8c1110", roughness: 0.5 });
+        addAgentMesh(tilt, agent3D.geometry.box, red, [4.2, 1, 0.45], [-3.2, 0, 9.65]);
+        addAgentMesh(tilt, agent3D.geometry.box, red, [1, 4.2, 0.45], [-3.2, 0, 9.7]);
+      }
+      if (vehicle.typeName === "shuttle") {
+        addAgentMesh(tilt, agent3D.geometry.box, agentMaterial("#14252a", { metalness: 0.2 }), [6, 4.8, 0.35], [-2, 0, 9.7]);
+      }
+
+      root.userData = { tilt, wheels, beacon, kind: vehicle.typeName };
+      return root;
+    }
+
+    function createPedestrianModel(person) {
+      const root = new THREE.Group();
+      addAgentShadow(root, 7, 4.6, 0.18);
+      const tilt = new THREE.Group();
+      root.add(tilt);
+      const facing = new THREE.Group();
+      tilt.add(facing);
+
+      const shirt = agentMaterial(person.color, { roughness: 0.84 });
+      const trousers = agentMaterial("#26333a", { roughness: 0.9 });
+      const skin = agentMaterial("#b97859", { roughness: 0.94 });
+      const hair = agentMaterial("#28211f", { roughness: 0.96 });
+      const backpackMaterial = agentMaterial(person.backpack, { roughness: 0.8 });
+      const shoes = agentMaterial("#17191b", { roughness: 0.92 });
+
+      const torso = addAgentMesh(facing, agent3D.geometry.capsule, shirt, [1.45, 1.45, 1.55], [0, 0, 8.2], [Math.PI / 2, 0, 0]);
+      addAgentMesh(facing, agent3D.geometry.sphere, skin, [1.8, 1.65, 1.85], [0.45, 0, 12.7]);
+      addAgentMesh(facing, agent3D.geometry.sphere, hair, [1.82, 1.68, 0.72], [0.22, 0, 13.75]);
+      addAgentMesh(facing, agent3D.geometry.sphere, skin, [0.52, 0.5, 0.52], [2.05, 0, 12.65]);
+      addAgentMesh(facing, agent3D.geometry.box, backpackMaterial, [1.25, 3.5, 4.7], [-1.7, 0, 8.1]);
+
+      const arms = [];
+      [-1, 1].forEach(side => {
+        const pivot = new THREE.Group();
+        pivot.position.set(0, side * 2.05, 9.2);
+        addAgentMesh(pivot, agent3D.geometry.cylinder, skin, [0.52, 3.8, 0.52], [0, 0, -1.8], [Math.PI / 2, 0, 0]);
+        facing.add(pivot);
+        arms.push(pivot);
+      });
+
+      const legs = [];
+      [-1, 1].forEach(side => {
+        const pivot = new THREE.Group();
+        pivot.position.set(0, side * 0.82, 5.2);
+        addAgentMesh(pivot, agent3D.geometry.cylinder, trousers, [0.72, 4.5, 0.72], [0, 0, -2.1], [Math.PI / 2, 0, 0]);
+        addAgentMesh(pivot, agent3D.geometry.box, shoes, [2.2, 1.15, 0.8], [0.65, 0, -4.4]);
+        facing.add(pivot);
+        legs.push(pivot);
+      });
+
+      root.userData = { tilt, facing, torso, arms, legs, kind: "student" };
+      return root;
+    }
+
+    function createUAVModel(uav) {
+      const root = new THREE.Group();
+      const tilt = new THREE.Group();
+      root.add(tilt);
+      const frame = agentMaterial("#232a2f", { metalness: 0.68, roughness: 0.25 });
+      const body = agentMaterial(uav.color, { metalness: 0.42, roughness: 0.3 });
+      const rotor = agentMaterial("#d9e4e6", { metalness: 0.55, roughness: 0.2, opacity: 0.68 });
+      const signal = agentMaterial("#9d8cff", { emissive: "#8a77ff", roughness: 0.2 });
+
+      addAgentMesh(tilt, agent3D.geometry.sphere, body, [3.4, 3.4, 2.2], [0, 0, 2]);
+      addAgentMesh(tilt, agent3D.geometry.sphere, signal, [0.72, 0.72, 0.72], [0, 0, 4.3]);
+      const rotors = [];
+      [[-7, -7], [-7, 7], [7, -7], [7, 7]].forEach(([x, y]) => {
+        addAgentMesh(tilt, agent3D.geometry.box, frame, [Math.abs(x) + 1, 0.75, 0.72], [x / 2, y / 2, 2.2], [0, 0, Math.atan2(y, x)]);
+        addAgentMesh(tilt, agent3D.geometry.cylinder, frame, [1.3, 0.65, 1.3], [x, y, 2.4], [Math.PI / 2, 0, 0]);
+        const blades = new THREE.Group();
+        blades.position.set(x, y, 3.1);
+        addAgentMesh(blades, agent3D.geometry.box, rotor, [7, 0.58, 0.18], [0, 0, 0]);
+        addAgentMesh(blades, agent3D.geometry.box, rotor, [0.58, 7, 0.18], [0, 0, 0]);
+        tilt.add(blades);
+        rotors.push(blades);
+      });
+      root.userData = { tilt, rotors, kind: "uav" };
+      return root;
+    }
+
+    // Fixed ground infrastructure -- the one AP the campus's STAs and UAV
+    // relays associate through. Built as a distinct vertical lattice mast
+    // (not just a taller sensor dot) so it reads as network infrastructure
+    // rather than another moving agent, mirroring the dedicated AP tower
+    // model used in the project's other (block-world) 3D topology view.
+    function createAPModel() {
+      const root = new THREE.Group();
+      addAgentShadow(root, 10, 10, 0.26);
+      const tilt = new THREE.Group();
+      root.add(tilt);
+
+      const mastMat = agentMaterial("#26313d", { metalness: 0.42, roughness: 0.4 });
+      const armMat = agentMaterial("#12161a", { metalness: 0.5, roughness: 0.35 });
+      const unitMat = agentMaterial("#2f3d4c", { metalness: 0.38, roughness: 0.42 });
+      const ledMat = agentMaterial("#5c98e6", { emissive: "#5c98e6", roughness: 0.2 });
+
+      addAgentMesh(tilt, agent3D.geometry.cylinder, mastMat, [1.3, 32, 1.3], [0, 0, 16]);
+      addAgentMesh(tilt, agent3D.geometry.box, unitMat, [4.6, 4.6, 6.4], [0, 0, 29]);
+      [0.55, 0.95].forEach(hFrac => {
+        for (let i = 0; i < 3; i += 1) {
+          const angle = (i / 3) * Math.PI * 2 + (hFrac < 0.9 ? Math.PI / 3 : 0);
+          addAgentMesh(
+            tilt, agent3D.geometry.box, armMat, [8.5, 0.7, 0.7],
+            [Math.cos(angle) * 4.3, Math.sin(angle) * 4.3, 32 * hFrac],
+            [0, 0, angle]
+          );
+        }
+      });
+      addAgentMesh(tilt, agent3D.geometry.sphere, ledMat, [1.3, 1.3, 1.3], [0, 0, 35]);
+
+      root.userData = { tilt, ledMat, kind: "ap" };
+      return root;
+    }
+
+    function remove3DModel(model) {
+      if (model && model.parent) model.parent.remove(model);
+    }
+
+    function sync3DAgentModels() {
+      if (!agent3D.apModel) {
+        agent3D.apModel = createAPModel();
+        agent3D.scene.add(agent3D.apModel);
+      }
+      while (agent3D.vehicleModels.length < vehicles.length) {
+        const model = createVehicleModel(vehicles[agent3D.vehicleModels.length]);
+        agent3D.scene.add(model);
+        agent3D.vehicleModels.push(model);
+      }
+      while (agent3D.pedestrianModels.length < pedestrians.length) {
+        const model = createPedestrianModel(pedestrians[agent3D.pedestrianModels.length]);
+        agent3D.scene.add(model);
+        agent3D.pedestrianModels.push(model);
+      }
+      while (agent3D.uavModels.length < uavs.length) {
+        const model = createUAVModel(uavs[agent3D.uavModels.length]);
+        agent3D.scene.add(model);
+        agent3D.uavModels.push(model);
+      }
+      while (agent3D.uavModels.length > uavs.length) remove3DModel(agent3D.uavModels.pop());
+    }
+
+    function resize3DScene() {
+      if (!agent3D.ready) return;
+      const width = Math.max(1, mapState.width);
+      const height = Math.max(1, mapState.height);
+      agent3D.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.65));
+      agent3D.renderer.setSize(width, height, false);
+      agent3D.camera.left = 0;
+      agent3D.camera.right = width;
+      agent3D.camera.top = 0;
+      agent3D.camera.bottom = height;
+      agent3D.camera.updateProjectionMatrix();
+      agent3D.audited = false;
+    }
+
+    function initialize3DAgents() {
+      if (!THREE || !THREE.WebGLRenderer) return;
+      try {
+        agent3D.renderer = new THREE.WebGLRenderer({
+          canvas: agentCanvas,
+          alpha: true,
+          antialias: true,
+          preserveDrawingBuffer: true,
+          powerPreference: "high-performance"
+        });
+        agent3D.renderer.setClearColor(0x000000, 0);
+        agent3D.renderer.outputColorSpace = THREE.SRGBColorSpace;
+        agent3D.scene = new THREE.Scene();
+        agent3D.camera = new THREE.OrthographicCamera(0, 1, 0, 1, 0.1, 2000);
+        agent3D.camera.position.set(0, 0, 1000);
+        agent3D.camera.lookAt(0, 0, 0);
+        agent3D.geometry = {
+          box: new THREE.BoxGeometry(1, 1, 1),
+          sphere: new THREE.SphereGeometry(1, 14, 10),
+          cylinder: new THREE.CylinderGeometry(1, 1, 1, 12),
+          capsule: new THREE.CapsuleGeometry(1, 2, 5, 10),
+          circle: new THREE.CircleGeometry(1, 24)
+        };
+        agent3D.scene.add(new THREE.HemisphereLight(0xf5f8ff, 0x667064, 2.35));
+        const sun = new THREE.DirectionalLight(0xfff1d1, 3.2);
+        sun.position.set(-180, -260, 460);
+        agent3D.scene.add(sun);
+        const fill = new THREE.DirectionalLight(0x9fd8ff, 1.15);
+        fill.position.set(260, 120, 220);
+        agent3D.scene.add(fill);
+        agent3D.ready = true;
+        shell.dataset.agentRendering = "3d";
+        resize3DScene();
+      } catch (error) {
+        agent3D.ready = false;
+        shell.dataset.agentRendering = "2d-fallback";
+        console.warn("3D agent renderer unavailable:", error);
+      }
+    }
+
+    function update3DAgents(dt) {
+      if (!agent3D.ready) return;
+      sync3DAgentModels();
+      const pitch = campusMap ? campusMap.getPitch() : 52;
+      const tiltAngle = 0.38 + Math.min(1, pitch / 52) * 0.48;
+      const zoomScale = Math.max(0.68, Math.min(1.34, 0.76 + (mapState.zoom - 16.2) * 0.17));
+
+      vehicles.forEach((vehicle, index) => {
+        const model = agent3D.vehicleModels[index];
+        const route = vehicle.path || routes[vehicle.routeName];
+        const point = pointOnRoute(route, vehicle.progress);
+        const screen = project(point);
+        const visible = screen.x > -60 && screen.x < mapState.width + 60 && screen.y > -60 && screen.y < mapState.height + 60;
+        model.visible = visible;
+        if (!visible) return;
+        const perspective = mapState.viewMode === "twin" ? 0.84 + Math.max(0, screen.y / mapState.height) * 0.24 : 1;
+        model.position.set(screen.x, screen.y, 20 + screen.y / Math.max(1, mapState.height) * 30);
+        model.rotation.z = screenHeading(route, vehicle.progress);
+        model.scale.setScalar(zoomScale * perspective * 1.2);
+        model.userData.tilt.rotation.x = tiltAngle;
+        model.userData.wheels.forEach((wheel, wheelIndex) => {
+          wheel.rotation.y = sim.time * vehicle.speedMps * 0.9 * (wheelIndex % 2 ? -1 : 1);
+        });
+        if (model.userData.beacon) {
+          model.userData.beacon.material.emissiveIntensity = 1.8 + Math.sin(sim.time * 12) * 1.2;
+          model.userData.beacon.rotation.z = sim.time * 7;
+        }
+      });
+
+      pedestrians.forEach((person, index) => {
+        const model = agent3D.pedestrianModels[index];
+        const route = person.path || studentRoutes[person.routeName] || studentRoutes.hostelToAcademic;
+        const point = pointOnRoute(route, person.progress);
+        const screen = project(point);
+        const heading = screenHeading(route, person.progress, person.direction);
+        const lateralPx = person.lateral / metersPerPixel(point.lat);
+        screen.x += -Math.sin(heading) * lateralPx;
+        screen.y += Math.cos(heading) * lateralPx;
+        const visible = screen.x > -35 && screen.x < mapState.width + 35 && screen.y > -35 && screen.y < mapState.height + 35;
+        model.visible = visible;
+        if (!visible) return;
+        const perspective = mapState.viewMode === "twin" ? 0.83 + Math.max(0, screen.y / mapState.height) * 0.22 : 1;
+        const personScale = zoomScale * perspective * 1.06;
+        const stride = Math.sin(sim.time * 8 + person.phase);
+        model.position.set(screen.x, screen.y, 28 + screen.y / Math.max(1, mapState.height) * 32);
+        model.rotation.z = 0;
+        model.scale.setScalar(personScale);
+        model.userData.tilt.rotation.x = 1.38;
+        model.userData.facing.rotation.z = heading;
+        model.userData.tilt.position.y = -Math.abs(stride) * 0.42;
+        model.userData.arms[0].rotation.y = stride * 0.62;
+        model.userData.arms[1].rotation.y = -stride * 0.62;
+        model.userData.legs[0].rotation.y = -stride * 0.68;
+        model.userData.legs[1].rotation.y = stride * 0.68;
+        model.userData.torso.rotation.z = stride * 0.025;
+      });
+
+      const apModel = agent3D.apModel;
+      if (apModel) {
+        const screen = project(accessPoint);
+        const visible = screen.x > -60 && screen.x < mapState.width + 60 && screen.y > -60 && screen.y < mapState.height + 60;
+        apModel.visible = visible;
+        if (visible) {
+          apModel.position.set(screen.x, screen.y, 74);
+          apModel.scale.setScalar(zoomScale * 1.15);
+          apModel.userData.tilt.rotation.x = tiltAngle;
+          apModel.userData.ledMat.emissiveIntensity = 1.4 + Math.sin(sim.time * 3) * 0.6;
+        }
+      }
+
+      uavs.forEach((uav, index) => {
+        const model = agent3D.uavModels[index];
+        const point = uavPosition(uav);
+        const screen = aerialScreenPosition(point, uav.altitude).air;
+        const visible = screen.x > -80 && screen.x < mapState.width + 80 && screen.y > -80 && screen.y < mapState.height + 80;
+        model.visible = visible;
+        if (!visible) return;
+        model.position.set(screen.x, screen.y + Math.sin(sim.time * 2.4 + uav.phase) * 2, 90);
+        model.rotation.z = sim.time * 0.24 + uav.phase;
+        model.scale.setScalar(zoomScale * 1.02);
+        model.userData.tilt.rotation.x = 0.58;
+        model.userData.rotors.forEach((rotorGroup, rotorIndex) => {
+          rotorGroup.rotation.z = sim.time * (20 + rotorIndex * 2) * (rotorIndex % 2 ? -1 : 1);
+        });
+      });
+
+      agent3D.renderer.render(agent3D.scene, agent3D.camera);
+      if (!agent3D.audited) {
+        const gl = agent3D.renderer.getContext();
+        const width = gl.drawingBufferWidth;
+        const height = gl.drawingBufferHeight;
+        const pixels = new Uint8Array(width * height * 4);
+        gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+        let nonTransparentSamples = 0;
+        for (let index = 3; index < pixels.length; index += 64) {
+          if (pixels[index] > 8) nonTransparentSamples += 1;
+        }
+        shell.dataset.agentCanvas = nonTransparentSamples > 0 ? "nonblank" : "blank";
+        shell.dataset.agentPixels = String(nonTransparentSamples);
+        agent3D.audited = true;
+      }
+    }
+
+    const landmarks = [
+      { label: "IIT (ISM) Dhanbad", lat: 23.8133, lon: 86.4419, color: "#f0b44e" },
+      { label: "Main Gate", lat: 23.8098, lon: 86.4417, color: "#4dc1c2" },
+      { label: "Heritage / Admin", lat: 23.8121, lon: 86.4411, color: "#d88964" },
+      { label: "Penman Auditorium", lat: 23.8118, lon: 86.4402, color: "#b58a70" },
+      { label: "Library / Academic Core", lat: 23.8137, lon: 86.4425, color: "#8ba1bb" },
+      { label: "Student Activity Centre", lat: 23.8110, lon: 86.4437, color: "#e3a443" },
+      { label: "Hostel Zone", lat: 23.8160, lon: 86.4399, color: "#6b9bd1" },
+      { label: "Sports Grounds", lat: 23.8147, lon: 86.4446, color: "#83bf77" },
+      { label: "Bekar Bandh Edge", lat: 23.8133, lon: 86.4475, color: "#6db7ce" }
+    ];
+
+    const sensors = [
+      { type: "AQI", lat: 23.8129, lon: 86.4415 },
+      { type: "WiFi", lat: 23.8137, lon: 86.4424 },
+      { type: "Gate", lat: 23.8099, lon: 86.4417 },
+      { type: "Crowd", lat: 23.8111, lon: 86.4435 },
+      { type: "EV", lat: 23.8142, lon: 86.4400 },
+      { type: "CCTV", lat: 23.8154, lon: 86.4420 }
+    ];
+
+    const routes = {
+      shuttleLoop: [
+        { lat: 23.80985, lon: 86.44175 },
+        { lat: 23.81018, lon: 86.44220 },
+        { lat: 23.81058, lon: 86.44292 },
+        { lat: 23.81094, lon: 86.44370 },
+        { lat: 23.81122, lon: 86.44428 },
+        { lat: 23.81186, lon: 86.44444 },
+        { lat: 23.81264, lon: 86.44434 },
+        { lat: 23.81320, lon: 86.44396 },
+        { lat: 23.81376, lon: 86.44334 },
+        { lat: 23.81436, lon: 86.44276 },
+        { lat: 23.81472, lon: 86.44218 },
+        { lat: 23.81538, lon: 86.44135 },
+        { lat: 23.81592, lon: 86.44038 },
+        { lat: 23.81532, lon: 86.43952 },
+        { lat: 23.81432, lon: 86.43966 },
+        { lat: 23.81345, lon: 86.43992 },
+        { lat: 23.81260, lon: 86.44018 },
+        { lat: 23.81182, lon: 86.44048 },
+        { lat: 23.81108, lon: 86.44082 },
+        { lat: 23.81038, lon: 86.44128 },
+        { lat: 23.80985, lon: 86.44175 }
+      ],
+      hostelRun: [
+        { lat: 23.81658, lon: 86.43892 },
+        { lat: 23.81622, lon: 86.43946 },
+        { lat: 23.81588, lon: 86.44004 },
+        { lat: 23.81545, lon: 86.44082 },
+        { lat: 23.81492, lon: 86.44134 },
+        { lat: 23.81432, lon: 86.44170 },
+        { lat: 23.81384, lon: 86.44226 },
+        { lat: 23.81438, lon: 86.44258 },
+        { lat: 23.81516, lon: 86.44184 },
+        { lat: 23.81578, lon: 86.44084 },
+        { lat: 23.81634, lon: 86.43976 },
+        { lat: 23.81658, lon: 86.43892 }
+      ],
+      walkingLoop: [
+        { lat: 23.8120, lon: 86.4400 },
+        { lat: 23.8132, lon: 86.4409 },
+        { lat: 23.8145, lon: 86.4417 },
+        { lat: 23.8140, lon: 86.4433 },
+        { lat: 23.8123, lon: 86.4435 },
+        { lat: 23.8110, lon: 86.4425 },
+        { lat: 23.8120, lon: 86.4400 }
+      ],
+      healthRoute: [
+        { lat: 23.80985, lon: 86.44175 },
+        { lat: 23.81028, lon: 86.44124 },
+        { lat: 23.81088, lon: 86.44070 },
+        { lat: 23.81135, lon: 86.44012 },
+        { lat: 23.81148, lon: 86.43948 },
+        { lat: 23.81130, lon: 86.43916 },
+        { lat: 23.81092, lon: 86.43906 },
+        { lat: 23.81050, lon: 86.43934 },
+        { lat: 23.81022, lon: 86.44002 },
+        { lat: 23.81028, lon: 86.44124 },
+        { lat: 23.80985, lon: 86.44175 }
+      ],
+      serviceRoad: [
+        { lat: 23.81055, lon: 86.43935 },
+        { lat: 23.81118, lon: 86.43982 },
+        { lat: 23.81205, lon: 86.44018 },
+        { lat: 23.81296, lon: 86.44035 },
+        { lat: 23.81380, lon: 86.44012 },
+        { lat: 23.81442, lon: 86.43970 },
+        { lat: 23.81362, lon: 86.43960 },
+        { lat: 23.81275, lon: 86.43978 },
+        { lat: 23.81172, lon: 86.44006 },
+        { lat: 23.81055, lon: 86.43935 }
+      ]
+    };
+
+    const groundRouteNames = ["shuttleLoop", "hostelRun", "healthRoute", "serviceRoad"];
+
+    const studentRoutes = {
+      hostelToAcademic: [
+        { lat: 23.81605, lon: 86.43992 },
+        { lat: 23.81542, lon: 86.44046 },
+        { lat: 23.81466, lon: 86.44110 },
+        { lat: 23.81382, lon: 86.44174 },
+        { lat: 23.81328, lon: 86.44192 }
+      ],
+      academicToLibrary: [
+        { lat: 23.81328, lon: 86.44192 },
+        { lat: 23.81362, lon: 86.44234 },
+        { lat: 23.81382, lon: 86.44272 },
+        { lat: 23.81358, lon: 86.44310 }
+      ],
+      sacWalk: [
+        { lat: 23.81096, lon: 86.44364 },
+        { lat: 23.81142, lon: 86.44334 },
+        { lat: 23.81192, lon: 86.44290 },
+        { lat: 23.81236, lon: 86.44242 },
+        { lat: 23.81284, lon: 86.44200 }
+      ],
+      groundLoop: [
+        { lat: 23.81170, lon: 86.44086 },
+        { lat: 23.81216, lon: 86.44142 },
+        { lat: 23.81248, lon: 86.44210 },
+        { lat: 23.81226, lon: 86.44278 },
+        { lat: 23.81172, lon: 86.44282 },
+        { lat: 23.81130, lon: 86.44208 },
+        { lat: 23.81170, lon: 86.44086 }
+      ],
+      penmanToMain: [
+        { lat: 23.81178, lon: 86.44018 },
+        { lat: 23.81218, lon: 86.44080 },
+        { lat: 23.81266, lon: 86.44136 },
+        { lat: 23.81318, lon: 86.44178 }
+      ]
+    };
+
+    // The single fixed 802.11ah access point every STA and UAV relay
+    // associates through -- sited at the academic core (network backbone
+    // typically lives near the building with the densest wired uplink),
+    // not draggable/mobile, same "fixed reference point" role the AP plays
+    // in the project's other (block-world) 3D topology view.
+    // `range` is a placeholder until the first poll -- it's then replaced
+    // with the real node's range_m from /api/state (see
+    // syncNetworkNodesFromSim), computed by the simulator's actual PHY
+    // link budget (ui/web3d/snapshot.py's _max_range_m), not a guessed
+    // constant. A fixed decorative radius here would draw a coverage
+    // circle with no relationship to what the association logic actually
+    // uses to decide reachability, making an in-range node look
+    // out-of-range on the map (or vice versa).
+    const accessPoint = { id: "AP-01", lat: 23.8136, lon: 86.4423, range: 400 };
+
+    // Matches core.js's PKT_COLORS in the other (three.js) 3D view, so a
+    // packet kind reads the same colour in both places.
+    const PKT_COLORS = { DATA: "#38bdf8", ACK: "#34d399", BEACON: "#fbbf24", RTS: "#f472b6", TWT: "#a78bfa" };
+
+    const vehicles = [];
+    const pedestrians = [];
+    const uavs = [];
+    const stations = [];
+    const nodeLatLonById = new Map(); // sim node id -> {lat, lon}, refreshed every poll
+    let packets = [];
+    let pulses = [];
+    const roadNetworks = {
+      ready: false,
+      vehicleRoutes: [],
+      walkingRoutes: []
+    };
+    const campusBounds = {
+      west: 86.4372,
+      east: 86.4476,
+      south: 23.8087,
+      north: 23.8179
+    };
+    let roadNetworkBuildAttempts = 0;
+
+    function lonToX(lon, zoom) {
+      return ((lon + 180) / 360) * mapState.tileSize * (2 ** zoom);
+    }
+
+    function latToY(lat, zoom) {
+      const rad = lat * Math.PI / 180;
+      const merc = Math.log(Math.tan(Math.PI / 4 + rad / 2));
+      return (1 - merc / Math.PI) / 2 * mapState.tileSize * (2 ** zoom);
+    }
+
+    function xToLon(x, zoom) {
+      return x / (mapState.tileSize * (2 ** zoom)) * 360 - 180;
+    }
+
+    function yToLat(y, zoom) {
+      const n = Math.PI - 2 * Math.PI * y / (mapState.tileSize * (2 ** zoom));
+      return (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+    }
+
+    function project(point) {
+      if (campusMap) {
+        const screen = campusMap.project([point.lon, point.lat]);
+        return { x: screen.x, y: screen.y };
+      }
+      const centerX = lonToX(mapState.center.lon, mapState.zoom);
+      const centerY = latToY(mapState.center.lat, mapState.zoom);
+      return {
+        x: lonToX(point.lon, mapState.zoom) - centerX + mapState.width / 2,
+        y: latToY(point.lat, mapState.zoom) - centerY + mapState.height / 2
+      };
+    }
+
+    function unproject(screenX, screenY) {
+      if (campusMap) {
+        const point = campusMap.unproject([screenX, screenY]);
+        return { lat: point.lat, lon: point.lng };
+      }
+      const centerX = lonToX(mapState.center.lon, mapState.zoom);
+      const centerY = latToY(mapState.center.lat, mapState.zoom);
+      return {
+        lat: yToLat(centerY + screenY - mapState.height / 2, mapState.zoom),
+        lon: xToLon(centerX + screenX - mapState.width / 2, mapState.zoom)
+      };
+    }
+
+    function metersPerPixel(lat = mapState.center.lat) {
+      return 156543.03392 * Math.cos(lat * Math.PI / 180) / (2 ** mapState.zoom);
+    }
+
+    function updateScaleBar() {
+      const maxWidth = Math.min(130, mapState.width * 0.18);
+      const targetMeters = maxWidth * metersPerPixel();
+      const candidates = [10, 20, 50, 100, 200, 500, 1000, 2000];
+      let distance = candidates[0];
+      candidates.forEach(candidate => {
+        if (candidate <= targetMeters) distance = candidate;
+      });
+      ui.scaleLine.style.width = `${Math.max(42, distance / metersPerPixel())}px`;
+      ui.scaleLabel.textContent = distance >= 1000 ? `${distance / 1000} km` : `${distance} m`;
+    }
+
+    function resize() {
+      const rect = shell.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      mapState.width = rect.width;
+      mapState.height = rect.height;
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (campusMap) campusMap.resize();
+      resize3DScene();
+      updateScaleBar();
+    }
+
+    function syncMapState() {
+      if (!campusMap) return;
+      const center = campusMap.getCenter();
+      mapState.center = { lat: center.lat, lon: center.lng };
+      mapState.zoom = campusMap.getZoom();
+      updateScaleBar();
+    }
+
+    function customizeCampusStyle() {
+      const style = campusMap.getStyle();
+      style.layers.forEach(layer => {
+        const id = layer.id.toLowerCase();
+        try {
+          if (layer.type === "background") campusMap.setPaintProperty(layer.id, "background-color", "#dfe6dc");
+          if (layer.type === "fill" && id.includes("water")) campusMap.setPaintProperty(layer.id, "fill-color", "#8fc4cc");
+          if (layer.type === "line" && id.includes("water")) campusMap.setPaintProperty(layer.id, "line-color", "#70aeb8");
+          if (layer.type === "fill" && (id.includes("park") || id.includes("landcover") || id.includes("landuse"))) {
+            campusMap.setPaintProperty(layer.id, "fill-color", "#b8cfad");
+            campusMap.setPaintProperty(layer.id, "fill-opacity", 0.64);
+          }
+          if (layer.type === "fill" && id.includes("building")) campusMap.setPaintProperty(layer.id, "fill-color", "#d7cfc2");
+          if (layer.type === "line" && id.includes("road")) {
+            campusMap.setPaintProperty(layer.id, "line-color", id.includes("casing") ? "#c2c7c0" : "#f7f5ef");
+          }
+          if (layer.type === "symbol" && id.includes("poi")) campusMap.setLayoutProperty(layer.id, "visibility", "none");
+        } catch (error) {
+          // Some source styles use expressions that do not expose every optional paint property.
+        }
+      });
+    }
+
+    function addCampusBuildingLayer() {
+      const style = campusMap.getStyle();
+      const vectorSource = Object.entries(style.sources).find(([, source]) => source.type === "vector");
+      if (!vectorSource) return;
+      mapState.vectorSourceId = vectorSource[0];
+      if (campusMap.getLayer("campus-buildings-3d")) return;
+      const firstLabel = style.layers.find(layer => layer.type === "symbol" && layer.layout && layer.layout["text-field"]);
+
+      campusMap.addLayer({
+        id: "campus-buildings-3d",
+        type: "fill-extrusion",
+        source: vectorSource[0],
+        "source-layer": "building",
+        minzoom: 14.5,
+        paint: {
+          "fill-extrusion-color": [
+            "interpolate", ["linear"], ["coalesce", ["to-number", ["get", "render_height"]], 10],
+            0, "#d8d0c2",
+            12, "#c9bcaa",
+            30, "#a9b7b3"
+          ],
+          "fill-extrusion-height": [
+            "interpolate", ["linear"], ["zoom"],
+            14.5, 0,
+            15.4, ["coalesce", ["to-number", ["get", "render_height"]], ["to-number", ["get", "height"]], 11]
+          ],
+          "fill-extrusion-base": ["coalesce", ["to-number", ["get", "render_min_height"]], 0],
+          "fill-extrusion-opacity": 0.96,
+          "fill-extrusion-vertical-gradient": true
+        }
+      }, firstLabel ? firstLabel.id : undefined);
+
+      if (typeof campusMap.setLight === "function") {
+        campusMap.setLight({ anchor: "viewport", color: "#fff3dc", intensity: 0.48, position: [1.35, 205, 42] });
+      }
+    }
+
+    function applyViewMode(mode, animate = true) {
+      mapState.viewMode = mode;
+      ui.planView.setAttribute("aria-pressed", String(mode === "plan"));
+      ui.twinView.setAttribute("aria-pressed", String(mode === "twin"));
+      if (!campusMap) return;
+      campusMap.easeTo({
+        pitch: mode === "twin" ? 52 : 0,
+        bearing: mode === "twin" ? -18 : 0,
+        duration: animate ? 700 : 0
+      });
+    }
+
+    function initializeMap() {
+      if (!window.maplibregl) throw new Error("MapLibre GL failed to load.");
+      campusMap = new maplibregl.Map({
+        container: tileMap,
+        style: "https://tiles.openfreemap.org/styles/liberty",
+        center: [mapState.home.lon, mapState.home.lat],
+        zoom: mapState.zoom,
+        pitch: 52,
+        bearing: -18,
+        minZoom: 15,
+        maxZoom: 19.5,
+        attributionControl: false,
+        antialias: true,
+        dragRotate: false,
+        pitchWithRotate: false,
+        touchPitch: false
+      });
+
+      campusMap.on("styleimagemissing", event => {
+        if (campusMap.hasImage(event.id)) return;
+        campusMap.addImage(event.id, {
+          width: 1,
+          height: 1,
+          data: new Uint8Array([0, 0, 0, 0])
+        });
+      });
+
+      campusMap.on("load", () => {
+        customizeCampusStyle();
+        addCampusBuildingLayer();
+        applyViewMode(mapState.viewMode, false);
+        syncMapState();
+        addEvent("Open 3D campus geometry loaded.");
+        campusMap.once("idle", buildMobilityNetwork);
+      });
+      campusMap.on("move", syncMapState);
+      campusMap.on("zoom", syncMapState);
+      campusMap.on("error", event => {
+        if (event && event.error) console.warn("Map layer warning:", event.error.message || event.error);
+      });
+    }
+
+    function choose(items) {
+      return items[Math.floor(Math.random() * items.length)];
+    }
+
+    function routeLength(route) {
+      let total = 0;
+      for (let i = 1; i < route.length; i += 1) {
+        total += Math.hypot(route[i].lat - route[i - 1].lat, route[i].lon - route[i - 1].lon);
+      }
+      return total;
+    }
+
+    function pointOnRoute(route, progress) {
+      const total = routeLength(route);
+      let target = (progress % 1) * total;
+      for (let i = 1; i < route.length; i += 1) {
+        const a = route[i - 1];
+        const b = route[i];
+        const segment = Math.hypot(b.lat - a.lat, b.lon - a.lon);
+        if (target <= segment) {
+          const t = segment === 0 ? 0 : target / segment;
+          return {
+            lat: a.lat + (b.lat - a.lat) * t,
+            lon: a.lon + (b.lon - a.lon) * t,
+            angle: Math.atan2(b.lat - a.lat, b.lon - a.lon)
+          };
+        }
+        target -= segment;
+      }
+      return { ...route[route.length - 1], angle: 0 };
+    }
+
+    function screenHeading(route, progress, direction = 1) {
+      const current = project(pointOnRoute(route, progress));
+      const next = project(pointOnRoute(route, progress + 0.0008 * direction));
+      return Math.atan2(next.y - current.y, next.x - current.x);
+    }
+
+    function distanceMeters(a, b) {
+      const metersPerDegreeLat = 111320;
+      const metersPerDegreeLon = 111320 * Math.cos(((a.lat + b.lat) / 2) * Math.PI / 180);
+      const dx = (a.lon - b.lon) * metersPerDegreeLon;
+      const dy = (a.lat - b.lat) * metersPerDegreeLat;
+      return Math.hypot(dx, dy);
+    }
+
+    // Inverse of distanceMeters -- projects a live sim node's local (x, y)
+    // metre position (x = east, y = north, AP fixed at the origin -- same
+    // convention core.js's toScene() uses for the other 3D view) onto real
+    // lat/lon, anchored at the access point's real-world siting.
+    function metersToLatLon(x, y) {
+      const metersPerDegreeLon = 111320 * Math.cos(accessPoint.lat * Math.PI / 180);
+      return {
+        lat: accessPoint.lat + y / 111320,
+        lon: accessPoint.lon + x / metersPerDegreeLon
+      };
+    }
+
+    function latLonToMeters(lat, lon) {
+      const metersPerDegreeLon = 111320 * Math.cos(accessPoint.lat * Math.PI / 180);
+      return {
+        x: (lon - accessPoint.lon) * metersPerDegreeLon,
+        y: (lat - accessPoint.lat) * 111320
+      };
+    }
+
+    function routeLengthMeters(route) {
+      let total = 0;
+      for (let index = 1; index < route.length; index += 1) {
+        total += distanceMeters(route[index - 1], route[index]);
+      }
+      return total;
+    }
+
+    function geometryLines(feature) {
+      const geometry = feature && feature.geometry;
+      if (!geometry) return [];
+      const rawLines = geometry.type === "LineString"
+        ? [geometry.coordinates]
+        : geometry.type === "MultiLineString" ? geometry.coordinates : [];
+      return rawLines.map(line => line.map(coordinate => ({ lon: coordinate[0], lat: coordinate[1] })))
+        .filter(line => line.length > 1 && routeLengthMeters(line) >= 12);
+    }
+
+    function extractRoadLines(features, mode) {
+      const seen = new Set();
+      const lines = [];
+      features.forEach(feature => {
+        const properties = feature.properties || {};
+        const roadClass = `${properties.class || ""} ${properties.subclass || ""} ${properties.type || ""}`.toLowerCase();
+        const prohibited = /motorway|trunk|rail|ferry|aerialway/.test(roadClass);
+        const walkingOnly = /path|footway|pedestrian|cycleway|steps/.test(roadClass);
+        const vehicleRoad = /primary|secondary|tertiary|minor|service|residential|unclassified|track|road/.test(roadClass);
+        if (prohibited || (mode === "vehicle" && (!vehicleRoad || walkingOnly))) return;
+
+        geometryLines(feature).forEach(line => {
+          const campusLine = line.filter(point => (
+            point.lon >= campusBounds.west && point.lon <= campusBounds.east &&
+            point.lat >= campusBounds.south && point.lat <= campusBounds.north
+          ));
+          if (campusLine.length < 2 || routeLengthMeters(campusLine) < 12) return;
+          const start = `${campusLine[0].lon.toFixed(5)},${campusLine[0].lat.toFixed(5)}`;
+          const endPoint = campusLine[campusLine.length - 1];
+          const end = `${endPoint.lon.toFixed(5)},${endPoint.lat.toFixed(5)}`;
+          const key = [start, end].sort().join("|") + `|${campusLine.length}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          lines.push(campusLine);
+        });
+      });
+      return lines;
+    }
+
+    function buildRoadGraph(lines) {
+      const graph = new Map();
+      const edges = new Set();
+      const nodeKey = point => `${point.lon.toFixed(6)},${point.lat.toFixed(6)}`;
+      const ensureNode = point => {
+        const key = nodeKey(point);
+        if (!graph.has(key)) graph.set(key, { key, point, links: [] });
+        return graph.get(key);
+      };
+
+      lines.forEach(line => {
+        for (let index = 1; index < line.length; index += 1) {
+          const a = ensureNode(line[index - 1]);
+          const b = ensureNode(line[index]);
+          const length = distanceMeters(a.point, b.point);
+          if (length < 0.8 || length > 220) continue;
+          const edgeKey = [a.key, b.key].sort().join("|");
+          if (edges.has(edgeKey)) continue;
+          edges.add(edgeKey);
+          a.links.push({ to: b.key, length });
+          b.links.push({ to: a.key, length });
+        }
+      });
+
+      graph.forEach(node => node.links.sort((a, b) => a.to.localeCompare(b.to)));
+      return graph;
+    }
+
+    function deterministicRoadRoute(graph, seed, maxSteps) {
+      const candidates = [...graph.values()].filter(node => node.links.length > 0).sort((a, b) => a.key.localeCompare(b.key));
+      if (!candidates.length) return [];
+
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        let current = candidates[(seed * 17 + attempt * 29) % candidates.length];
+        let previousKey = null;
+        const path = [];
+
+        for (let step = 0; step < maxSteps; step += 1) {
+          path.push(current.point);
+          let options = current.links.filter(link => link.to !== previousKey);
+          if (!options.length) options = current.links;
+          const edge = options[(seed * 5 + step * 7 + attempt) % options.length];
+          previousKey = current.key;
+          current = graph.get(edge.to);
+          if (!current) break;
+          if (step > 18 && routeLengthMeters(path) > 1500) break;
+        }
+
+        if (path.length > 3 && routeLengthMeters(path) > 90) {
+          const returnPath = path.slice(1, -1).reverse();
+          return [...path, ...returnPath, path[0]];
+        }
+      }
+      return [];
+    }
+
+    function buildRoutePool(graph, count, stepBase) {
+      const pool = [];
+      for (let index = 0; index < count; index += 1) {
+        const route = deterministicRoadRoute(graph, index + 3, stepBase + index % 17);
+        if (route.length > 3) pool.push(route);
+      }
+      return pool;
+    }
+
+    function applyRoadLockedRoutes() {
+      vehicles.forEach((vehicle, index) => {
+        vehicle.path = roadNetworks.vehicleRoutes[index % roadNetworks.vehicleRoutes.length];
+        vehicle.progress = (index * 0.137) % 1;
+      });
+      pedestrians.forEach((person, index) => {
+        person.path = roadNetworks.walkingRoutes[index % roadNetworks.walkingRoutes.length];
+        person.progress = (index * 0.083) % 1;
+      });
+    }
+
+    function buildMobilityNetwork() {
+      roadNetworkBuildAttempts += 1;
+      if (!campusMap || !mapState.vectorSourceId) return;
+      let features = [];
+      try {
+        features = campusMap.querySourceFeatures(mapState.vectorSourceId, { sourceLayer: "transportation" });
+      } catch (error) {
+        features = [];
+      }
+
+      const vehicleLines = extractRoadLines(features, "vehicle");
+      const walkingLines = extractRoadLines(features, "walking");
+      const vehicleGraph = buildRoadGraph(vehicleLines);
+      const walkingGraph = buildRoadGraph(walkingLines);
+      const vehicleRoutes = buildRoutePool(vehicleGraph, 32, 46);
+      const walkingRoutes = buildRoutePool(walkingGraph, 48, 32);
+
+      if (vehicleRoutes.length < 4 || walkingRoutes.length < 4) {
+        if (roadNetworkBuildAttempts < 5) window.setTimeout(buildMobilityNetwork, 800);
+        return;
+      }
+
+      roadNetworks.vehicleRoutes = vehicleRoutes;
+      roadNetworks.walkingRoutes = walkingRoutes;
+      roadNetworks.ready = true;
+      shell.dataset.roadNetwork = "ready";
+      shell.dataset.vehicleRoutes = String(vehicleRoutes.length);
+      shell.dataset.walkingRoutes = String(walkingRoutes.length);
+      applyRoadLockedRoutes();
+      addEvent("Vehicles and students locked to published map roads.");
+    }
+
+    function uavPosition(uav) {
+      return { lat: uav.lat, lon: uav.lon };
+    }
+
+    function vehiclePosition(vehicle) {
+      const route = vehicle.path || routes[vehicle.routeName];
+      return pointOnRoute(route, vehicle.progress);
+    }
+
+    function activeLinkCount() {
+      let count = 0;
+      uavs.forEach(uav => {
+        const uavPoint = uavPosition(uav);
+        sensors.forEach(sensor => {
+          if (distanceMeters(uavPoint, sensor) <= uav.coverage) count += 1;
+        });
+        vehicles.forEach((vehicle, index) => {
+          if (index % 3 !== 0) return;
+          if (distanceMeters(uavPoint, vehiclePosition(vehicle)) <= uav.coverage * 0.82) count += 1;
+        });
+      });
+      return count;
+    }
+
+    function addVehicle(typeName, routeName, options = {}) {
+      const type = fleetTypes[typeName];
+      const safeRoute = groundRouteNames.includes(routeName) ? routeName : "shuttleLoop";
+      const index = vehicles.length;
+      vehicles.push({
+        typeName,
+        routeName: safeRoute,
+        progress: options.progress ?? 0,
+        speedMps: type.speedMps * (options.speedFactor ?? 1),
+        path: roadNetworks.ready ? roadNetworks.vehicleRoutes[index % roadNetworks.vehicleRoutes.length] : null,
+        wait: 0
+      });
+    }
+
+    function seedVehicles() {
+      [
+        ["shuttle", "shuttleLoop", 0.03, 1.00],
+        ["shuttle", "shuttleLoop", 0.18, 0.96],
+        ["shuttle", "shuttleLoop", 0.34, 1.03],
+        ["shuttle", "shuttleLoop", 0.49, 0.98],
+        ["shuttle", "shuttleLoop", 0.66, 1.01],
+        ["shuttle", "shuttleLoop", 0.82, 0.97],
+        ["bus", "shuttleLoop", 0.12, 0.82],
+        ["bus", "shuttleLoop", 0.56, 0.80],
+        ["bus", "shuttleLoop", 0.91, 0.78],
+        ["scooter", "hostelRun", 0.06, 1.08],
+        ["scooter", "hostelRun", 0.20, 1.10],
+        ["scooter", "hostelRun", 0.36, 1.05],
+        ["scooter", "hostelRun", 0.52, 1.12],
+        ["scooter", "hostelRun", 0.71, 1.07],
+        ["scooter", "shuttleLoop", 0.27, 1.08],
+        ["scooter", "shuttleLoop", 0.73, 1.04],
+        ["van", "shuttleLoop", 0.08, 0.92],
+        ["van", "shuttleLoop", 0.44, 0.90],
+        ["van", "shuttleLoop", 0.79, 0.94],
+        ["service", "serviceRoad", 0.16, 0.86],
+        ["service", "serviceRoad", 0.62, 0.84]
+      ].forEach(([type, route, progress, speedFactor]) => {
+        addVehicle(type, route, { progress, speedFactor });
+      });
+    }
+
+    // The network layer (AP + STAs + UAV/relays) mirrors the *real*
+    // sim11ah simulation running in the desktop app's Topology tab --
+    // node count, roles and positions all come from polling /api/state
+    // (see pollSimState()/syncNetworkNodesFromSim() below), the same way
+    // the other Smart City layouts show the live sim instead of a fixed
+    // demo cast. Station/UAV objects are keyed by sim node id and reused
+    // across polls (rather than rebuilt from scratch) so their on-screen
+    // identity stays stable frame to frame.
+    function assocStateToLabel(assocState) {
+      if (assocState >= 4) return "associated";
+      if (assocState >= 1) return "associating";
+      return "unassociated";
+    }
+
+    // Same format the desktop 2D topology canvas uses (_fmt_dist_m in
+    // topology_canvas.py) -- metres under 1km, otherwise km to 2dp.
+    function formatDistM(d) {
+      if (typeof d !== "number") return "";
+      return d >= 1000 ? `${(d / 1000).toFixed(2)}km` : `${Math.round(d)}m`;
+    }
+
+    function formatRssi(d) {
+      return typeof d === "number" ? `${Math.round(d)}dBm` : "";
+    }
+
+    function syncNetworkNodesFromSim(nodes) {
+      const staById = new Map(stations.map(s => [s.nodeId, s]));
+      const nextStations = [];
+      const uavById = new Map(uavs.map(u => [u.nodeId, u]));
+      const nextUavs = [];
+      let uavIndex = 0;
+
+      nodeLatLonById.clear();
+      (nodes || []).forEach(n => {
+        const point = n.role === "AP" ? { lat: accessPoint.lat, lon: accessPoint.lon } : metersToLatLon(n.pos[0], n.pos[1]);
+        nodeLatLonById.set(n.id, point);
+      });
+
+      (nodes || []).forEach(n => {
+        if (n.role === "AP") {
+          // Real PHY link budget (see _max_range_m in snapshot.py), not a
+          // guessed constant -- this is what the coverage circle and any
+          // "is this node in range" read should actually be based on.
+          if (typeof n.range_m === "number") accessPoint.range = n.range_m;
+          return; // fixed at accessPoint by construction (sim pos is always [0, 0])
+        }
+        const { lat, lon } = nodeLatLonById.get(n.id);
+        if (n.is_drone || n.is_uav) {
+          let uav = uavById.get(n.id);
+          if (!uav) {
+            uav = {
+              id: `UAV-${String(n.id).padStart(2, "0")}`,
+              nodeId: n.id,
+              // Real per-node cruise altitude from altitude_m_for_node() in
+              // topology_canvas.py -- relays fly higher than end-node UAVs
+              // for line-of-sight, varies node to node, and is the same
+              // value the 3D scene reads, instead of each view cycling
+              // through its own small fixed set of heights independently.
+              altitude: typeof n.altitude_m === "number" ? n.altitude_m : 92 + (uavIndex % 4) * 14,
+              coverage: typeof n.range_m === "number" ? n.range_m : 250 + (uavIndex % 4) * 24,
+              phase: uavIndex * 1.43,
+              color: "#9d8cff" // matches the single "UAV Relay" legend swatch
+            };
+          }
+          // Skip the position update while the user has this exact UAV
+          // mid-drag (see bindNodeDrag()) so the live poll doesn't fight
+          // the pointer -- same guard entities.js uses in the other view.
+          if (!uav.dragging) { uav.lat = lat; uav.lon = lon; }
+          // Live association state, same as station.state below -- without
+          // this every UAV's marker looked identical (fixed purple) no
+          // matter whether it had actually joined the network, which made
+          // it impossible to tell at a glance which ones were connected.
+          uav.state = assocStateToLabel(n.assoc_state);
+          // E417/E240/E102 -- same diagnostic the desktop 2D topology
+          // canvas shows (_diagnose_unjoined in topology_canvas.py),
+          // computed once server-side so every view agrees on the code.
+          uav.errorCode = n.error_code || null;
+          uav.distApM = typeof n.dist_ap_m === "number" ? n.dist_ap_m : null;
+          uav.rssiDbm = typeof n.rssi_dbm === "number" ? n.rssi_dbm : null;
+          nextUavs.push(uav);
+          uavIndex += 1;
+          return;
+        }
+        let station = staById.get(n.id);
+        if (!station) {
+          station = { id: `${n.role === "RELAY" ? "REL" : "STA"}-${String(n.id).padStart(2, "0")}`, nodeId: n.id };
+        }
+        if (!station.dragging) { station.lat = lat; station.lon = lon; }
+        station.state = assocStateToLabel(n.assoc_state);
+        station.isRelay = n.role === "RELAY";
+        station.assocPeer = n.assoc_peer;
+        station.errorCode = n.error_code || null;
+        station.distApM = typeof n.dist_ap_m === "number" ? n.dist_ap_m : null;
+        station.rssiDbm = typeof n.rssi_dbm === "number" ? n.rssi_dbm : null;
+        nextStations.push(station);
+      });
+
+      stations.length = 0;
+      stations.push(...nextStations);
+      uavs.length = 0;
+      uavs.push(...nextUavs);
+    }
+
+    function seedPedestrians() {
+      const studentGroups = [
+        ["hostelToAcademic", 18],
+        ["academicToLibrary", 10],
+        ["sacWalk", 14],
+        ["groundLoop", 12],
+        ["penmanToMain", 8]
+      ];
+      studentGroups.forEach(([routeName, count], groupIndex) => {
+        for (let i = 0; i < count; i += 1) {
+          const index = pedestrians.length;
+          pedestrians.push({
+            routeName,
+            progress: (i / count + groupIndex * 0.07) % 1,
+            speedMps: 1.25 + (i % 5) * 0.09,
+            direction: i % 4 === 0 ? -1 : 1,
+            lateral: [-1.2, -0.7, 0, 0, 0.7, 1.2][i % 6],
+            path: roadNetworks.ready ? roadNetworks.walkingRoutes[index % roadNetworks.walkingRoutes.length] : null,
+            color: ["#2f6f66", "#b96350", "#514b82", "#a67d3d", "#3d6285"][i % 5],
+            backpack: ["#26343d", "#66384e", "#31524f", "#665036"][i % 4],
+            phase: i * 0.62 + groupIndex * 0.4
+          });
+        }
+      });
+    }
+
+    function update(dt) {
+      if (sim.paused) return;
+      sim.time += dt;
+      sim.minutes += dt * 3.5;
+      vehicles.forEach(vehicle => {
+        const congestion = 1 - sim.rush * 0.35;
+        const weather = sim.rain ? 0.78 : 1;
+        const priority = vehicle.typeName === "ambulance" ? 1.5 : 1;
+        const route = vehicle.path || routes[vehicle.routeName];
+        vehicle.progress += vehicle.speedMps * congestion * weather * priority * dt / Math.max(60, routeLengthMeters(route));
+      });
+      pedestrians.forEach(person => {
+        const route = person.path || studentRoutes[person.routeName] || studentRoutes.hostelToAcademic;
+        person.progress += person.direction * person.speedMps * (1 + sim.rush * 0.18) * dt / Math.max(45, routeLengthMeters(route));
+        if (person.progress < 0) person.progress += 1;
+      });
+      // UAV and STA positions/association state are polled from the real
+      // simulation (see pollSimState()) rather than simulated locally --
+      // nothing to advance here each frame.
+    }
+
+    function clearCanvas() {
+      ctx.clearRect(0, 0, mapState.width, mapState.height);
+    }
+
+    function drawRoute(route, color, width, dash) {
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      if (dash) ctx.setLineDash(dash);
+      ctx.beginPath();
+      route.forEach((point, index) => {
+        const screen = project(point);
+        if (index === 0) ctx.moveTo(screen.x, screen.y);
+        else ctx.lineTo(screen.x, screen.y);
+      });
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function roundedRect(x, y, w, h, r) {
+      const radius = Math.min(r, w / 2, h / 2);
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.arcTo(x + w, y, x + w, y + h, radius);
+      ctx.arcTo(x + w, y + h, x, y + h, radius);
+      ctx.arcTo(x, y + h, x, y, radius);
+      ctx.arcTo(x, y, x + w, y, radius);
+      ctx.closePath();
+    }
+
+    function drawLandmarks() {
+      const occupied = [];
+      landmarks.forEach((landmark, index) => {
+        const screen = project(landmark);
+        if (screen.x < -120 || screen.x > mapState.width + 120 || screen.y < -80 || screen.y > mapState.height + 80) return;
+        if (mapState.zoom <= 16 && index > 3) return;
+
+        ctx.fillStyle = "rgba(18, 25, 19, 0.26)";
+        ctx.beginPath();
+        ctx.ellipse(screen.x + 2, screen.y + 7, index === 0 ? 9 : 6, 3, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = landmark.color;
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.96)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(screen.x, screen.y, index === 0 ? 6.5 : 4.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        const label = landmark.label;
+        ctx.font = `${index === 0 ? 750 : 650} ${index === 0 ? 13 : 11}px Inter, sans-serif`;
+        const textW = ctx.measureText(label).width;
+        const labelX = screen.x + 9;
+        const labelY = screen.y + (index % 2 ? 18 : -11);
+        const bounds = { x: labelX - 3, y: labelY - 12, w: textW + 6, h: 17 };
+        const overlaps = occupied.some(box => bounds.x < box.x + box.w && bounds.x + bounds.w > box.x && bounds.y < box.y + box.h && bounds.y + bounds.h > box.y);
+        if (overlaps || bounds.x < 4 || bounds.x + bounds.w > mapState.width - 4 || bounds.y < 58) return;
+        occupied.push(bounds);
+
+        ctx.lineJoin = "round";
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.96)";
+        ctx.strokeText(label, labelX, labelY);
+        ctx.fillStyle = "#23302a";
+        ctx.fillText(label, labelX, labelY);
+      });
+    }
+
+    function drawSensors() {
+      sensors.forEach((sensor, index) => {
+        const screen = project(sensor);
+        const pulse = 10 + Math.sin(sim.time * 2.4 + index) * 2.5;
+        ctx.fillStyle = "rgba(86, 200, 132, 0.14)";
+        ctx.beginPath();
+        ctx.arc(screen.x, screen.y, pulse, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#5fc781";
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(screen.x, screen.y, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.font = "650 9px Inter, sans-serif";
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.94)";
+        ctx.strokeText(sensor.type, screen.x + 7, screen.y - 6);
+        ctx.fillStyle = "#27342b";
+        ctx.fillText(sensor.type, screen.x + 7, screen.y - 6);
+      });
+    }
+
+    function aerialScreenPosition(point, altitude) {
+      const ground = project(point);
+      const lift = mapState.viewMode === "twin" ? altitude * 0.16 : altitude * 0.08;
+      return { ground, air: { x: ground.x, y: ground.y - lift } };
+    }
+
+    // Resolves any sim node id (AP, STA, relay or UAV) to its current
+    // screen position, applying the UAV aerial lift where relevant. Single
+    // source of truth for "where does node N render right now", used by
+    // the association links and the live packet/pulse animation below.
+    function nodeScreenPos(nodeId) {
+      const point = nodeId === 0 ? accessPoint : nodeLatLonById.get(nodeId);
+      if (!point) return null;
+      const uav = uavs.find(u => u.nodeId === nodeId);
+      return uav ? aerialScreenPosition(point, uav.altitude).air : project(point);
+    }
+
+    function drawCoverageFootprint(point, radiusMeters, fill, stroke, dash = []) {
+      const latRadius = radiusMeters / 111320;
+      const lonRadius = radiusMeters / (111320 * Math.cos(point.lat * Math.PI / 180));
+      ctx.save();
+      ctx.beginPath();
+      for (let index = 0; index <= 48; index += 1) {
+        const angle = index / 48 * Math.PI * 2;
+        const screen = project({
+          lat: point.lat + Math.sin(angle) * latRadius,
+          lon: point.lon + Math.cos(angle) * lonRadius
+        });
+        if (index === 0) ctx.moveTo(screen.x, screen.y);
+        else ctx.lineTo(screen.x, screen.y);
+      }
+      ctx.closePath();
+      ctx.fillStyle = fill;
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 1.4;
+      ctx.setLineDash(dash);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Always on (not gated behind "Show Network" -- whether a node is
+    // actually connected is core information, not an optional detail
+    // overlay). Associated links are a solid, clearly visible green so a
+    // connected STA/relay reads at a glance; associating ones stay a
+    // thinner dashed amber since that link isn't confirmed yet.
+    function drawStationLinks() {
+      ctx.save();
+      stations.forEach(station => {
+        if (station.assocPeer === null || station.assocPeer === undefined) return;
+        const stationScreen = nodeScreenPos(station.nodeId);
+        const targetScreen = nodeScreenPos(station.assocPeer);
+        if (!stationScreen || !targetScreen) return;
+        const connected = station.state === "associated";
+        ctx.strokeStyle = connected ? "rgba(56, 200, 132, 0.85)" : "rgba(242, 182, 74, 0.55)";
+        ctx.lineWidth = connected ? 2 : 1.2;
+        ctx.setLineDash(connected ? [] : [2, 5]);
+        ctx.beginPath();
+        ctx.moveTo(stationScreen.x, stationScreen.y);
+        ctx.lineTo(targetScreen.x, targetScreen.y);
+        ctx.stroke();
+      });
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    // Live packet animation -- same /api/state "packets" (in-flight
+    // tx -> rx, positioned by progress p) and "pulses" (expanding
+    // broadcast/beacon rings from the transmitter) the three.js Open 3D
+    // View's updatePackets() draws, just rendered on the 2D overlay canvas
+    // instead of as three.js meshes.
+    function drawPackets() {
+      if (!packets.length && !pulses.length) return;
+      ctx.save();
+      packets.forEach(pk => {
+        const a = nodeScreenPos(pk.tx);
+        const b = nodeScreenPos(pk.rx);
+        if (!a || !b) return;
+        const x = a.x + (b.x - a.x) * pk.p;
+        const y = a.y + (b.y - a.y) * pk.p;
+        ctx.fillStyle = PKT_COLORS[pk.kind] || "#38bdf8";
+        ctx.strokeStyle = "rgba(15, 23, 42, 0.55)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(x, y, 3.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      });
+      pulses.forEach(pl => {
+        const c = nodeScreenPos(pl.tx);
+        if (!c) return;
+        ctx.strokeStyle = PKT_COLORS[pl.kind] || "#fbbf24";
+        ctx.globalAlpha = Math.max(0, 1 - pl.p);
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, 5 + pl.p * 34, 0, Math.PI * 2);
+        ctx.stroke();
+      });
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
+    // Same live-association read used by both the station dots below and
+    // the UAV badges in drawUAVs() -- one shared mapping so "associated"
+    // means the same green everywhere on this map, not a per-marker-type
+    // color choice.
+    const stateColor = { associated: "#56c884", associating: "#f2b64a", unassociated: "#ef6f65" };
+
+    // Node id drawn directly on the marker (not a separate floating
+    // badge) -- same compact "number on the dot" style the desktop app's
+    // 2D topology canvas uses (ui/topology_canvas.py's create_text calls),
+    // rather than the crowded floating pill the UAV badge used before.
+    function drawStations() {
+      stations.forEach(station => {
+        const screen = project({ lat: station.lat, lon: station.lon });
+        if (screen.x < -30 || screen.x > mapState.width + 30 || screen.y < -30 || screen.y > mapState.height + 30) return;
+        const color = stateColor[station.state];
+        const radius = station.isRelay ? 8.5 : 7.5;
+        ctx.save();
+        ctx.translate(screen.x, screen.y);
+        if (station.state === "associated") {
+          ctx.fillStyle = "rgba(86, 200, 132, 0.16)";
+          ctx.beginPath();
+          ctx.arc(0, 0, radius + 4 + Math.sin(sim.time * 3 + screen.x) * 1.4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = color;
+        ctx.strokeStyle = station.isRelay ? "#8b5cf6" : "rgba(255, 255, 255, 0.92)";
+        ctx.lineWidth = station.isRelay ? 2.2 : 1.3;
+        ctx.beginPath();
+        ctx.arc(0, 0, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "800 9px Inter, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(String(station.nodeId), 0, 0.5);
+        if (station.distApM !== null) {
+          ctx.fillStyle = "#ffffff";
+          ctx.strokeStyle = "rgba(20, 26, 34, 0.85)";
+          ctx.lineWidth = 2.5;
+          ctx.font = "700 8px Inter, sans-serif";
+          ctx.lineJoin = "round";
+          ctx.strokeText(formatDistM(station.distApM), 0, -(radius + 7));
+          ctx.fillText(formatDistM(station.distApM), 0, -(radius + 7));
+        }
+        if (station.rssiDbm !== null) {
+          ctx.fillStyle = "#ffffff";
+          ctx.strokeStyle = "rgba(20, 26, 34, 0.85)";
+          ctx.lineWidth = 2.5;
+          ctx.font = "700 8px Inter, sans-serif";
+          ctx.lineJoin = "round";
+          ctx.strokeText(formatRssi(station.rssiDbm), 0, -(radius + 17));
+          ctx.fillText(formatRssi(station.rssiDbm), 0, -(radius + 17));
+        }
+        if (station.errorCode) {
+          ctx.fillStyle = color;
+          ctx.font = "800 9px Inter, sans-serif";
+          ctx.fillText(station.errorCode, 0, radius + 11);
+        }
+        ctx.restore();
+      });
+    }
+
+    function drawAccessPoint() {
+      const screen = project(accessPoint);
+      if (sim.showLinks) {
+        drawCoverageFootprint(accessPoint, accessPoint.range, "rgba(92, 152, 230, 0.06)", "rgba(63, 110, 176, 0.38)");
+      }
+      if (!agent3D.ready) {
+        ctx.save();
+        ctx.translate(screen.x, screen.y);
+        ctx.strokeStyle = "#26313d";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(0, 4);
+        ctx.lineTo(0, -22);
+        ctx.stroke();
+        [-9, 9].forEach(dx => {
+          ctx.beginPath();
+          ctx.moveTo(0, -18);
+          ctx.lineTo(dx, -12);
+          ctx.stroke();
+        });
+        ctx.fillStyle = "#5c98e6";
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.94)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(0, -24, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+      ctx.save();
+      ctx.font = "700 10px Inter, sans-serif";
+      const associated = stations.filter(station => station.state === "associated").length;
+      const label = `${accessPoint.id} · ${associated}/${stations.length} STA`;
+      const w = ctx.measureText(label).width + 14;
+      roundedRect(screen.x + 13, screen.y - 42, w, 20, 5);
+      ctx.fillStyle = "rgba(255,255,255,0.92)";
+      ctx.fill();
+      ctx.fillStyle = "#202428";
+      ctx.fillText(label, screen.x + 20, screen.y - 28);
+      ctx.restore();
+    }
+
+    function drawNetworkLinks() {
+      if (!sim.showLinks) return;
+      ctx.save();
+      uavs.forEach((uav, uavIndex) => {
+        const uavPoint = uavPosition(uav);
+        const uavScreen = aerialScreenPosition(uavPoint, uav.altitude).air;
+        sensors.forEach((sensor, sensorIndex) => {
+          if (distanceMeters(uavPoint, sensor) > uav.coverage) return;
+          const sensorScreen = project(sensor);
+          const pulse = 0.38 + Math.sin(sim.time * 5 + uavIndex + sensorIndex) * 0.18;
+          ctx.strokeStyle = `rgba(157, 140, 255, ${pulse})`;
+          ctx.lineWidth = 1.8;
+          ctx.setLineDash([6, 8]);
+          ctx.beginPath();
+          ctx.moveTo(uavScreen.x, uavScreen.y);
+          ctx.lineTo(sensorScreen.x, sensorScreen.y);
+          ctx.stroke();
+        });
+
+        vehicles.forEach((vehicle, index) => {
+          if (index % 4 !== 0) return;
+          const vehiclePoint = vehiclePosition(vehicle);
+          if (distanceMeters(uavPoint, vehiclePoint) > uav.coverage * 0.82) return;
+          const vehicleScreen = project(vehiclePoint);
+          ctx.strokeStyle = "rgba(77, 193, 194, 0.32)";
+          ctx.lineWidth = 1.4;
+          ctx.setLineDash([3, 9]);
+          ctx.beginPath();
+          ctx.moveTo(uavScreen.x, uavScreen.y);
+          ctx.lineTo(vehicleScreen.x, vehicleScreen.y);
+          ctx.stroke();
+        });
+      });
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    function drawUAVs() {
+      uavs.forEach(uav => {
+        const point = uavPosition(uav);
+        const positions = aerialScreenPosition(point, uav.altitude);
+        const screen = positions.air;
+        const ground = positions.ground;
+        const radius = uav.coverage / metersPerPixel(point.lat);
+        if (ground.x < -radius || ground.x > mapState.width + radius || ground.y < -radius || ground.y > mapState.height + radius) return;
+        // Live association status (green/amber/red), not the fixed
+        // "UAV Relay" identity purple -- otherwise every UAV marker looks
+        // identical regardless of whether it has actually joined.
+        const statusColor = stateColor[uav.state] || uav.color;
+
+        if (sim.showLinks) {
+          drawCoverageFootprint(point, uav.coverage, "rgba(157, 140, 255, 0.055)", "rgba(116, 101, 210, 0.34)");
+          drawCoverageFootprint(point, uav.coverage * 0.58, "rgba(157, 140, 255, 0.025)", "rgba(116, 101, 210, 0.30)", [7, 9]);
+        }
+
+        ctx.save();
+        ctx.fillStyle = "rgba(0, 0, 0, 0.24)";
+        ctx.beginPath();
+        ctx.ellipse(ground.x + 5, ground.y + 4, 15, 5, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = "rgba(86, 72, 156, 0.36)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 5]);
+        ctx.beginPath();
+        ctx.moveTo(ground.x, ground.y);
+        ctx.lineTo(screen.x, screen.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        if (!agent3D.ready) {
+          ctx.translate(screen.x, screen.y);
+          ctx.strokeStyle = "#24282d";
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(-16, 0);
+          ctx.lineTo(16, 0);
+          ctx.moveTo(0, -16);
+          ctx.lineTo(0, 16);
+          ctx.stroke();
+
+          ctx.fillStyle = statusColor;
+          ctx.beginPath();
+          ctx.arc(0, 0, 7, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.94)";
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+
+          for (let i = 0; i < 4; i += 1) {
+            const angle = i * Math.PI / 2;
+            const px = Math.cos(angle) * 18;
+            const py = Math.sin(angle) * 18;
+            ctx.strokeStyle = "rgba(34, 40, 43, 0.72)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            const spin = sim.time * 12 + uav.phase + i;
+            ctx.moveTo(px - Math.cos(spin) * 7, py - Math.sin(spin) * 7);
+            ctx.lineTo(px + Math.cos(spin) * 7, py + Math.sin(spin) * 7);
+            ctx.stroke();
+          }
+        }
+
+        ctx.restore();
+
+        // Same compact "number on a marker" style drawStations() uses,
+        // but offset up-right of the drone's own screen position instead
+        // of centred on it -- centred would paint this opaque circle
+        // directly over the actual 3D rotor/hull mesh (the 2D overlay
+        // canvas layers above the WebGL agent canvas), which is why UAVs
+        // stopped reading as drones and looked like plain numbered dots.
+        ctx.save();
+        ctx.translate(screen.x + 13, screen.y - 13);
+        ctx.fillStyle = statusColor;
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.92)";
+        ctx.lineWidth = 1.3;
+        ctx.beginPath();
+        ctx.arc(0, 0, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "800 8px Inter, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(String(uav.nodeId), 0, 0.5);
+        if (uav.distApM !== null) {
+          ctx.fillStyle = "#ffffff";
+          ctx.strokeStyle = "rgba(20, 26, 34, 0.85)";
+          ctx.lineWidth = 2.5;
+          ctx.font = "700 8px Inter, sans-serif";
+          ctx.lineJoin = "round";
+          ctx.strokeText(formatDistM(uav.distApM), 0, -13);
+          ctx.fillText(formatDistM(uav.distApM), 0, -13);
+        }
+        if (uav.rssiDbm !== null) {
+          ctx.fillStyle = "#ffffff";
+          ctx.strokeStyle = "rgba(20, 26, 34, 0.85)";
+          ctx.lineWidth = 2.5;
+          ctx.font = "700 8px Inter, sans-serif";
+          ctx.lineJoin = "round";
+          ctx.strokeText(formatRssi(uav.rssiDbm), 0, -23);
+          ctx.fillText(formatRssi(uav.rssiDbm), 0, -23);
+        }
+        if (uav.errorCode) {
+          ctx.fillStyle = statusColor;
+          ctx.font = "800 9px Inter, sans-serif";
+          ctx.fillText(uav.errorCode, 0, 20);
+        }
+        ctx.restore();
+      });
+    }
+
+    function drawScooter(type, scale) {
+      ctx.fillStyle = "rgba(0, 0, 0, 0.28)";
+      ctx.beginPath();
+      ctx.ellipse(2 * scale, 3 * scale, 9 * scale, 4 * scale, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "#25292d";
+      [-5, 5].forEach(x => {
+        ctx.beginPath();
+        ctx.arc(x * scale, 0, 2.4 * scale, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.strokeStyle = type.color;
+      ctx.lineWidth = 2.3 * scale;
+      ctx.beginPath();
+      ctx.moveTo(-5 * scale, 0);
+      ctx.lineTo(1 * scale, -1 * scale);
+      ctx.lineTo(5 * scale, 0);
+      ctx.stroke();
+      ctx.fillStyle = type.color;
+      roundedRect(-1.5 * scale, -3.2 * scale, 5.2 * scale, 6.4 * scale, 2 * scale);
+      ctx.fill();
+      ctx.fillStyle = "#293845";
+      ctx.beginPath();
+      ctx.arc(0, -4.5 * scale, 2.2 * scale, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#dfe6e8";
+      ctx.lineWidth = 1 * scale;
+      ctx.beginPath();
+      ctx.moveTo(4.5 * scale, -3 * scale);
+      ctx.lineTo(4.5 * scale, 3 * scale);
+      ctx.stroke();
+    }
+
+    function drawRoadVehicle(vehicle, type, scale) {
+      const isBus = vehicle.typeName === "bus";
+      const isService = vehicle.typeName === "service";
+      const length = type.length * scale;
+      const width = (isBus ? 10 : isService ? 9 : 8.5) * scale;
+
+      ctx.fillStyle = "rgba(0, 0, 0, 0.30)";
+      roundedRect(-length / 2 + 2.4 * scale, -width / 2 + 3 * scale, length, width, 3.3 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = "#1f2226";
+      [-1, 1].forEach(side => {
+        ctx.fillRect(-length * 0.30, side * width * 0.47 - 1.4 * scale, 4.4 * scale, 2.8 * scale);
+        ctx.fillRect(length * 0.16, side * width * 0.47 - 1.4 * scale, 4.4 * scale, 2.8 * scale);
+      });
+
+      ctx.fillStyle = type.color;
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.66)";
+      ctx.lineWidth = 0.8 * scale;
+      roundedRect(-length / 2, -width / 2, length, width, 3.2 * scale);
+      ctx.fill();
+      ctx.stroke();
+
+      if (isBus) {
+        ctx.fillStyle = "rgba(34, 48, 58, 0.86)";
+        [-0.28, -0.08, 0.12, 0.32].forEach(offset => {
+          roundedRect(length * offset - 1.6 * scale, -width * 0.36, 3.2 * scale, width * 0.72, 0.8 * scale);
+          ctx.fill();
+        });
+      } else {
+        ctx.fillStyle = "rgba(29, 44, 55, 0.84)";
+        roundedRect(-length * 0.18, -width * 0.36, length * 0.42, width * 0.72, 1.4 * scale);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.42)";
+        ctx.lineWidth = 0.7 * scale;
+        ctx.beginPath();
+        ctx.moveTo(0, -width * 0.34);
+        ctx.lineTo(0, width * 0.34);
+        ctx.stroke();
+      }
+
+      if (vehicle.typeName === "shuttle") {
+        ctx.fillStyle = "rgba(255, 255, 255, 0.82)";
+        ctx.fillRect(-length * 0.39, -0.7 * scale, length * 0.16, 1.4 * scale);
+      }
+
+      if (vehicle.typeName === "ambulance") {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(-3.8 * scale, -1 * scale, 7.6 * scale, 2 * scale);
+        ctx.fillRect(-1 * scale, -3.8 * scale, 2 * scale, 7.6 * scale);
+        ctx.fillStyle = Math.sin(sim.time * 12) > 0 ? "#4ba3ff" : "#ef5252";
+        ctx.fillRect(-1.8 * scale, -width * 0.46, 3.6 * scale, 1.6 * scale);
+      }
+
+      ctx.fillStyle = "#f8f0c7";
+      ctx.fillRect(length / 2 - 2.2 * scale, -width * 0.34, 1.5 * scale, 2 * scale);
+      ctx.fillRect(length / 2 - 2.2 * scale, width * 0.34 - 2 * scale, 1.5 * scale, 2 * scale);
+      ctx.fillStyle = "#b23b3b";
+      ctx.fillRect(-length / 2 + 0.7 * scale, -width * 0.32, 1.3 * scale, 1.8 * scale);
+      ctx.fillRect(-length / 2 + 0.7 * scale, width * 0.32 - 1.8 * scale, 1.3 * scale, 1.8 * scale);
+    }
+
+    function drawVehicles() {
+      if (campusMap && !roadNetworks.ready) return;
+      vehicles.forEach(vehicle => {
+        const route = vehicle.path || routes[vehicle.routeName];
+        const point = pointOnRoute(route, vehicle.progress);
+        const screen = project(point);
+        if (screen.x < -50 || screen.x > mapState.width + 50 || screen.y < -50 || screen.y > mapState.height + 50) return;
+        const type = fleetTypes[vehicle.typeName];
+        const scale = Math.max(0.78, Math.min(1.15, 0.9 + (mapState.zoom - 17) * 0.10));
+
+        ctx.save();
+        ctx.translate(screen.x, screen.y);
+        ctx.rotate(screenHeading(route, vehicle.progress));
+        if (vehicle.typeName === "scooter") drawScooter(type, scale);
+        else drawRoadVehicle(vehicle, type, scale);
+        ctx.restore();
+      });
+    }
+
+    function drawPedestrians() {
+      if (campusMap && !roadNetworks.ready) return;
+      pedestrians.forEach(person => {
+        const route = person.path || studentRoutes[person.routeName] || studentRoutes.hostelToAcademic;
+        const point = pointOnRoute(route, person.progress);
+        const screen = project(point);
+        if (screen.x < -30 || screen.x > mapState.width + 30 || screen.y < -30 || screen.y > mapState.height + 30) return;
+        const step = Math.sin(sim.time * 8 + person.phase);
+        const angle = screenHeading(route, person.progress, person.direction);
+        const scale = Math.max(0.56, Math.min(0.88, 0.62 + (mapState.zoom - 17) * 0.11));
+        const lateralPx = person.lateral / metersPerPixel(point.lat);
+
+        ctx.save();
+        ctx.translate(screen.x, screen.y);
+        ctx.rotate(angle);
+        ctx.translate(0, lateralPx);
+        ctx.scale(scale, scale);
+        ctx.fillStyle = "rgba(0, 0, 0, 0.18)";
+        ctx.beginPath();
+        ctx.ellipse(1, 8, 5, 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = "#1e2520";
+        ctx.lineWidth = 1.3;
+        ctx.beginPath();
+        ctx.moveTo(0, 1);
+        ctx.lineTo(-3, 7 + step);
+        ctx.moveTo(0, 1);
+        ctx.lineTo(3, 7 - step);
+        ctx.moveTo(0, -3);
+        ctx.lineTo(-3, 1 - step * 0.4);
+        ctx.moveTo(0, -3);
+        ctx.lineTo(3, 1 + step * 0.4);
+        ctx.stroke();
+
+        ctx.fillStyle = person.color;
+        ctx.beginPath();
+        ctx.ellipse(0, -1, 3.4, 5.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = person.backpack;
+        roundedRect(-4.6, -2.8, 3.5, 5.8, 1.3);
+        ctx.fill();
+        ctx.fillStyle = "#2a211d";
+        ctx.beginPath();
+        ctx.arc(0, -7.2, 2.7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+    }
+
+    function drawRain() {
+      if (!sim.rain) return;
+      ctx.save();
+      ctx.strokeStyle = "rgba(62, 94, 108, 0.38)";
+      ctx.lineWidth = 1.4;
+      for (let i = 0; i < 90; i += 1) {
+        const x = (i * 83 + sim.time * 120) % (mapState.width + 80) - 40;
+        const y = (i * 47 + sim.time * 260) % (mapState.height + 80) - 40;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x - 8, y + 18);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "rgba(93, 126, 138, 0.10)";
+      ctx.fillRect(0, 0, mapState.width, mapState.height);
+      ctx.restore();
+    }
+
+    function drawOverlay() {
+      clearCanvas();
+      drawAccessPoint();
+      drawNetworkLinks();
+      drawStationLinks();
+      drawSensors();
+      drawStations();
+      if (!agent3D.ready) {
+        drawPedestrians();
+        drawVehicles();
+      }
+      drawUAVs();
+      drawPackets();
+      drawLandmarks();
+      drawRain();
+    }
+
+    function updateMetrics() {
+      const crowd = Math.min(99, Math.round(26 + sim.rush * 42 + pedestrians.length * 0.34 + vehicles.length * 0.35 + (sim.rain ? -4 : 0)));
+      const electric = vehicles.filter(vehicle => vehicle.typeName === "shuttle").length;
+      const linkCount = activeLinkCount();
+      const coverage = uavs.length ? Math.min(99, Math.round(45 + uavs.length * 13 + linkCount * 0.8 - (sim.rain ? 8 : 0))) : 0;
+      const latency = uavs.length ? Math.max(8, Math.round(31 - uavs.length * 2.7 + sim.rush * 11 + (sim.rain ? 9 : 0) - linkCount * 0.16)) : 48;
+      const aqi = Math.max(18, Math.round(52 + crowd * 0.12 - electric * 0.75 + (sim.rain ? -7 : 0)));
+      const energy = Math.min(96, Math.round(68 + Math.sin(sim.time / 8) * 5 + electric * 1.2 + (sim.rain ? -9 : 6)));
+      const speed = Math.max(5, Math.round(18 + (1 - sim.rush) * 15 - (sim.rain ? 4 : 0)));
+      ui.crowd.textContent = crowd;
+      ui.aqi.textContent = aqi;
+      ui.energy.textContent = energy;
+      ui.speed.textContent = speed;
+      ui.coverage.textContent = coverage;
+      ui.latency.textContent = latency;
+    }
+
+    // The Campus Events sidebar panel was removed -- kept as a console
+    // log rather than stripping every call site, so the information is
+    // still there for debugging without a dedicated UI for it.
+    function addEvent(message) {
+      const minutes = Math.floor(sim.minutes) % (24 * 60);
+      const hh = String(Math.floor(minutes / 60)).padStart(2, "0");
+      const mm = String(minutes % 60).padStart(2, "0");
+      console.debug(`[${hh}:${mm}] ${message}`);
+    }
+
+    function updateClock() {
+      const minutes = Math.floor(sim.minutes) % (24 * 60);
+      const hh = String(Math.floor(minutes / 60)).padStart(2, "0");
+      const mm = String(minutes % 60).padStart(2, "0");
+      ui.clock.textContent = `${hh}:${mm}`;
+    }
+
+    function bindControls() {
+      ui.toggle.addEventListener("click", () => {
+        sim.paused = !sim.paused;
+        ui.toggle.textContent = sim.paused ? "Resume" : "Pause";
+        addEvent(sim.paused ? "Twin paused." : "Twin resumed.");
+      });
+
+      ui.add.addEventListener("click", () => {
+        const offset = (vehicles.length % 10) / 10;
+        addVehicle("shuttle", "shuttleLoop", { progress: (0.12 + offset) % 1, speedFactor: 0.98 });
+        addVehicle("scooter", "hostelRun", { progress: (0.38 + offset) % 1, speedFactor: 1.08 });
+        addVehicle("van", "shuttleLoop", { progress: (0.66 + offset) % 1, speedFactor: 0.90 });
+        addEvent("Scheduled campus vehicles entered assigned road routes.");
+      });
+
+      ui.links.addEventListener("click", () => {
+        sim.showLinks = !sim.showLinks;
+        ui.links.textContent = sim.showLinks ? "Hide Coverage" : "Show Coverage";
+        addEvent(sim.showLinks ? "AP/UAV coverage radius displayed." : "Coverage overlay hidden for a clear map view.");
+      });
+
+      ui.medical.addEventListener("click", () => {
+        sim.medicalUntil = sim.time + 14;
+        addVehicle("ambulance", "healthRoute");
+        addEvent("Health-route priority corridor activated.");
+      });
+
+      ui.rain.addEventListener("click", () => {
+        sim.rain = !sim.rain;
+        ui.rain.textContent = sim.rain ? "Clear" : "Rain";
+        shell.classList.toggle("is-raining", sim.rain);
+        addEvent(sim.rain ? "Rain layer enabled for campus mobility." : "Rain layer cleared.");
+      });
+
+      const setViewMode = mode => {
+        if (mapState.viewMode === mode) return;
+        applyViewMode(mode);
+        addEvent(mode === "twin" ? "3D campus twin view enabled." : "Top-down planning view enabled.");
+      };
+
+      ui.planView.addEventListener("click", () => setViewMode("plan"));
+      ui.twinView.addEventListener("click", () => setViewMode("twin"));
+
+      ui.range.addEventListener("input", () => {
+        sim.rush = Number(ui.range.value) / 100;
+        ui.rushValue.textContent = `${ui.range.value}%`;
+      });
+
+      ui.zoomIn.addEventListener("click", () => {
+        if (campusMap) campusMap.zoomIn({ duration: 320 });
+      });
+
+      ui.zoomOut.addEventListener("click", () => {
+        if (campusMap) campusMap.zoomOut({ duration: 320 });
+      });
+
+      ui.recenter.addEventListener("click", () => {
+        if (!campusMap) return;
+        campusMap.flyTo({
+          center: [mapState.home.lon, mapState.home.lat],
+          zoom: 17.2,
+          pitch: mapState.viewMode === "twin" ? 52 : 0,
+          bearing: mapState.viewMode === "twin" ? -18 : 0,
+          duration: 700
+        });
+      });
+    }
+
+    // Click-and-drag repositioning for STA/relay/UAV markers -- same
+    // capability (and the same /api/move_node endpoint) as the three.js
+    // Open 3D View's node dragging, and the same "AP is fixed, everything
+    // else is draggable" rule the 2D topology canvas enforces. The overlay
+    // canvases are pointer-events:none (see CSS), so this hooks directly
+    // into MapLibre's own mouse events rather than the canvas.
+    let draggingNode = null;
+
+    function nodeAtScreenPoint(point) {
+      let best = null;
+      let bestDist = 10;
+      stations.forEach(station => {
+        const screen = project({ lat: station.lat, lon: station.lon });
+        const d = Math.hypot(screen.x - point.x, screen.y - point.y);
+        if (d < bestDist) { bestDist = d; best = station; }
+      });
+      uavs.forEach(uav => {
+        const screen = aerialScreenPosition({ lat: uav.lat, lon: uav.lon }, uav.altitude).air;
+        const d = Math.hypot(screen.x - point.x, screen.y - point.y);
+        if (d < bestDist) { bestDist = d; best = uav; }
+      });
+      return best;
+    }
+
+    function bindNodeDrag() {
+      if (!campusMap) return;
+      const canvasEl = campusMap.getCanvas();
+      canvasEl.setAttribute("aria-label", "Interactive IIT ISM campus map -- drag an STA/relay/UAV marker to move it");
+
+      campusMap.on("mousedown", e => {
+        const node = nodeAtScreenPoint(e.point);
+        if (!node) return;
+        draggingNode = node;
+        node.dragging = true;
+        campusMap.dragPan.disable();
+        canvasEl.style.cursor = "grabbing";
+        e.preventDefault();
+      });
+
+      campusMap.on("mousemove", e => {
+        if (draggingNode) {
+          draggingNode.lat = e.lngLat.lat;
+          draggingNode.lon = e.lngLat.lng;
+          return;
+        }
+        canvasEl.style.cursor = nodeAtScreenPoint(e.point) ? "grab" : "";
+      });
+
+      const finishDrag = () => {
+        if (!draggingNode) return;
+        const node = draggingNode;
+        draggingNode = null;
+        node.dragging = false;
+        campusMap.dragPan.enable();
+        canvasEl.style.cursor = "";
+        const { x, y } = latLonToMeters(node.lat, node.lon);
+        fetch("/api/move_node", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: node.nodeId, x, y })
+        }).catch(() => {});
+        addEvent(`${node.id} repositioned -- new location sent to the simulator.`);
+      };
+      campusMap.on("mouseup", finishDrag);
+      campusMap.on("mouseleave", finishDrag);
+    }
+
+    let last = performance.now();
+    let metricsTimer = 0;
+    let eventTimer = 0;
+
+    function frame(now) {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      update(dt);
+      updateClock();
+      metricsTimer += dt;
+      eventTimer += dt;
+      if (metricsTimer > 0.5) {
+        updateMetrics();
+        metricsTimer = 0;
+      }
+      if (eventTimer > 7 && !sim.paused) {
+        eventTimer = 0;
+        addEvent(choose([
+          "Student crowd flow increased near the academic core.",
+          "EV shuttle telemetry updated from the campus loop.",
+          "AQI sensor reported stable air quality near the main road.",
+          "Students are walking between hostels, lecture halls, and SAC.",
+          "Gate camera and WiFi nodes synchronized.",
+          "Service vehicle stayed on its assigned campus road route.",
+          "UAV relay updated packet paths across sensor nodes.",
+          "Aerial coverage improved over the academic core.",
+          "A mobile STA re-associated via the nearest UAV relay.",
+          `${accessPoint.id} beacon frame broadcast across the academic core.`
+        ]));
+      }
+      update3DAgents(dt);
+      drawOverlay();
+      requestAnimationFrame(frame);
+    }
+
+    // Pans/zooms the map so the AP and every live STA/UAV are on-screen
+    // the moment they arrive -- without this, a sim with a wide node
+    // scatter could poll in real data that's fully accurate but sitting
+    // outside the initial campus-centred viewport, silently invisible.
+    // Runs once, on the first poll that actually has nodes; the user's
+    // own subsequent pan/zoom is never fought.
+    function frameMapOnNetwork() {
+      if (!campusMap) return;
+      const points = [accessPoint, ...stations, ...uavs];
+      let west = accessPoint.lon, east = accessPoint.lon, south = accessPoint.lat, north = accessPoint.lat;
+      points.forEach(p => {
+        west = Math.min(west, p.lon); east = Math.max(east, p.lon);
+        south = Math.min(south, p.lat); north = Math.max(north, p.lat);
+      });
+      const padLat = Math.max(0.0018, (north - south) * 0.2);
+      const padLon = Math.max(0.0018, (east - west) * 0.2);
+      campusMap.fitBounds(
+        [[west - padLon, south - padLat], [east + padLon, north + padLat]],
+        {
+          padding: 60, duration: 900, maxZoom: 18.5,
+          pitch: mapState.viewMode === "twin" ? 52 : 0,
+          bearing: mapState.viewMode === "twin" ? -18 : 0
+        }
+      );
+    }
+
+    let firstNetworkFrame = true;
+    async function pollSimState() {
+      try {
+        const res = await fetch("/api/state", { cache: "no-store" });
+        const state = await res.json();
+        if (state.ready && Array.isArray(state.nodes)) {
+          syncNetworkNodesFromSim(state.nodes);
+          packets = state.packets || [];
+          pulses = state.pulses || [];
+          if (firstNetworkFrame && stations.length + uavs.length > 0) {
+            firstNetworkFrame = false;
+            frameMapOnNetwork();
+            addEvent(`${accessPoint.id} online -- ${stations.length} STA(s) and ${uavs.length} UAV relay(s) live from the simulator.`);
+          }
+        }
+      } catch (error) {
+        // Simulator not reachable yet (still starting up) -- keep the
+        // last known network state and retry; campus scenery keeps
+        // animating either way.
+      } finally {
+        window.setTimeout(pollSimState, 400);
+      }
+    }
+
+    function init() {
+      shell.dataset.roadNetwork = "loading";
+      initializeMap();
+      resize();
+      initialize3DAgents();
+      window.addEventListener("resize", resize);
+      seedVehicles();
+      seedPedestrians();
+      bindControls();
+      bindNodeDrag();
+      updateMetrics();
+      addEvent("Open campus twin initialized.");
+      addEvent("Original 3D map view centered on IIT (ISM) Dhanbad.");
+      addEvent("Connecting to the live sim11ah simulator for AP/STA/UAV state...");
+      pollSimState();
+      requestAnimationFrame(frame);
+    }
+
+    init();
+  </script>
+</body>
+</html>

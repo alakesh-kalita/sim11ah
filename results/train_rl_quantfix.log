@@ -1,0 +1,81 @@
+
+======================================================================
+  IEEE 802.11ah RL Multi-Episode Training (convergence-based)
+  Modes: ['tabular', 'tabular_ddqn', 'dqn', 'ddqn', 'ppo']
+  N values: [100, 200, 400, 600, 800, 1000]
+  Max episodes: 20  |  Min episodes: 3  |  Convergence threshold: 0.01
+  Sim time per episode: 120s
+  Q-tables → /Users/alakeshkalita/sim11ah_project/scripts/../results/rl_qtables
+======================================================================
+
+  [tabular] N=100   training:  ep1→PDR=0.984(ε=0.050,21Q,2s)  ep2→PDR=0.990(ε=0.050,34Q,2s)  ep3→PDR=1.000(ε=0.050,42Q,2s)  ep4→PDR=0.987(ε=0.050,52Q,2s)  ep5→PDR=0.990(ε=0.050,65Q,2s)  ep6→PDR=0.988(ε=0.050,76Q,3s)  [converged after 6 episodes]
+
+  [tabular] N=200   training:  ep1→PDR=0.869(ε=0.050,23Q,6s)  ep2→PDR=0.897(ε=0.050,25Q,6s)  ep3→PDR=0.740(ε=0.050,35Q,8s)  ep4→PDR=0.766(ε=0.050,38Q,7s)  ep5→PDR=0.865(ε=0.050,39Q,6s)  ep6→PDR=0.889(ε=0.050,41Q,6s)  ep7→PDR=0.924(ε=0.050,41Q,5s)  ep8→PDR=0.885(ε=0.050,43Q,6s)  ep9→PDR=0.923(ε=0.050,43Q,6s)  ep10→PDR=0.920(ε=0.050,46Q,6s)  ep11→PDR=0.923(ε=0.050,46Q,6s)  [converged after 11 episodes]
+
+  [tabular] N=400   training:  ep1→PDR=0.462(ε=0.050,13Q,15s)  ep2→PDR=0.505(ε=0.050,23Q,14s)  ep3→PDR=0.474(ε=0.050,26Q,15s)  ep4→PDR=0.530(ε=0.050,28Q,12s)  ep5→PDR=0.490(ε=0.050,29Q,14s)  ep6→PDR=0.507(ε=0.050,29Q,14s)  ep7→PDR=0.494(ε=0.050,29Q,14s)  ep8→PDR=0.498(ε=0.050,29Q,13s)  ep9→PDR=0.490(ε=0.050,33Q,13s)  [converged after 9 episodes]
+
+  [tabular] N=600   training:  ep1→PDR=0.273(ε=0.050,18Q,23s)  ep2→PDR=0.288(ε=0.050,25Q,22s)  ep3→PDR=0.297(ε=0.050,26Q,20s)  ep4→PDR=0.333(ε=0.050,27Q,19s)  ep5→PDR=0.351(ε=0.050,28Q,18s)  ep6→PDR=0.340(ε=0.050,30Q,19s)  ep7→PDR=0.317(ε=0.050,33Q,20s)  ep8→PDR=0.329(ε=0.050,34Q,20s)  ep9→PDR=0.316(ε=0.050,35Q,21s)  ep10→PDR=0.329(ε=0.050,35Q,22s)  ep11→PDR=0.319(ε=0.050,36Q,20s)  ep12→PDR=0.296(ε=0.050,37Q,19s)  ep13→PDR=0.300(ε=0.050,38Q,20s)  ep14→PDR=0.328(ε=0.050,38Q,18s)  ep15→PDR=0.326(ε=0.050,38Q,19s)  ep16→PDR=0.324(ε=0.050,38Q,19s)  [converged after 16 episodes]
+
+  [tabular] N=800   training:  ep1→PDR=0.177(ε=0.050,25Q,27s)  ep2→PDR=0.216(ε=0.050,30Q,28s)  ep3→PDR=0.237(ε=0.050,31Q,29s)  ep4→PDR=0.232(ε=0.050,36Q,29s)  ep5→PDR=0.267(ε=0.050,36Q,25s)  ep6→PDR=0.231(ε=0.050,36Q,29s)  ep7→PDR=0.235(ε=0.050,37Q,29s)  ep8→PDR=0.223(ε=0.050,38Q,29s)  ep9→PDR=0.256(ε=0.050,39Q,28s)  ep10→PDR=0.218(ε=0.050,41Q,29s)  ep11→PDR=0.229(ε=0.050,41Q,29s)  ep12→PDR=0.232(ε=0.050,42Q,28s)  ep13→PDR=0.238(ε=0.050,42Q,30s)  [converged after 13 episodes]
+
+  [tabular] N=1000  training:  ep1→PDR=0.145(ε=0.050,24Q,44s)  ep2→PDR=0.147(ε=0.050,36Q,44s)  ep3→PDR=0.195(ε=0.050,45Q,37s)  ep4→PDR=0.178(ε=0.050,46Q,39s)  ep5→PDR=0.171(ε=0.050,47Q,39s)  ep6→PDR=0.153(ε=0.050,49Q,40s)  ep7→PDR=0.163(ε=0.050,50Q,40s)  ep8→PDR=0.190(ε=0.050,50Q,37s)  ep9→PDR=0.162(ε=0.050,52Q,41s)  ep10→PDR=0.178(ε=0.050,52Q,34s)  ep11→PDR=0.172(ε=0.050,52Q,37s)  ep12→PDR=0.170(ε=0.050,52Q,38s)  [converged after 12 episodes]
+  Training log: /Users/alakeshkalita/sim11ah_project/scripts/../results/rl_training_log.csv
+
+  [tabular_ddqn] N=100   training:  ep1→PDR=0.968(ε=0.050,34Q,3s)  ep2→PDR=0.950(ε=0.050,54Q,6s)  ep3→PDR=0.923(ε=0.050,57Q,4s)  ep4→PDR=0.973(ε=0.050,61Q,3s)  ep5→PDR=0.966(ε=0.050,69Q,3s)  ep6→PDR=0.780(ε=0.050,77Q,3s)  ep7→PDR=0.997(ε=0.050,79Q,2s)  ep8→PDR=0.987(ε=0.050,85Q,2s)  ep9→PDR=0.998(ε=0.050,95Q,2s)  ep10→PDR=0.999(ε=0.050,95Q,2s)  ep11→PDR=0.998(ε=0.050,95Q,2s)  [converged after 11 episodes]
+
+  [tabular_ddqn] N=200   training:  ep1→PDR=0.379(ε=0.050,26Q,8s)  ep2→PDR=0.889(ε=0.050,37Q,8s)  ep3→PDR=0.925(ε=0.050,44Q,7s)  ep4→PDR=0.759(ε=0.050,47Q,9s)  ep5→PDR=0.829(ε=0.050,47Q,7s)  ep6→PDR=0.914(ε=0.050,49Q,7s)  ep7→PDR=0.865(ε=0.050,51Q,7s)  ep8→PDR=0.736(ε=0.050,57Q,8s)  ep9→PDR=0.841(ε=0.050,58Q,7s)  ep10→PDR=0.768(ε=0.050,60Q,7s)  ep11→PDR=0.837(ε=0.050,60Q,7s)  ep12→PDR=0.843(ε=0.050,62Q,7s)  ep13→PDR=0.833(ε=0.050,69Q,7s)  ep14→PDR=0.683(ε=0.050,69Q,6s)  ep15→PDR=0.850(ε=0.050,69Q,7s)  ep16→PDR=0.790(ε=0.050,69Q,7s)  ep17→PDR=0.853(ε=0.050,69Q,8s)  ep18→PDR=0.837(ε=0.050,69Q,7s)  ep19→PDR=0.895(ε=0.050,70Q,7s)  ep20→PDR=0.886(ε=0.050,71Q,6s)
+
+  [tabular_ddqn] N=400   training:  ep1→PDR=0.442(ε=0.050,22Q,14s)  ep2→PDR=0.490(ε=0.050,26Q,15s)  ep3→PDR=0.509(ε=0.050,27Q,12s)  ep4→PDR=0.502(ε=0.050,28Q,13s)  ep5→PDR=0.498(ε=0.050,30Q,13s)  [converged after 5 episodes]
+
+  [tabular_ddqn] N=600   training:  ep1→PDR=0.246(ε=0.050,21Q,22s)  ep2→PDR=0.286(ε=0.050,23Q,23s)  ep3→PDR=0.349(ε=0.050,31Q,18s)  ep4→PDR=0.367(ε=0.050,32Q,18s)  ep5→PDR=0.299(ε=0.050,32Q,22s)  ep6→PDR=0.308(ε=0.050,33Q,20s)  ep7→PDR=0.314(ε=0.050,34Q,19s)  [converged after 7 episodes]
+
+  [tabular_ddqn] N=800   training:  ep1→PDR=0.152(ε=0.050,41Q,28s)  ep2→PDR=0.202(ε=0.050,46Q,30s)  ep3→PDR=0.212(ε=0.050,52Q,30s)  ep4→PDR=0.221(ε=0.050,53Q,29s)  [converged after 4 episodes]
+
+  [tabular_ddqn] N=1000  training:  ep1→PDR=0.153(ε=0.050,17Q,45s)  ep2→PDR=0.148(ε=0.050,21Q,51s)  ep3→PDR=0.164(ε=0.050,26Q,41s)  ep4→PDR=0.159(ε=0.050,30Q,42s)  ep5→PDR=0.170(ε=0.050,34Q,38s)  ep6→PDR=0.202(ε=0.050,35Q,37s)  ep7→PDR=0.181(ε=0.050,36Q,37s)  ep8→PDR=0.184(ε=0.050,40Q,38s)  ep9→PDR=0.194(ε=0.050,40Q,37s)  ep10→PDR=0.161(ε=0.050,41Q,43s)  ep11→PDR=0.179(ε=0.050,41Q,39s)  ep12→PDR=0.186(ε=0.050,41Q,36s)  ep13→PDR=0.175(ε=0.050,41Q,37s)  ep14→PDR=0.187(ε=0.050,42Q,35s)  ep15→PDR=0.201(ε=0.050,43Q,35s)  ep16→PDR=0.185(ε=0.050,43Q,35s)  ep17→PDR=0.193(ε=0.050,43Q,36s)  ep18→PDR=0.197(ε=0.050,43Q,36s)  [converged after 18 episodes]
+  Training log: /Users/alakeshkalita/sim11ah_project/scripts/../results/rl_training_log.csv
+
+  [dqn] N=100   training:  ep1→PDR=1.000(ε=0.050,0Q,2s)  ep2→PDR=0.968(ε=0.050,0Q,5s)  ep3→PDR=1.000(ε=0.050,0Q,3s)  ep4→PDR=0.995(ε=0.050,0Q,3s)  ep5→PDR=0.990(ε=0.050,0Q,2s)  [converged after 5 episodes]
+
+  [dqn] N=200   training:  ep1→PDR=0.793(ε=0.050,0Q,5s)  ep2→PDR=0.482(ε=0.050,0Q,4s)  ep3→PDR=0.399(ε=0.050,0Q,5s)  ep4→PDR=0.882(ε=0.050,0Q,6s)  ep5→PDR=0.441(ε=0.050,0Q,6s)  ep6→PDR=0.861(ε=0.050,0Q,6s)  ep7→PDR=0.771(ε=0.050,0Q,6s)  ep8→PDR=0.953(ε=0.050,0Q,7s)  ep9→PDR=0.910(ε=0.050,0Q,6s)  ep10→PDR=0.948(ε=0.050,0Q,6s)  ep11→PDR=0.860(ε=0.050,0Q,7s)  ep12→PDR=0.691(ε=0.050,0Q,5s)  ep13→PDR=0.891(ε=0.050,0Q,6s)  ep14→PDR=0.956(ε=0.050,0Q,6s)  ep15→PDR=0.906(ε=0.050,0Q,7s)  ep16→PDR=0.773(ε=0.050,0Q,6s)  ep17→PDR=0.877(ε=0.050,0Q,7s)  ep18→PDR=0.880(ε=0.050,0Q,6s)  ep19→PDR=0.821(ε=0.050,0Q,6s)  ep20→PDR=0.901(ε=0.050,0Q,6s)
+
+  [dqn] N=400   training:  ep1→PDR=0.455(ε=0.050,0Q,13s)  ep2→PDR=0.372(ε=0.050,0Q,14s)  ep3→PDR=0.527(ε=0.050,0Q,13s)  ep4→PDR=0.528(ε=0.050,0Q,14s)  ep5→PDR=0.429(ε=0.050,0Q,12s)  ep6→PDR=0.423(ε=0.050,0Q,11s)  ep7→PDR=0.368(ε=0.050,0Q,12s)  ep8→PDR=0.439(ε=0.050,0Q,15s)  ep9→PDR=0.512(ε=0.050,0Q,12s)  ep10→PDR=0.450(ε=0.050,0Q,9s)  ep11→PDR=0.207(ε=0.050,0Q,10s)  ep12→PDR=0.454(ε=0.050,0Q,14s)  ep13→PDR=0.564(ε=0.050,0Q,12s)  ep14→PDR=0.397(ε=0.050,0Q,13s)  ep15→PDR=0.486(ε=0.050,0Q,15s)  ep16→PDR=0.505(ε=0.050,0Q,13s)  ep17→PDR=0.484(ε=0.050,0Q,12s)  ep18→PDR=0.491(ε=0.050,0Q,12s)  ep19→PDR=0.538(ε=0.050,0Q,11s)  ep20→PDR=0.478(ε=0.050,0Q,13s)
+
+  [dqn] N=600   training:  ep1→PDR=0.239(ε=0.050,0Q,21s)  ep2→PDR=0.317(ε=0.050,0Q,20s)  ep3→PDR=0.303(ε=0.050,0Q,20s)  ep4→PDR=0.315(ε=0.050,0Q,19s)  ep5→PDR=0.330(ε=0.050,0Q,19s)  ep6→PDR=0.319(ε=0.050,0Q,19s)  ep7→PDR=0.321(ε=0.050,0Q,20s)  ep8→PDR=0.310(ε=0.050,0Q,22s)  ep9→PDR=0.331(ε=0.050,0Q,21s)  ep10→PDR=0.327(ε=0.050,0Q,21s)  ep11→PDR=0.326(ε=0.050,0Q,23s)  [converged after 11 episodes]
+
+  [dqn] N=800   training:  ep1→PDR=0.202(ε=0.050,0Q,33s)  ep2→PDR=0.226(ε=0.050,0Q,34s)  ep3→PDR=0.246(ε=0.050,0Q,30s)  ep4→PDR=0.228(ε=0.050,0Q,30s)  ep5→PDR=0.226(ε=0.050,0Q,28s)  ep6→PDR=0.230(ε=0.050,0Q,28s)  [converged after 6 episodes]
+
+  [dqn] N=1000  training:  ep1→PDR=0.165(ε=0.050,0Q,42s)  ep2→PDR=0.183(ε=0.050,0Q,43s)  ep3→PDR=0.187(ε=0.050,0Q,39s)  ep4→PDR=0.191(ε=0.050,0Q,37s)  [converged after 4 episodes]
+  Training log: /Users/alakeshkalita/sim11ah_project/scripts/../results/rl_training_log.csv
+
+  [ddqn] N=100   training:  ep1→PDR=1.000(ε=0.050,0Q,2s)  ep2→PDR=0.990(ε=0.050,0Q,4s)  ep3→PDR=0.998(ε=0.050,0Q,3s)  ep4→PDR=1.000(ε=0.050,0Q,2s)  [converged after 4 episodes]
+
+  [ddqn] N=200   training:  ep1→PDR=0.655(ε=0.050,0Q,6s)  ep2→PDR=0.590(ε=0.050,0Q,5s)  ep3→PDR=0.814(ε=0.050,0Q,6s)  ep4→PDR=0.905(ε=0.050,0Q,7s)  ep5→PDR=0.955(ε=0.050,0Q,6s)  ep6→PDR=0.788(ε=0.050,0Q,6s)  ep7→PDR=0.913(ε=0.050,0Q,6s)  ep8→PDR=0.713(ε=0.050,0Q,5s)  ep9→PDR=0.516(ε=0.050,0Q,6s)  ep10→PDR=0.817(ε=0.050,0Q,6s)  ep11→PDR=0.955(ε=0.050,0Q,7s)  ep12→PDR=0.811(ε=0.050,0Q,5s)  ep13→PDR=0.850(ε=0.050,0Q,5s)  ep14→PDR=0.922(ε=0.050,0Q,7s)  ep15→PDR=0.936(ε=0.050,0Q,5s)  ep16→PDR=0.715(ε=0.050,0Q,5s)  ep17→PDR=0.711(ε=0.050,0Q,7s)  ep18→PDR=0.871(ε=0.050,0Q,7s)  ep19→PDR=0.849(ε=0.050,0Q,7s)  ep20→PDR=0.886(ε=0.050,0Q,6s)
+
+  [ddqn] N=400   training:  ep1→PDR=0.452(ε=0.050,0Q,15s)  ep2→PDR=0.475(ε=0.050,0Q,13s)  ep3→PDR=0.384(ε=0.050,0Q,17s)  ep4→PDR=0.481(ε=0.050,0Q,13s)  ep5→PDR=0.477(ε=0.050,0Q,13s)  ep6→PDR=0.479(ε=0.050,0Q,14s)  [converged after 6 episodes]
+
+  [ddqn] N=600   training:  ep1→PDR=0.242(ε=0.050,0Q,25s)  ep2→PDR=0.273(ε=0.050,0Q,24s)  ep3→PDR=0.299(ε=0.050,0Q,19s)  ep4→PDR=0.319(ε=0.050,0Q,19s)  ep5→PDR=0.263(ε=0.050,0Q,15s)  ep6→PDR=0.246(ε=0.050,0Q,20s)  ep7→PDR=0.297(ε=0.050,0Q,22s)  ep8→PDR=0.336(ε=0.050,0Q,19s)  ep9→PDR=0.316(ε=0.050,0Q,16s)  ep10→PDR=0.320(ε=0.050,0Q,18s)  ep11→PDR=0.260(ε=0.050,0Q,20s)  ep12→PDR=0.373(ε=0.050,0Q,17s)  ep13→PDR=0.358(ε=0.050,0Q,16s)  ep14→PDR=0.311(ε=0.050,0Q,16s)  ep15→PDR=0.227(ε=0.050,0Q,23s)  ep16→PDR=0.314(ε=0.050,0Q,19s)  ep17→PDR=0.285(ε=0.050,0Q,23s)  ep18→PDR=0.307(ε=0.050,0Q,20s)  ep19→PDR=0.317(ε=0.050,0Q,17s)  ep20→PDR=0.327(ε=0.050,0Q,17s)
+
+  [ddqn] N=800   training:  ep1→PDR=0.194(ε=0.050,0Q,29s)  ep2→PDR=0.218(ε=0.050,0Q,28s)  ep3→PDR=0.234(ε=0.050,0Q,26s)  ep4→PDR=0.246(ε=0.050,0Q,25s)  ep5→PDR=0.234(ε=0.050,0Q,27s)  ep6→PDR=0.260(ε=0.050,0Q,24s)  ep7→PDR=0.261(ε=0.050,0Q,24s)  ep8→PDR=0.248(ε=0.050,0Q,23s)  ep9→PDR=0.241(ε=0.050,0Q,24s)  ep10→PDR=0.246(ε=0.050,0Q,26s)  [converged after 10 episodes]
+
+  [ddqn] N=1000  training:  ep1→PDR=0.112(ε=0.050,0Q,39s)  ep2→PDR=0.165(ε=0.050,0Q,37s)  ep3→PDR=0.125(ε=0.050,0Q,35s)  ep4→PDR=0.107(ε=0.050,0Q,33s)  ep5→PDR=0.094(ε=0.050,0Q,41s)  ep6→PDR=0.196(ε=0.050,0Q,38s)  ep7→PDR=0.198(ε=0.050,0Q,39s)  ep8→PDR=0.143(ε=0.050,0Q,49s)  ep9→PDR=0.183(ε=0.050,0Q,35s)  ep10→PDR=0.172(ε=0.050,0Q,39s)  ep11→PDR=0.186(ε=0.050,0Q,37s)  ep12→PDR=0.188(ε=0.050,0Q,39s)  ep13→PDR=0.183(ε=0.050,0Q,41s)  [converged after 13 episodes]
+  Training log: /Users/alakeshkalita/sim11ah_project/scripts/../results/rl_training_log.csv
+
+  [ppo] N=100   training:  ep1→PDR=0.935(ε=0.400,0Q,2s)  ep2→PDR=0.934(ε=0.400,0Q,6s)  ep3→PDR=0.983(ε=0.400,0Q,2s)  ep4→PDR=0.934(ε=0.400,0Q,2s)  ep5→PDR=0.930(ε=0.400,0Q,2s)  ep6→PDR=0.968(ε=0.400,0Q,2s)  ep7→PDR=0.868(ε=0.400,0Q,3s)  ep8→PDR=0.683(ε=0.400,0Q,3s)  ep9→PDR=0.759(ε=0.400,0Q,2s)  ep10→PDR=0.674(ε=0.400,0Q,2s)  ep11→PDR=0.750(ε=0.400,0Q,2s)  ep12→PDR=0.740(ε=0.400,0Q,2s)  ep13→PDR=0.938(ε=0.400,0Q,3s)  ep14→PDR=0.785(ε=0.400,0Q,2s)  ep15→PDR=0.851(ε=0.400,0Q,2s)  ep16→PDR=0.922(ε=0.400,0Q,3s)  ep17→PDR=0.716(ε=0.400,0Q,2s)  ep18→PDR=0.884(ε=0.400,0Q,4s)  ep19→PDR=0.705(ε=0.400,0Q,2s)  ep20→PDR=0.869(ε=0.400,0Q,3s)
+
+  [ppo] N=200   training:  ep1→PDR=0.614(ε=0.400,0Q,6s)  ep2→PDR=0.797(ε=0.400,0Q,6s)  ep3→PDR=0.836(ε=0.400,0Q,7s)  ep4→PDR=0.633(ε=0.400,0Q,6s)  ep5→PDR=0.929(ε=0.400,0Q,7s)  ep6→PDR=0.856(ε=0.400,0Q,6s)  ep7→PDR=0.980(ε=0.400,0Q,5s)  ep8→PDR=0.903(ε=0.400,0Q,6s)  ep9→PDR=0.981(ε=0.400,0Q,6s)  ep10→PDR=0.955(ε=0.400,0Q,6s)  ep11→PDR=0.956(ε=0.400,0Q,6s)  ep12→PDR=0.972(ε=0.400,0Q,6s)  ep13→PDR=0.980(ε=0.400,0Q,6s)  ep14→PDR=0.965(ε=0.400,0Q,6s)  ep15→PDR=0.924(ε=0.400,0Q,5s)  ep16→PDR=0.955(ε=0.400,0Q,6s)  ep17→PDR=0.962(ε=0.400,0Q,6s)  ep18→PDR=0.970(ε=0.400,0Q,6s)  [converged after 18 episodes]
+
+  [ppo] N=400   training:  ep1→PDR=0.401(ε=0.400,0Q,14s)  ep2→PDR=0.526(ε=0.400,0Q,11s)  ep3→PDR=0.469(ε=0.400,0Q,11s)  ep4→PDR=0.585(ε=0.400,0Q,10s)  ep5→PDR=0.572(ε=0.400,0Q,10s)  ep6→PDR=0.490(ε=0.400,0Q,10s)  ep7→PDR=0.566(ε=0.400,0Q,10s)  ep8→PDR=0.569(ε=0.400,0Q,11s)  ep9→PDR=0.572(ε=0.400,0Q,10s)  [converged after 9 episodes]
+
+  [ppo] N=600   training:  ep1→PDR=0.258(ε=0.400,0Q,22s)  ep2→PDR=0.330(ε=0.400,0Q,20s)  ep3→PDR=0.401(ε=0.400,0Q,17s)  ep4→PDR=0.410(ε=0.400,0Q,17s)  ep5→PDR=0.407(ε=0.400,0Q,18s)  [converged after 5 episodes]
+
+  [ppo] N=800   training:  ep1→PDR=0.164(ε=0.400,0Q,38s)  ep2→PDR=0.202(ε=0.400,0Q,31s)  ep3→PDR=0.231(ε=0.400,0Q,28s)  ep4→PDR=0.242(ε=0.400,0Q,27s)  ep5→PDR=0.218(ε=0.400,0Q,29s)  ep6→PDR=0.250(ε=0.400,0Q,27s)  ep7→PDR=0.308(ε=0.400,0Q,27s)  ep8→PDR=0.311(ε=0.400,0Q,25s)  ep9→PDR=0.310(ε=0.400,0Q,23s)  [converged after 9 episodes]
+
+  [ppo] N=1000  training:  ep1→PDR=0.084(ε=0.400,0Q,36s)  ep2→PDR=0.142(ε=0.400,0Q,45s)  ep3→PDR=0.156(ε=0.400,0Q,40s)  ep4→PDR=0.170(ε=0.400,0Q,37s)  ep5→PDR=0.183(ε=0.400,0Q,35s)  ep6→PDR=0.208(ε=0.400,0Q,34s)  ep7→PDR=0.204(ε=0.400,0Q,35s)  ep8→PDR=0.211(ε=0.400,0Q,33s)  [converged after 8 episodes]
+  Training log: /Users/alakeshkalita/sim11ah_project/scripts/../results/rl_training_log.csv
+
+  Total training time: 5778s
+  Q-tables: /Users/alakeshkalita/sim11ah_project/scripts/../results/rl_qtables/qtable_<mode>_N<n>.pkl
+
+  Run evaluation with:
+    python scripts/compare_rl_trained.py
+

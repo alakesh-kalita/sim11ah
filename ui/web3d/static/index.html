@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>sim11ah — 3D Topology</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #8fc7ee; overflow: hidden;
+               font-family: -apple-system, "Segoe UI", Arial, sans-serif; }
+  #app-canvas { display: block; width: 100vw; height: 100vh; }
+
+  #hud {
+    position: fixed; top: 12px; left: 12px; z-index: 10;
+    background: rgba(15, 23, 42, 0.72); color: #e5e9f0; padding: 10px 14px;
+    border-radius: 8px; font-size: 12px; line-height: 1.55; backdrop-filter: blur(4px);
+    border: 1px solid rgba(255,255,255,0.08); pointer-events: none; min-width: 200px;
+  }
+  #hud b { color: #7dd3fc; }
+  #hud .row { display: flex; justify-content: space-between; gap: 18px; }
+  #hud .muted { color: #94a3b8; }
+
+  #legend {
+    position: fixed; bottom: 12px; left: 12px; z-index: 10;
+    background: rgba(15, 23, 42, 0.72); color: #cbd5e1; padding: 8px 12px;
+    border-radius: 8px; font-size: 11px; line-height: 1.7; backdrop-filter: blur(4px);
+    border: 1px solid rgba(255,255,255,0.08); pointer-events: none;
+  }
+  #legend .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+                 margin-right: 6px; vertical-align: middle; }
+
+  #hint {
+    position: fixed; bottom: 12px; right: 12px; z-index: 10;
+    background: rgba(15, 23, 42, 0.55); color: #94a3b8; padding: 6px 10px;
+    border-radius: 6px; font-size: 10px; pointer-events: none;
+  }
+
+  #status {
+    position: fixed; top: 12px; right: 12px; z-index: 10;
+    background: rgba(15, 23, 42, 0.72); color: #f87171; padding: 8px 12px;
+    border-radius: 8px; font-size: 12px; display: none;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+
+  #watermark {
+    position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 10;
+    background: rgba(15, 23, 42, 0.55); color: #94a3b8; padding: 6px 14px;
+    border-radius: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.4px;
+    pointer-events: none;
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+  <canvas id="app-canvas"></canvas>
+  <div id="hud">
+    <div class="row"><span class="muted">Environment</span><b id="hud-env">—</b></div>
+    <div class="row"><span class="muted">Sim time</span><b id="hud-time">0.0 s</b></div>
+    <div class="row"><span class="muted">PDR</span><b id="hud-pdr">—</b></div>
+    <div class="row"><span class="muted">Throughput</span><b id="hud-thr">—</b></div>
+    <div class="row"><span class="muted">Avg delay</span><b id="hud-delay">—</b></div>
+    <div class="row"><span class="muted">Nodes</span><b id="hud-nodes">—</b></div>
+  </div>
+  <div id="legend">
+    <div><span class="dot" style="background:#2b6cb0"></span>AP</div>
+    <div><span class="dot" style="background:#8b5cf6"></span>Relay</div>
+    <div><span class="dot" style="background:#22c55e"></span>Associated STA</div>
+    <div><span class="dot" style="background:#f87171"></span>Unassociated STA</div>
+    <div><span class="dot" style="background:#fbbf24"></span>Associating…</div>
+  </div>
+  <div id="hint">drag: orbit &nbsp;·&nbsp; scroll: zoom &nbsp;·&nbsp; right-drag: pan &nbsp;·&nbsp; drag a node: move it</div>
+  <div id="status"></div>
+  <div id="watermark">WiNDS Lab</div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

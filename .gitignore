@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+
+# Editor / local tool config (personal, not shared project config)
+.vscode/
+.claude/
+
+# Large regenerable UAV pipeline artifacts (not needed for reproducibility --
+# regenerate from uav/*.ipynb + uav/build_cluster_csvs.py)
+uav/predicted_path_image/
+uav/_position_matrix_cache_*.npz

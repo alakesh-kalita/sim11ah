@@ -1,0 +1,133 @@
+N=100 policy=no_raw seed=42 -- cached, skipping
+N=100 policy=no_raw seed=7 -- cached, skipping
+N=100 policy=no_raw seed=99 -- cached, skipping
+N=100 policy=static seed=42 -- cached, skipping
+N=100 policy=static seed=7 -- cached, skipping
+N=100 policy=static seed=99 -- cached, skipping
+N=100 policy=adaptive seed=42 -- cached, skipping
+N=100 policy=adaptive seed=7 -- cached, skipping
+N=100 policy=adaptive seed=99 -- cached, skipping
+N=100 policy=cluster_csv seed=42 ...
+  -> overall_pdr=0.9833 critical=0.9848 high=0.9833 normal=0.9831 elapsed=2.6s
+N=100 policy=cluster_csv seed=7 ...
+  -> overall_pdr=0.9871 critical=0.9886 high=0.9867 normal=0.9870 elapsed=2.7s
+N=100 policy=cluster_csv seed=99 ...
+  -> overall_pdr=0.9875 critical=0.9886 high=0.9867 normal=0.9876 elapsed=2.6s
+N=100 policy=cluster_adaptive seed=42 -- cached, skipping
+N=100 policy=cluster_adaptive seed=7 -- cached, skipping
+N=100 policy=cluster_adaptive seed=99 -- cached, skipping
+N=100 policy=laca seed=42 -- cached, skipping
+N=100 policy=laca seed=7 -- cached, skipping
+N=100 policy=laca seed=99 -- cached, skipping
+N=100 policy=chang2019 seed=42 -- cached, skipping
+N=100 policy=chang2019 seed=7 -- cached, skipping
+N=100 policy=chang2019 seed=99 -- cached, skipping
+N=200 policy=no_raw seed=42 -- cached, skipping
+N=200 policy=no_raw seed=7 -- cached, skipping
+N=200 policy=no_raw seed=99 -- cached, skipping
+N=200 policy=static seed=42 -- cached, skipping
+N=200 policy=static seed=7 -- cached, skipping
+N=200 policy=static seed=99 -- cached, skipping
+N=200 policy=adaptive seed=42 -- cached, skipping
+N=200 policy=adaptive seed=7 -- cached, skipping
+N=200 policy=adaptive seed=99 -- cached, skipping
+N=200 policy=cluster_csv seed=42 ...
+  -> overall_pdr=0.7294 critical=0.7546 high=0.6970 normal=0.7364 elapsed=7.6s
+N=200 policy=cluster_csv seed=7 ...
+  -> overall_pdr=0.7331 critical=0.7431 high=0.7064 normal=0.7403 elapsed=8.1s
+N=200 policy=cluster_csv seed=99 ...
+  -> overall_pdr=0.7360 critical=0.6806 high=0.7292 normal=0.7455 elapsed=7.8s
+N=200 policy=cluster_adaptive seed=42 -- cached, skipping
+N=200 policy=cluster_adaptive seed=7 -- cached, skipping
+N=200 policy=cluster_adaptive seed=99 -- cached, skipping
+N=200 policy=laca seed=42 -- cached, skipping
+N=200 policy=laca seed=7 -- cached, skipping
+N=200 policy=laca seed=99 -- cached, skipping
+N=200 policy=chang2019 seed=42 -- cached, skipping
+N=200 policy=chang2019 seed=7 -- cached, skipping
+N=200 policy=chang2019 seed=99 -- cached, skipping
+N=400 policy=no_raw seed=42 -- cached, skipping
+N=400 policy=no_raw seed=7 -- cached, skipping
+N=400 policy=no_raw seed=99 -- cached, skipping
+N=400 policy=static seed=42 -- cached, skipping
+N=400 policy=static seed=7 -- cached, skipping
+N=400 policy=static seed=99 -- cached, skipping
+N=400 policy=adaptive seed=42 -- cached, skipping
+N=400 policy=adaptive seed=7 -- cached, skipping
+N=400 policy=adaptive seed=99 -- cached, skipping
+N=400 policy=cluster_csv seed=42 -- cached, skipping
+N=400 policy=cluster_csv seed=7 -- cached, skipping
+N=400 policy=cluster_csv seed=99 -- cached, skipping
+N=400 policy=cluster_adaptive seed=42 -- cached, skipping
+N=400 policy=cluster_adaptive seed=7 -- cached, skipping
+N=400 policy=cluster_adaptive seed=99 -- cached, skipping
+N=400 policy=laca seed=42 -- cached, skipping
+N=400 policy=laca seed=7 -- cached, skipping
+N=400 policy=laca seed=99 -- cached, skipping
+N=400 policy=chang2019 seed=42 -- cached, skipping
+N=400 policy=chang2019 seed=7 -- cached, skipping
+N=400 policy=chang2019 seed=99 -- cached, skipping
+N=600 policy=no_raw seed=42 -- cached, skipping
+N=600 policy=no_raw seed=7 -- cached, skipping
+N=600 policy=no_raw seed=99 -- cached, skipping
+N=600 policy=static seed=42 -- cached, skipping
+N=600 policy=static seed=7 -- cached, skipping
+N=600 policy=static seed=99 -- cached, skipping
+N=600 policy=adaptive seed=42 -- cached, skipping
+N=600 policy=adaptive seed=7 -- cached, skipping
+N=600 policy=adaptive seed=99 -- cached, skipping
+N=600 policy=cluster_csv seed=42 -- cached, skipping
+N=600 policy=cluster_csv seed=7 -- cached, skipping
+N=600 policy=cluster_csv seed=99 -- cached, skipping
+N=600 policy=cluster_adaptive seed=42 -- cached, skipping
+N=600 policy=cluster_adaptive seed=7 -- cached, skipping
+N=600 policy=cluster_adaptive seed=99 -- cached, skipping
+N=600 policy=laca seed=42 -- cached, skipping
+N=600 policy=laca seed=7 -- cached, skipping
+N=600 policy=laca seed=99 -- cached, skipping
+N=600 policy=chang2019 seed=42 -- cached, skipping
+N=600 policy=chang2019 seed=7 -- cached, skipping
+N=600 policy=chang2019 seed=99 -- cached, skipping
+N=800 policy=no_raw seed=42 -- cached, skipping
+N=800 policy=no_raw seed=7 -- cached, skipping
+N=800 policy=no_raw seed=99 -- cached, skipping
+N=800 policy=static seed=42 -- cached, skipping
+N=800 policy=static seed=7 -- cached, skipping
+N=800 policy=static seed=99 -- cached, skipping
+N=800 policy=adaptive seed=42 -- cached, skipping
+N=800 policy=adaptive seed=7 -- cached, skipping
+N=800 policy=adaptive seed=99 -- cached, skipping
+N=800 policy=cluster_csv seed=42 -- cached, skipping
+N=800 policy=cluster_csv seed=7 -- cached, skipping
+N=800 policy=cluster_csv seed=99 -- cached, skipping
+N=800 policy=cluster_adaptive seed=42 -- cached, skipping
+N=800 policy=cluster_adaptive seed=7 -- cached, skipping
+N=800 policy=cluster_adaptive seed=99 -- cached, skipping
+N=800 policy=laca seed=42 -- cached, skipping
+N=800 policy=laca seed=7 -- cached, skipping
+N=800 policy=laca seed=99 -- cached, skipping
+N=800 policy=chang2019 seed=42 -- cached, skipping
+N=800 policy=chang2019 seed=7 -- cached, skipping
+N=800 policy=chang2019 seed=99 -- cached, skipping
+N=1000 policy=no_raw seed=42 -- cached, skipping
+N=1000 policy=no_raw seed=7 -- cached, skipping
+N=1000 policy=no_raw seed=99 -- cached, skipping
+N=1000 policy=static seed=42 -- cached, skipping
+N=1000 policy=static seed=7 -- cached, skipping
+N=1000 policy=static seed=99 -- cached, skipping
+N=1000 policy=adaptive seed=42 -- cached, skipping
+N=1000 policy=adaptive seed=7 -- cached, skipping
+N=1000 policy=adaptive seed=99 -- cached, skipping
+N=1000 policy=cluster_csv seed=42 -- cached, skipping
+N=1000 policy=cluster_csv seed=7 -- cached, skipping
+N=1000 policy=cluster_csv seed=99 -- cached, skipping
+N=1000 policy=cluster_adaptive seed=42 -- cached, skipping
+N=1000 policy=cluster_adaptive seed=7 -- cached, skipping
+N=1000 policy=cluster_adaptive seed=99 -- cached, skipping
+N=1000 policy=laca seed=42 -- cached, skipping
+N=1000 policy=laca seed=7 -- cached, skipping
+N=1000 policy=laca seed=99 -- cached, skipping
+N=1000 policy=chang2019 seed=42 -- cached, skipping
+N=1000 policy=chang2019 seed=7 -- cached, skipping
+N=1000 policy=chang2019 seed=99 -- cached, skipping
+Done.

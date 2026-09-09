@@ -1,0 +1,176 @@
+==============================================================================
+  TRAW TII full evaluation: no_raw / static / adaptive / laca / chang2019 / tasm_raw / traw
+  N=[100, 200, 400, 600, 800, 1000]  seeds=[42, 7, 99]  sim=120s  (126 runs total)
+==============================================================================
+  [  1/126]  N= 100  policy=no_raw      seed=42  elapsed=0s  ETA=0s
+  [  2/126]  N= 100  policy=no_raw      seed=7  elapsed=39s  ETA=2429s
+  [  3/126]  N= 100  policy=no_raw      seed=99  elapsed=83s  ETA=3400s
+  N= 100  no_raw      PDR=0.6001  AoI=7.46s  DVR=40.4%  delay=1930ms  ee=5.57kbit/J  assoc=2.82s/4.69s/1.000
+  [  4/126]  N= 100  policy=static      seed=42  elapsed=126s  ETA=3833s
+  [  5/126]  N= 100  policy=static      seed=7  elapsed=129s  ETA=3125s
+  [  6/126]  N= 100  policy=static      seed=99  elapsed=134s  ETA=2681s
+  N= 100  static      PDR=0.4989  AoI=18.61s  DVR=58.4%  delay=3052ms  ee=28.09kbit/J  assoc=1.53s/1.83s/1.000
+  [  7/126]  N= 100  policy=adaptive    seed=42  elapsed=138s  ETA=2340s
+  [  8/126]  N= 100  policy=adaptive    seed=7  elapsed=140s  ETA=2065s
+  [  9/126]  N= 100  policy=adaptive    seed=99  elapsed=142s  ETA=1851s
+  N= 100  adaptive    PDR=1.0000  AoI=3.04s  DVR=0.0%  delay=623ms  ee=63.43kbit/J  assoc=1.70s/2.39s/1.000
+  [ 10/126]  N= 100  policy=laca        seed=42  elapsed=145s  ETA=1678s
+  [ 11/126]  N= 100  policy=laca        seed=7  elapsed=147s  ETA=1537s
+  [ 12/126]  N= 100  policy=laca        seed=99  elapsed=149s  ETA=1419s
+  N= 100  laca        PDR=1.0000  AoI=3.10s  DVR=0.0%  delay=687ms  ee=54.91kbit/J  assoc=1.63s/2.11s/1.000
+  [ 13/126]  N= 100  policy=chang2019   seed=42  elapsed=152s  ETA=1317s
+  [ 14/126]  N= 100  policy=chang2019   seed=7  elapsed=154s  ETA=1232s
+  [ 15/126]  N= 100  policy=chang2019   seed=99  elapsed=156s  ETA=1157s
+  N= 100  chang2019   PDR=1.0000  AoI=3.16s  DVR=0.0%  delay=747ms  ee=58.40kbit/J  assoc=1.71s/2.41s/1.000
+  [ 16/126]  N= 100  policy=tasm_raw    seed=42  elapsed=159s  ETA=1092s
+  [ 17/126]  N= 100  policy=tasm_raw    seed=7  elapsed=161s  ETA=1035s
+  [ 18/126]  N= 100  policy=tasm_raw    seed=99  elapsed=164s  ETA=986s
+  N= 100  tasm_raw    PDR=1.0000  AoI=3.09s  DVR=0.0%  delay=677ms  ee=61.27kbit/J  assoc=1.69s/2.31s/1.000
+  [ 19/126]  N= 100  policy=traw        seed=42  elapsed=167s  ETA=940s
+  [ 20/126]  N= 100  policy=traw        seed=7  elapsed=170s  ETA=903s
+  [ 21/126]  N= 100  policy=traw        seed=99  elapsed=174s  ETA=870s
+  N= 100  traw        PDR=1.0000  AoI=3.38s  DVR=0.0%  delay=970ms  ee=56.82kbit/J  assoc=1.78s/2.43s/1.000
+  [ 22/126]  N= 200  policy=no_raw      seed=42  elapsed=177s  ETA=839s
+  [ 23/126]  N= 200  policy=no_raw      seed=7  elapsed=252s  ETA=1128s
+  [ 24/126]  N= 200  policy=no_raw      seed=99  elapsed=327s  ETA=1391s
+  N= 200  no_raw      PDR=0.2447  AoI=13.62s  DVR=76.2%  delay=2812ms  ee=2.35kbit/J  assoc=10.74s/24.87s/1.000
+  [ 25/126]  N= 200  policy=static      seed=42  elapsed=401s  ETA=1619s
+  [ 26/126]  N= 200  policy=static      seed=7  elapsed=410s  ETA=1576s
+  [ 27/126]  N= 200  policy=static      seed=99  elapsed=418s  ETA=1532s
+  N= 200  static      PDR=0.4721  AoI=21.22s  DVR=60.4%  delay=3177ms  ee=26.18kbit/J  assoc=3.21s/3.95s/1.000
+  [ 28/126]  N= 200  policy=adaptive    seed=42  elapsed=425s  ETA=1489s
+  [ 29/126]  N= 200  policy=adaptive    seed=7  elapsed=433s  ETA=1448s
+  [ 30/126]  N= 200  policy=adaptive    seed=99  elapsed=440s  ETA=1407s
+  N= 200  adaptive    PDR=0.9835  AoI=4.01s  DVR=3.0%  delay=1548ms  ee=49.26kbit/J  assoc=3.61s/5.13s/1.000
+  [ 31/126]  N= 200  policy=laca        seed=42  elapsed=447s  ETA=1369s
+  [ 32/126]  N= 200  policy=laca        seed=7  elapsed=454s  ETA=1333s
+  [ 33/126]  N= 200  policy=laca        seed=99  elapsed=461s  ETA=1299s
+  N= 200  laca        PDR=0.9398  AoI=4.89s  DVR=9.1%  delay=1909ms  ee=43.31kbit/J  assoc=3.43s/4.53s/1.000
+  [ 34/126]  N= 200  policy=chang2019   seed=42  elapsed=468s  ETA=1265s
+  [ 35/126]  N= 200  policy=chang2019   seed=7  elapsed=488s  ETA=1268s
+  [ 36/126]  N= 200  policy=chang2019   seed=99  elapsed=508s  ETA=1270s
+  N= 200  chang2019   PDR=0.4344  AoI=20.24s  DVR=59.1%  delay=2226ms  ee=16.52kbit/J  assoc=3.51s/4.56s/1.000
+  [ 37/126]  N= 200  policy=tasm_raw    seed=42  elapsed=531s  ETA=1276s
+  [ 38/126]  N= 200  policy=tasm_raw    seed=7  elapsed=539s  ETA=1248s
+  [ 39/126]  N= 200  policy=tasm_raw    seed=99  elapsed=548s  ETA=1223s
+  N= 200  tasm_raw    PDR=0.9731  AoI=4.12s  DVR=4.1%  delay=1498ms  ee=49.03kbit/J  assoc=3.61s/5.10s/1.000
+  [ 40/126]  N= 200  policy=traw        seed=42  elapsed=556s  ETA=1196s
+  [ 41/126]  N= 200  policy=traw        seed=7  elapsed=565s  ETA=1172s
+  [ 42/126]  N= 200  policy=traw        seed=99  elapsed=574s  ETA=1149s
+  N= 200  traw        PDR=0.9373  AoI=4.57s  DVR=7.5%  delay=1597ms  ee=45.49kbit/J  assoc=4.24s/6.58s/1.000
+  [ 43/126]  N= 400  policy=no_raw      seed=42  elapsed=583s  ETA=1126s
+  [ 44/126]  N= 400  policy=no_raw      seed=7  elapsed=703s  ETA=1310s
+  [ 45/126]  N= 400  policy=no_raw      seed=99  elapsed=829s  ETA=1493s
+  N= 400  no_raw      PDR=0.1290  AoI=21.99s  DVR=87.9%  delay=2869ms  ee=1.26kbit/J  assoc=32.72s/81.63s/1.000
+  [ 46/126]  N= 400  policy=static      seed=42  elapsed=961s  ETA=1671s
+  [ 47/126]  N= 400  policy=static      seed=7  elapsed=983s  ETA=1652s
+  [ 48/126]  N= 400  policy=static      seed=99  elapsed=1002s  ETA=1628s
+  N= 400  static      PDR=0.3658  AoI=23.81s  DVR=70.6%  delay=3289ms  ee=19.23kbit/J  assoc=7.46s/10.43s/0.999
+  [ 49/126]  N= 400  policy=adaptive    seed=42  elapsed=1019s  ETA=1601s
+  [ 50/126]  N= 400  policy=adaptive    seed=7  elapsed=1036s  ETA=1575s
+  [ 51/126]  N= 400  policy=adaptive    seed=99  elapsed=1054s  ETA=1549s
+  N= 400  adaptive    PDR=0.4291  AoI=19.72s  DVR=64.1%  delay=3167ms  ee=21.64kbit/J  assoc=7.89s/11.97s/0.999
+  [ 52/126]  N= 400  policy=laca        seed=42  elapsed=1071s  ETA=1524s
+  [ 53/126]  N= 400  policy=laca        seed=7  elapsed=1087s  ETA=1497s
+  [ 54/126]  N= 400  policy=laca        seed=99  elapsed=1104s  ETA=1472s
+  N= 400  laca        PDR=0.3835  AoI=21.84s  DVR=71.1%  delay=3749ms  ee=19.66kbit/J  assoc=7.26s/10.10s/0.999
+  [ 55/126]  N= 400  policy=chang2019   seed=42  elapsed=1121s  ETA=1447s
+  [ 56/126]  N= 400  policy=chang2019   seed=7  elapsed=1178s  ETA=1472s
+  [ 57/126]  N= 400  policy=chang2019   seed=99  elapsed=1233s  ETA=1493s
+  N= 400  chang2019   PDR=0.1876  AoI=28.22s  DVR=82.6%  delay=2530ms  ee=4.89kbit/J  assoc=11.55s/20.09s/0.999
+  [ 58/126]  N= 400  policy=tasm_raw    seed=42  elapsed=1286s  ETA=1508s
+  [ 59/126]  N= 400  policy=tasm_raw    seed=7  elapsed=1307s  ETA=1484s
+  [ 60/126]  N= 400  policy=tasm_raw    seed=99  elapsed=1326s  ETA=1459s
+  N= 400  tasm_raw    PDR=0.4446  AoI=19.46s  DVR=62.2%  delay=3075ms  ee=22.28kbit/J  assoc=7.85s/12.35s/1.000
+  [ 61/126]  N= 400  policy=traw        seed=42  elapsed=1345s  ETA=1433s
+  [ 62/126]  N= 400  policy=traw        seed=7  elapsed=1366s  ETA=1410s
+  [ 63/126]  N= 400  policy=traw        seed=99  elapsed=1386s  ETA=1386s
+  N= 400  traw        PDR=0.4426  AoI=20.86s  DVR=60.3%  delay=2823ms  ee=21.54kbit/J  assoc=8.56s/13.37s/1.000
+  [ 64/126]  N= 600  policy=no_raw      seed=42  elapsed=1408s  ETA=1364s
+  [ 65/126]  N= 600  policy=no_raw      seed=7  elapsed=1538s  ETA=1443s
+  [ 66/126]  N= 600  policy=no_raw      seed=99  elapsed=1670s  ETA=1518s
+  N= 600  no_raw      PDR=0.0854  AoI=33.19s  DVR=92.0%  delay=2945ms  ee=0.84kbit/J  assoc=47.74s/119.80s/0.818
+  [ 67/126]  N= 600  policy=static      seed=42  elapsed=1805s  ETA=1590s
+  [ 68/126]  N= 600  policy=static      seed=7  elapsed=1833s  ETA=1564s
+  [ 69/126]  N= 600  policy=static      seed=99  elapsed=1862s  ETA=1538s
+  N= 600  static      PDR=0.2623  AoI=29.99s  DVR=79.5%  delay=3695ms  ee=12.63kbit/J  assoc=12.10s/18.98s/0.999
+  [ 70/126]  N= 600  policy=adaptive    seed=42  elapsed=1886s  ETA=1509s
+  [ 71/126]  N= 600  policy=adaptive    seed=7  elapsed=1914s  ETA=1483s
+  [ 72/126]  N= 600  policy=adaptive    seed=99  elapsed=1943s  ETA=1457s
+  N= 600  adaptive    PDR=0.2484  AoI=27.80s  DVR=82.1%  delay=4095ms  ee=11.55kbit/J  assoc=12.65s/19.98s/1.000
+  [ 73/126]  N= 600  policy=laca        seed=42  elapsed=1971s  ETA=1431s
+  [ 74/126]  N= 600  policy=laca        seed=7  elapsed=1997s  ETA=1403s
+  [ 75/126]  N= 600  policy=laca        seed=99  elapsed=2024s  ETA=1377s
+  N= 600  laca        PDR=0.2224  AoI=29.62s  DVR=85.9%  delay=4974ms  ee=10.89kbit/J  assoc=11.19s/15.91s/0.999
+  [ 76/126]  N= 600  policy=chang2019   seed=42  elapsed=2052s  ETA=1350s
+  [ 77/126]  N= 600  policy=chang2019   seed=7  elapsed=2127s  ETA=1353s
+  [ 78/126]  N= 600  policy=chang2019   seed=99  elapsed=2199s  ETA=1353s
+  N= 600  chang2019   PDR=0.1179  AoI=33.19s  DVR=89.7%  delay=2978ms  ee=2.97kbit/J  assoc=18.44s/32.02s/0.999
+  [ 79/126]  N= 600  policy=tasm_raw    seed=42  elapsed=2272s  ETA=1352s
+  [ 80/126]  N= 600  policy=tasm_raw    seed=7  elapsed=2307s  ETA=1326s
+  [ 81/126]  N= 600  policy=tasm_raw    seed=99  elapsed=2338s  ETA=1299s
+  N= 600  tasm_raw    PDR=0.2447  AoI=29.73s  DVR=81.2%  delay=4117ms  ee=11.29kbit/J  assoc=12.37s/19.54s/0.999
+  [ 82/126]  N= 600  policy=traw        seed=42  elapsed=2371s  ETA=1272s
+  [ 83/126]  N= 600  policy=traw        seed=7  elapsed=2403s  ETA=1245s
+  [ 84/126]  N= 600  policy=traw        seed=99  elapsed=2436s  ETA=1218s
+  N= 600  traw        PDR=0.2777  AoI=28.62s  DVR=77.7%  delay=3778ms  ee=12.51kbit/J  assoc=13.16s/21.33s/0.999
+  [ 85/126]  N= 800  policy=no_raw      seed=42  elapsed=2469s  ETA=1191s
+  [ 86/126]  N= 800  policy=no_raw      seed=7  elapsed=2604s  ETA=1211s
+  [ 87/126]  N= 800  policy=no_raw      seed=99  elapsed=2743s  ETA=1229s
+  N= 800  no_raw      PDR=0.0633  AoI=40.23s  DVR=94.0%  delay=2850ms  ee=0.62kbit/J  assoc=49.38s/119.74s/0.603
+  [ 88/126]  N= 800  policy=static      seed=42  elapsed=2882s  ETA=1245s
+  [ 89/126]  N= 800  policy=static      seed=7  elapsed=2920s  ETA=1214s
+  [ 90/126]  N= 800  policy=static      seed=99  elapsed=2954s  ETA=1181s
+  N= 800  static      PDR=0.1894  AoI=37.15s  DVR=85.3%  delay=3727ms  ee=8.51kbit/J  assoc=16.02s/24.98s/1.000
+  [ 91/126]  N= 800  policy=adaptive    seed=42  elapsed=2987s  ETA=1149s
+  [ 92/126]  N= 800  policy=adaptive    seed=7  elapsed=3027s  ETA=1119s
+  [ 93/126]  N= 800  policy=adaptive    seed=99  elapsed=3067s  ETA=1088s
+  N= 800  adaptive    PDR=0.1699  AoI=31.45s  DVR=89.1%  delay=5011ms  ee=6.98kbit/J  assoc=17.58s/28.25s/1.000
+  [ 94/126]  N= 800  policy=laca        seed=42  elapsed=3108s  ETA=1058s
+  [ 95/126]  N= 800  policy=laca        seed=7  elapsed=3148s  ETA=1027s
+  [ 96/126]  N= 800  policy=laca        seed=99  elapsed=3187s  ETA=996s
+  N= 800  laca        PDR=0.1497  AoI=33.82s  DVR=91.4%  delay=5912ms  ee=6.67kbit/J  assoc=15.22s/21.84s/1.000
+  [ 97/126]  N= 800  policy=chang2019   seed=42  elapsed=3227s  ETA=965s
+  [ 98/126]  N= 800  policy=chang2019   seed=7  elapsed=3321s  ETA=949s
+  [ 99/126]  N= 800  policy=chang2019   seed=99  elapsed=3420s  ETA=933s
+  N= 800  chang2019   PDR=0.0831  AoI=35.24s  DVR=93.3%  delay=3565ms  ee=1.92kbit/J  assoc=25.14s/43.73s/0.999
+  [100/126]  N= 800  policy=tasm_raw    seed=42  elapsed=3522s  ETA=916s
+  [101/126]  N= 800  policy=tasm_raw    seed=7  elapsed=3569s  ETA=883s
+  [102/126]  N= 800  policy=tasm_raw    seed=99  elapsed=3617s  ETA=851s
+  N= 800  tasm_raw    PDR=0.1770  AoI=33.07s  DVR=88.1%  delay=5397ms  ee=7.39kbit/J  assoc=16.82s/27.39s/1.000
+  [103/126]  N= 800  policy=traw        seed=42  elapsed=3664s  ETA=818s
+  [104/126]  N= 800  policy=traw        seed=7  elapsed=3709s  ETA=785s
+  [105/126]  N= 800  policy=traw        seed=99  elapsed=3756s  ETA=751s
+  N= 800  traw        PDR=0.2045  AoI=34.51s  DVR=84.2%  delay=5052ms  ee=8.34kbit/J  assoc=17.53s/28.19s/1.000
+  [106/126]  N=1000  policy=no_raw      seed=42  elapsed=3803s  ETA=718s
+  [107/126]  N=1000  policy=no_raw      seed=7  elapsed=3945s  ETA=700s
+  [108/126]  N=1000  policy=no_raw      seed=99  elapsed=4096s  ETA=683s
+  N=1000  no_raw      PDR=0.0492  AoI=44.18s  DVR=95.4%  delay=2883ms  ee=0.49kbit/J  assoc=51.21s/119.69s/0.485
+  [109/126]  N=1000  policy=static      seed=42  elapsed=4251s  ETA=663s
+  [110/126]  N=1000  policy=static      seed=7  elapsed=4297s  ETA=625s
+  [111/126]  N=1000  policy=static      seed=99  elapsed=4346s  ETA=587s
+  N=1000  static      PDR=0.1475  AoI=41.48s  DVR=88.6%  delay=3695ms  ee=6.01kbit/J  assoc=20.05s/31.17s/1.000
+  [112/126]  N=1000  policy=adaptive    seed=42  elapsed=4390s  ETA=549s
+  [113/126]  N=1000  policy=adaptive    seed=7  elapsed=4444s  ETA=511s
+  [114/126]  N=1000  policy=adaptive    seed=99  elapsed=4502s  ETA=474s
+  N=1000  adaptive    PDR=0.1262  AoI=33.39s  DVR=92.8%  delay=5945ms  ee=4.55kbit/J  assoc=22.70s/36.88s/1.000
+  [115/126]  N=1000  policy=laca        seed=42  elapsed=4562s  ETA=436s
+  [116/126]  N=1000  policy=laca        seed=7  elapsed=4620s  ETA=398s
+  [117/126]  N=1000  policy=laca        seed=99  elapsed=4676s  ETA=360s
+  N=1000  laca        PDR=0.1109  AoI=36.29s  DVR=94.5%  delay=7274ms  ee=4.43kbit/J  assoc=19.44s/27.96s/1.000
+  [118/126]  N=1000  policy=chang2019   seed=42  elapsed=4733s  ETA=321s
+  [119/126]  N=1000  policy=chang2019   seed=7  elapsed=4873s  ETA=287s
+  [120/126]  N=1000  policy=chang2019   seed=99  elapsed=5022s  ETA=251s
+  N=1000  chang2019   PDR=0.0653  AoI=35.97s  DVR=95.1%  delay=3990ms  ee=1.38kbit/J  assoc=32.26s/56.16s/1.000
+  [121/126]  N=1000  policy=tasm_raw    seed=42  elapsed=5172s  ETA=214s
+  [122/126]  N=1000  policy=tasm_raw    seed=7  elapsed=5248s  ETA=172s
+  [123/126]  N=1000  policy=tasm_raw    seed=99  elapsed=5318s  ETA=130s
+  N=1000  tasm_raw    PDR=0.1457  AoI=35.85s  DVR=90.8%  delay=7065ms  ee=5.40kbit/J  assoc=21.65s/34.63s/1.000
+  [124/126]  N=1000  policy=traw        seed=42  elapsed=5388s  ETA=87s
+  [125/126]  N=1000  policy=traw        seed=7  elapsed=5450s  ETA=44s
+  [126/126]  N=1000  policy=traw        seed=99  elapsed=5510s  ETA=0s
+  N=1000  traw        PDR=0.1578  AoI=37.32s  DVR=88.6%  delay=6002ms  ee=5.81kbit/J  assoc=21.68s/35.83s/1.000
+
+  Total wall-clock: 5570.2s
+  Results : /Users/alakeshkalita/sim11ah_project/scripts/../results/traw_tii_full_comparison.csv
+  Per-seed: /Users/alakeshkalita/sim11ah_project/scripts/../results/traw_tii_full_comparison_seeds.csv

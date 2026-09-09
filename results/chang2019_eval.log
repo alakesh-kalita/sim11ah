@@ -1,0 +1,33 @@
+======================================================================
+  chang2019 baseline evaluation
+  N=[100, 200, 400, 600, 800, 1000]  seeds=[42, 7, 99]  sim=120s
+======================================================================
+  [ 1/18]  N= 100  seed=42  elapsed=0s  ETA=0s
+  [ 2/18]  N= 100  seed=7  elapsed=2s  ETA=16s
+  [ 3/18]  N= 100  seed=99  elapsed=4s  ETA=21s
+  N= 100  PDR=1.0000  tput=20.5kb/s  delay=747ms  ee=58.40kbit/J
+  [ 4/18]  N= 200  seed=42  elapsed=6s  ETA=22s
+  [ 5/18]  N= 200  seed=7  elapsed=25s  ETA=64s
+  [ 6/18]  N= 200  seed=99  elapsed=45s  ETA=90s
+  N= 200  PDR=0.4344  tput=17.8kb/s  delay=2226ms  ee=16.52kbit/J
+  [ 7/18]  N= 400  seed=42  elapsed=64s  ETA=101s
+  [ 8/18]  N= 400  seed=7  elapsed=122s  ETA=153s
+  [ 9/18]  N= 400  seed=99  elapsed=178s  ETA=178s
+  N= 400  PDR=0.1876  tput=15.4kb/s  delay=2530ms  ee=4.89kbit/J
+  [10/18]  N= 600  seed=42  elapsed=230s  ETA=184s
+  [11/18]  N= 600  seed=7  elapsed=304s  ETA=193s
+  [12/18]  N= 600  seed=99  elapsed=375s  ETA=188s
+  N= 600  PDR=0.1179  tput=14.5kb/s  delay=2978ms  ee=2.97kbit/J
+  [13/18]  N= 800  seed=42  elapsed=446s  ETA=172s
+  [14/18]  N= 800  seed=7  elapsed=536s  ETA=153s
+  [15/18]  N= 800  seed=99  elapsed=627s  ETA=125s
+  N= 800  PDR=0.0831  tput=13.6kb/s  delay=3565ms  ee=1.92kbit/J
+  [16/18]  N=1000  seed=42  elapsed=716s  ETA=90s
+  [17/18]  N=1000  seed=7  elapsed=828s  ETA=49s
+  [18/18]  N=1000  seed=99  elapsed=945s  ETA=0s
+  N=1000  PDR=0.0653  tput=13.4kb/s  delay=3990ms  ee=1.38kbit/J
+
+  Total wall-clock: 1061.7s
+
+  Results : /Users/alakeshkalita/sim11ah_project/scripts/../results/chang2019_comparison.csv
+  Per-seed: /Users/alakeshkalita/sim11ah_project/scripts/../results/chang2019_comparison_seeds.csv
