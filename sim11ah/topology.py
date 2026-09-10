@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 @dataclass(frozen=True)
@@ -351,6 +351,7 @@ class CarsUavsBuilder:
         num_scooters: int = 0,
         car_lane_offset_m: float = 25.0,
         scooter_lane_offset_m: float = 12.0,
+        uav_margin_m: float = 150.0,
     ) -> List["Node"]:
         num_aps = max(1, int(num_aps))
         num_cars = int(num_cars)
@@ -411,17 +412,40 @@ class CarsUavsBuilder:
         topo_cfg["scooter_ids"] = scooter_ids
         topo_cfg["uav_ids"] = uav_ids
         topo_cfg["corridor_span_m"] = span
+        # Recorded so every consumer that needs to know how far vehicles
+        # actually roam (uav_region's default margin, and the 3D Smart
+        # City's procedural road/building sizing in
+        # ui/web3d/snapshot.py's _stable_bounds) reads the SAME numbers
+        # this build actually used, instead of each guessing its own
+        # default and silently drifting apart -- that drift is exactly
+        # what made the city render far narrower than the corridor
+        # cars/UAVs actually drive/fly across.
+        topo_cfg["car_lane_offset_m"] = float(car_lane_offset_m)
+        topo_cfg["scooter_lane_offset_m"] = float(scooter_lane_offset_m)
+        topo_cfg["uav_margin_m"] = float(uav_margin_m)
 
         return all_nodes
 
     @staticmethod
     def uav_region(
-        sim: "Simulator", ap_spacing_m: float, num_aps: int, margin_m: float = 150.0,
+        sim: "Simulator", ap_spacing_m: float, num_aps: int, margin_m: Optional[float] = None,
     ) -> Tuple[float, float, float, float]:
         """(x_min, y_min, x_max, y_max) spanning the whole AP corridor plus
         a margin -- the region to pass to mobility.uav_waypoint_step so
         UAVs wander across every AP's coverage instead of drifting off
-        past the last one or clumping in the middle."""
+        past the last one or clumping in the middle.
+
+        margin_m defaults to whatever build() actually used for this sim
+        (sim.config["topology"]["uav_margin_m"], falling back to 150.0 if
+        the sim wasn't built via build() at all) rather than its own
+        separately-hardcoded 150.0 -- the two used to be independent
+        defaults that happened to agree only by coincidence, and
+        ui/web3d/snapshot.py's _stable_bounds needs this exact same
+        number to size the 3D Smart City's roads/buildings to actually
+        contain the region UAVs fly in."""
+        if margin_m is None:
+            topo_cfg = getattr(sim, "config", {}).get("topology", {}) if sim is not None else {}
+            margin_m = topo_cfg.get("uav_margin_m", 150.0)
         span = max(1.0, (max(1, int(num_aps)) - 1) * float(ap_spacing_m))
         return (-float(margin_m), -float(margin_m), span + float(margin_m), float(margin_m))
 

@@ -57,6 +57,28 @@ def _stable_bounds(canvas):
     constant: the city stops breathing, and the near-centre tall-building
     band stays put regardless of where the UAVs currently are.
     """
+    # "cars_uavs" mode has its own dedicated box, computed the same
+    # config-derived way as the single-AP UAV fallback below (not from
+    # live positions) but sized from the actual playground CarsUavsBuilder
+    # laid out: the AP nodes alone are (near-)colinear along the corridor
+    # axis, so the generic bounding-box-of-static-nodes path below would
+    # measure a sliver a few metres wide/tall around the AP line -- far
+    # narrower than the corridor cars/scooters drive and UAVs fly across
+    # (car/scooter lanes offset ±12-25m off that line, UAVs roaming a
+    # margin_m=150m-wide band by default) -- which is exactly why the
+    # Smart City's roads/buildings used to render as a thin strip with
+    # every real vehicle visibly driving/flying right off the pavement
+    # and past the buildings. uav_margin_m already dominates the lane
+    # offsets by design, but max() here keeps this correct even if a
+    # future build() call ever configured it the other way around.
+    topo_cfg = canvas.sim.config.get("topology", {}) if canvas.sim is not None else {}
+    if topo_cfg.get("mode") == "cars_uavs":
+        span = float(topo_cfg.get("corridor_span_m", 0.0))
+        margin = float(topo_cfg.get("uav_margin_m", 150.0))
+        half_y = max(margin, float(topo_cfg.get("car_lane_offset_m", 25.0)),
+                     float(topo_cfg.get("scooter_lane_offset_m", 12.0)))
+        return (-margin, span + margin, -half_y, half_y)
+
     moving = canvas.drone_ids | canvas.uav_ids | canvas.car_ids | canvas.scooter_ids
     xs, ys = [], []
     for nid, n in canvas.sim.nodes.items():
