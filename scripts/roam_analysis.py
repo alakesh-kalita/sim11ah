@@ -49,6 +49,7 @@ from scripts.compare_raw_policies import _ci_stats, _aggregate  # noqa: F401  (_
 _AGG_METRICS = [
     "pdr_overall", "pdr_crossing", "generated_overall", "generated_crossing",
     "connectivity_gap_s", "link_loss_gap_s", "handover_count",
+    "preassoc_handover_count",
 ]
 
 
@@ -73,6 +74,10 @@ def main() -> None:
     parser.add_argument("--packet-interval", type=float, default=0.5)
     parser.add_argument("--packet-size", type=int, default=128)
     parser.add_argument("--no-raw", action="store_true")
+    parser.add_argument("--predictive", action="store_true",
+                         help="Enable predictive pre-association -- see "
+                              "scripts/roam_experiment.py --help.")
+    parser.add_argument("--predictive-lead-time", type=float, default=None)
     parser.add_argument("--out", type=str, default=os.path.join(
         os.path.dirname(__file__), "..", "results", "roam_comparison.csv"))
     args = parser.parse_args()
@@ -91,6 +96,8 @@ def main() -> None:
                 seed=seed, speed_mps=speed, ap_spacing_m=args.ap_spacing,
                 num_aps=args.num_aps, packet_interval=args.packet_interval,
                 packet_size=args.packet_size, raw_enable=not args.no_raw,
+                predictive=args.predictive,
+                predictive_lead_time_s=args.predictive_lead_time,
             )
             d = asdict(r)
             seed_rows.append(d)
@@ -115,8 +122,10 @@ def main() -> None:
             f"pdr_overall={agg['pdr_overall_mean']:.3f} "
             f"[{agg['pdr_overall_ci_low']:.3f},{agg['pdr_overall_ci_hi']:.3f}]  "
             f"pdr_crossing={agg['pdr_crossing_mean']:.3f}  "
-            f"handovers={agg['handover_count_mean']:.2f}  "
-            f"conn_gap={agg['connectivity_gap_s_mean']:.3f}s"
+            f"handovers={agg['handover_count_mean']:.2f} "
+            f"(preassoc={agg['preassoc_handover_count_mean']:.2f})  "
+            f"conn_gap={agg['connectivity_gap_s_mean']:.3f}s "
+            f"[{agg['connectivity_gap_s_ci_low']:.3f},{agg['connectivity_gap_s_ci_hi']:.3f}]"
         )
 
     out_path = args.out

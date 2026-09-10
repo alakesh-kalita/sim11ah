@@ -87,15 +87,26 @@ def build_roam_sim(
     packet_interval: float,
     packet_size: int,
     raw_enable: bool,
+    predictive: bool = False,
+    predictive_lead_time_s: float = None,
 ) -> Tuple[Simulator, int]:
     """Build a 2+-AP corridor with a single mobile STA (the only STA --
     keeps the residence-time effect clean and unconfounded by background
     contention, unlike the static multi_ap GUI/CLI topologies which scatter
     many STAs; that's a separate, future knob if background load turns out
-    to matter for this specific research question)."""
+    to matter for this specific research question).
+
+    predictive=True enables mac/association.py's predictive pre-association
+    (roam_predictive_enable): an RSSI-trend extrapolation starts a shadow
+    auth/assoc handshake with a candidate AP before the reactive hysteresis
+    trigger actually fires, so the handshake latency that normally shows up
+    in connectivity_gap_s is mostly paid in the background, ahead of time."""
     cfg = default_config(raw_enable=raw_enable, traffic_mode="periodic")
     cfg["app"]["periodic_interval"] = float(packet_interval)
     cfg["app"]["packet_size_bytes"] = int(packet_size)
+    cfg["mac"]["roam_predictive_enable"] = bool(predictive)
+    if predictive_lead_time_s is not None:
+        cfg["mac"]["roam_predictive_lead_time_s"] = float(predictive_lead_time_s)
     sim = Simulator(config=cfg, seed=seed)
 
     link_cfg = {"rate_bps": 300_000, "prop_delay": 3e-4, "per": 0.0}
@@ -139,6 +150,7 @@ class RunResult:
     speed_mps: float
     residence_time_s: float
     beacon_interval_s: float
+    predictive: bool
     pdr_overall: float
     pdr_crossing: float
     generated_overall: int
@@ -146,6 +158,7 @@ class RunResult:
     connectivity_gap_s: float
     link_loss_gap_s: float
     handover_count: int
+    preassoc_handover_count: int
 
 
 def run_one(
@@ -158,9 +171,12 @@ def run_one(
     raw_enable: bool = True,
     settle_s: float = 5.0,
     dt: float = 0.05,
+    predictive: bool = False,
+    predictive_lead_time_s: float = None,
 ) -> RunResult:
     sim, sta_id = build_roam_sim(
         seed, num_aps, ap_spacing_m, packet_interval, packet_size, raw_enable,
+        predictive=predictive, predictive_lead_time_s=predictive_lead_time_s,
     )
 
     ap_range_m = float(sim.nodes[0].phy.nominal_range_m())
@@ -254,11 +270,14 @@ def run_one(
     connectivity_gap_s = 0.0
     link_loss_gap_s = 0.0
     handover_count = 0
+    preassoc_handover_count = 0
     pending_gap_start = None
     pending_gap_kind = None
     for e in sta_assoc_events:
         if e["event"] == "ASSOC_HANDOVER":
             handover_count += 1
+            if e.get("details", {}).get("via") == "preassoc":
+                preassoc_handover_count += 1
             if pending_gap_start is None:
                 pending_gap_start = float(e["time"])
                 pending_gap_kind = "handover"
@@ -296,6 +315,7 @@ def run_one(
         speed_mps=float(speed_mps),
         residence_time_s=(overlap_width_m / speed_mps) if speed_mps > 0 else float("inf"),
         beacon_interval_s=beacon_interval,
+        predictive=bool(predictive),
         pdr_overall=pdr_overall,
         pdr_crossing=pdr_crossing,
         generated_overall=generated_overall,
@@ -303,6 +323,7 @@ def run_one(
         connectivity_gap_s=connectivity_gap_s,
         link_loss_gap_s=link_loss_gap_s,
         handover_count=handover_count,
+        preassoc_handover_count=preassoc_handover_count,
     )
 
 
@@ -345,6 +366,17 @@ def main() -> None:
                               "with ordinary overload rather than roaming.")
     parser.add_argument("--packet-size", type=int, default=128)
     parser.add_argument("--no-raw", action="store_true")
+    parser.add_argument("--predictive", action="store_true",
+                         help="Enable predictive pre-association (RSSI-trend "
+                              "extrapolation starts a background auth/assoc "
+                              "handshake with a candidate AP before the "
+                              "reactive hysteresis trigger fires -- see "
+                              "mac/association.py's _maybe_start_preassoc). "
+                              "Default off, matching the reactive baseline.")
+    parser.add_argument("--predictive-lead-time", type=float, default=None,
+                         help="Seconds ahead of the predicted crossover to "
+                              "start pre-association (default: 2x beacon "
+                              "interval). Only meaningful with --predictive.")
     parser.add_argument("--out", type=str, default=None,
                          help="CSV output path (required when sweeping)")
     args = parser.parse_args()
@@ -363,6 +395,8 @@ def main() -> None:
                 packet_interval=args.packet_interval,
                 packet_size=args.packet_size,
                 raw_enable=not args.no_raw,
+                predictive=args.predictive,
+                predictive_lead_time_s=args.predictive_lead_time,
             )
             results.append(r)
             print(
@@ -370,7 +404,8 @@ def main() -> None:
                 f"residence={r.residence_time_s:7.3f}s  "
                 f"beacon_iv={r.beacon_interval_s:.3f}s  "
                 f"pdr_overall={r.pdr_overall:.3f}  pdr_crossing={r.pdr_crossing:.3f}  "
-                f"handovers={r.handover_count}  conn_gap={r.connectivity_gap_s:.3f}s  "
+                f"handovers={r.handover_count} (preassoc={r.preassoc_handover_count})  "
+                f"conn_gap={r.connectivity_gap_s:.3f}s  "
                 f"link_loss_gap={r.link_loss_gap_s:.3f}s"
             )
 

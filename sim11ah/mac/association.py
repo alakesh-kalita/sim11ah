@@ -135,11 +135,33 @@ class AssocManager:
         # PhyLayer sets phy._last_rssi_dbm_value synchronously right before
         # invoking this callback (single-threaded engine, same call frame),
         # so it's always the RSSI of the beacon currently being processed.
-        self._heard_ap_rssi: Dict[int, Tuple[float, float]] = {}
+        # Now a short rolling history per AP (capped at roam_rssi_trend_window
+        # samples), not just the latest one -- _predict_crossover_s needs
+        # several points to fit a trend against. Most call sites only ever
+        # want the latest sample (history[-1]); see _maybe_roam.
+        self._heard_ap_rssi: Dict[int, List[Tuple[float, float]]] = {}
         # -inf, not 0.0: a STA's very first handover (relay -> AP, or the
         # first AP-vs-AP roam) must not be blocked by roam_min_dwell_s just
         # because it hasn't happened yet.
         self._last_handover_t: float = float("-inf")
+
+        # Predictive pre-association (optional, off by default -- see
+        # roam_predictive_enable). A SEPARATE, minimal handshake state,
+        # deliberately not sharing self._ctx._assoc_state/_target_peer:
+        # those gate data-plane TX across the whole MAC stack (DcfEngine.
+        # can_tx_now, app.py's sink checks, etc.), so reusing them for a
+        # background pre-auth attempt would block the STA's PRIMARY traffic
+        # on its current, still-valid peer for no reason. _shadow_state
+        # mirrors AssocState's values but is private to this handshake.
+        self._shadow_peer: Optional[int] = None
+        self._shadow_state: int = AssocState.UNASSOCIATED
+        self._shadow_start_t: float = 0.0
+        self._shadow_auth_req_t: float = 0.0
+        self._shadow_assoc_req_t: float = 0.0
+        # Candidates already attempted (successfully or not) since the last
+        # real handover -- avoids retrying the same candidate every beacon
+        # once a shadow attempt has started, failed, or completed.
+        self._preauth_attempted: set = set()
 
         if not self._is_ap() and self._assoc_enable:
             self._sta_start_t = float(self._sim.engine.now)
@@ -263,6 +285,26 @@ class AssocManager:
             return
 
         peer = getattr(self._ctx, "_assoc_peer_id", None)
+
+        # If a predictive shadow handshake already completed with SOME
+        # candidate, promote it now instead of falling all the way back to
+        # a from-scratch scan+auth+assoc -- caught empirically: a fast-
+        # moving STA's own shadow AUTH_REQ/ASSOC_REQ traffic can itself eat
+        # enough channel time, right as it nears the crossover, that it
+        # stops hearing ITS CURRENT peer's beacon before _maybe_roam ever
+        # gets a beacon reception to react to. Without this, a STA that had
+        # already finished pre-authenticating with the correct next AP
+        # still paid the full multi-second reactive handshake cost anyway,
+        # defeating the entire point of pre-associating in the first place.
+        if self._shadow_state == AssocState.ASSOCIATED and self._shadow_peer is not None:
+            self._log("LINK_LOST", {
+                "peer": peer,
+                "silent_s": round(float(self._sim.engine.now) - self._last_peer_beacon_t, 3),
+                "recovered_via": "preassoc",
+            })
+            self._promote_shadow(self._shadow_peer, from_peer=peer if peer is not None else -1)
+            return
+
         self._log("LINK_LOST", {
             "peer": peer,
             "silent_s": round(float(self._sim.engine.now) - self._last_peer_beacon_t, 3),
@@ -290,10 +332,16 @@ class AssocManager:
             # Record in every state, not just once ASSOCIATED, so a
             # comparison is already available the moment a STA becomes
             # associated instead of needing to wait for a second beacon.
-            self._heard_ap_rssi[int(beacon_frame.src)] = (
+            # Rolling window (see __init__), so a trend can be fit later.
+            src_id = int(beacon_frame.src)
+            hist = self._heard_ap_rssi.setdefault(src_id, [])
+            hist.append((
                 float(getattr(self._node.phy, "_last_rssi_dbm_value", float("-inf"))),
                 float(self._sim.engine.now),
-            )
+            ))
+            max_hist = int(self._ctx.cfg.get("mac", {}).get("roam_rssi_trend_window", 5))
+            if len(hist) > max_hist:
+                del hist[: len(hist) - max_hist]
 
         if (self._ctx._assoc_state == AssocState.UNASSOCIATED
                 and not self._first_beacon_seen
@@ -310,6 +358,7 @@ class AssocManager:
                 self._arm_beacon_liveness_timer()
             if is_from_ap:
                 self._maybe_roam(int(beacon_frame.src))
+                self._maybe_start_preassoc(int(beacon_frame.src))
             return
         # Per-node association preference (GUI-settable, defaults to
         # "auto" = AP first, relay as a fallback -- see _ap_first_grace_s
@@ -406,8 +455,10 @@ class AssocManager:
             return
 
         stale_after_s = 3.0 * self._beacon_interval
-        candidate_rssi = self._heard_ap_rssi.get(beacon_src, (float("-inf"), -1.0))[0]
-        peer_entry = self._heard_ap_rssi.get(int(peer))
+        candidate_hist = self._heard_ap_rssi.get(beacon_src)
+        candidate_rssi = candidate_hist[-1][0] if candidate_hist else float("-inf")
+        peer_hist = self._heard_ap_rssi.get(int(peer))
+        peer_entry = peer_hist[-1] if peer_hist else None
         if peer_entry is None or (now - peer_entry[1]) > stale_after_s:
             # Current peer's own beacon hasn't been heard recently --
             # treat its signal as effectively gone rather than trusting a
@@ -424,13 +475,221 @@ class AssocManager:
         self._roam_to(beacon_src, from_peer=int(peer))
 
     def _roam_to(self, new_peer: int, from_peer: int) -> None:
+        self._last_handover_t = float(self._sim.engine.now)
+
+        if self._shadow_peer == new_peer and self._shadow_state == AssocState.ASSOCIATED:
+            # A predictive pre-association (see _maybe_start_preassoc)
+            # already ran the full auth/assoc handshake with new_peer in
+            # the background while still on from_peer -- promote it
+            # instantly instead of paying that latency again now, at
+            # exactly the moment it matters most (a short residence
+            # window).
+            self._promote_shadow(new_peer, from_peer)
+            return
+
+        # Abandon any other shadow attempt in flight -- it was for a
+        # different candidate than the one actually being roamed to.
+        self._shadow_peer = None
+        self._shadow_state = AssocState.UNASSOCIATED
+        self._preauth_attempted.clear()
+
         self._log("HANDOVER", {"from_peer": from_peer, "to_peer": new_peer})
         self._ctx._assoc_state = AssocState.UNASSOCIATED
         self._ctx._assoc_peer_id = None
         self._first_beacon_seen = True  # skip scan-time bookkeeping; go straight to auth
         self._sta_auth_req_t = float(self._sim.engine.now)
-        self._last_handover_t = float(self._sim.engine.now)
         self._begin_auth(new_peer)
+
+    def _promote_shadow(self, new_peer: int, from_peer: int) -> None:
+        """Finish a handover whose auth/assoc already completed in the
+        background (see _on_shadow_assoc_resp) -- no new frames, just the
+        same state transition on_assoc_resp_received makes on a normal
+        join, applied immediately.
+
+        Logs the same "HANDOVER" and "ASSOCIATED" event names the reactive
+        path uses (tagged with via="preassoc" in the details, not a
+        different event name) rather than a bespoke event -- anything
+        downstream that already parses ASSOC_HANDOVER/ASSOC_ASSOCIATED to
+        measure connectivity_gap_s (see scripts/roam_experiment.py) picks
+        this up automatically, and since both fire in the same tick here,
+        the measured gap correctly comes out at ~0s instead of silently
+        vanishing from the metric."""
+        now = float(self._sim.engine.now)
+        self._log("HANDOVER", {
+            "from_peer": from_peer, "to_peer": new_peer, "via": "preassoc",
+            "preassoc_lead_s": round(now - self._shadow_start_t, 3),
+        })
+        self._ctx._assoc_state = AssocState.ASSOCIATED
+        self._ctx._assoc_peer_id = new_peer
+        self._ctx._aid = self._node.node_id
+        self._arm_beacon_liveness_timer()
+        self._first_beacon_seen = True
+
+        s = self._sim.stats
+        s.assoc_total_time[self._node.node_id] = now - self._shadow_start_t
+        self._log("ASSOCIATED", {
+            "aid": self._ctx._aid, "via": "preassoc",
+            "total_ms": round((now - self._shadow_start_t) * 1000, 3),
+        })
+
+        cb = getattr(self._ctx, "_on_associated_cb", None)
+        if callable(cb):
+            try:
+                cb()
+            except Exception:
+                pass
+        if self._node.role == "RELAY":
+            self._mac.relay_start_beacons()
+        self._mac.dcf.drive(make_data_frame_cb=self._mac._make_data_frame)
+
+        self._shadow_peer = None
+        self._shadow_state = AssocState.UNASSOCIATED
+        self._preauth_attempted.clear()
+
+    # ------------------------------------------------------------------
+    # Predictive pre-association: an optional second, minimal handshake
+    # started ahead of the reactive roam trigger, based on an RSSI trend
+    # extrapolation rather than a threshold already crossed. Off by
+    # default (roam_predictive_enable) -- every method below is a no-op
+    # when disabled, and nothing here touches self._ctx._assoc_state or
+    # self._target_peer (the PRIMARY handshake's fields), so a disabled or
+    # never-triggered predictive path changes no existing behavior.
+    # ------------------------------------------------------------------
+
+    def _fit_slope(self, history: List[Tuple[float, float]]) -> Tuple[Optional[float], float, float]:
+        """Least-squares linear fit of an RSSI history (list of (rssi, t)
+        samples, same tuple order _heard_ap_rssi already uses). Returns
+        (slope_db_per_s, t_mean, rssi_mean) such that
+        rssi(t) ~= rssi_mean + slope*(t - t_mean); slope is None if there
+        are fewer than 2 samples or they're all at the same timestamp."""
+        n = len(history)
+        if n < 2:
+            return None, 0.0, 0.0
+        ts = [h[1] for h in history]
+        vs = [h[0] for h in history]
+        t_mean = sum(ts) / n
+        v_mean = sum(vs) / n
+        num = sum((t - t_mean) * (v - v_mean) for t, v in zip(ts, vs))
+        den = sum((t - t_mean) ** 2 for t in ts)
+        if den <= 1e-9:
+            return None, t_mean, v_mean
+        return num / den, t_mean, v_mean
+
+    def _predict_crossover_s(self, candidate_id: int) -> Optional[float]:
+        """Seconds from now until candidate_id's RSSI trend is projected to
+        overtake the current peer's by roam_hysteresis_db -- the same
+        trigger condition _maybe_roam reacts to, anticipated ahead of time
+        from each side's recent trend instead of waited out. Returns None
+        if there isn't enough history yet, the peer is unknown, or the
+        trend doesn't converge (candidate not gaining on the peer, or
+        already would have crossed -- the reactive trigger handles that)."""
+        peer = getattr(self._ctx, "_assoc_peer_id", None)
+        if peer is None:
+            return None
+        mac_cfg = self._ctx.cfg.get("mac", {})
+        min_samples = int(mac_cfg.get("roam_predictive_min_samples", 3))
+
+        cand_hist = self._heard_ap_rssi.get(candidate_id, [])
+        peer_hist = self._heard_ap_rssi.get(int(peer), [])
+        if len(cand_hist) < min_samples or len(peer_hist) < min_samples:
+            return None
+
+        cand_slope, cand_t0, cand_v0 = self._fit_slope(cand_hist)
+        peer_slope, peer_t0, peer_v0 = self._fit_slope(peer_hist)
+        if cand_slope is None or peer_slope is None:
+            return None
+
+        hysteresis_db = float(mac_cfg.get("roam_hysteresis_db", 6.0))
+        rel_slope = cand_slope - peer_slope
+        if rel_slope <= 1e-9:
+            return None  # candidate isn't gaining on the peer
+
+        # Solve cand_v0 + cand_slope*(t - cand_t0) == peer_v0 + peer_slope*(t - peer_t0) + hysteresis_db
+        rhs = (peer_v0 - peer_slope * peer_t0 + hysteresis_db) - (cand_v0 - cand_slope * cand_t0)
+        t_cross = rhs / rel_slope
+        delta = t_cross - float(self._sim.engine.now)
+        if delta <= 0.0:
+            return None  # trend says it already crossed -- reactive path handles it
+        return delta
+
+    def _maybe_start_preassoc(self, candidate_id: int) -> None:
+        if not bool(self._ctx.cfg.get("mac", {}).get("roam_predictive_enable", False)):
+            return
+        if candidate_id == self._shadow_peer:
+            return  # already pre-associating with this candidate
+        if candidate_id in self._preauth_attempted:
+            return  # already tried this candidate since the last real handover
+        peer = getattr(self._ctx, "_assoc_peer_id", None)
+        if peer is not None and int(peer) == candidate_id:
+            return  # candidate is already the current peer
+        if candidate_id == self._target_peer:
+            return  # a primary handshake with this exact peer is already in flight
+
+        predicted = self._predict_crossover_s(candidate_id)
+        if predicted is None:
+            return
+        mac_cfg = self._ctx.cfg.get("mac", {})
+        lead_time_s = float(mac_cfg.get("roam_predictive_lead_time_s", 2.0 * self._beacon_interval))
+        if predicted > lead_time_s:
+            return  # too far out to be worth starting yet
+
+        self._preauth_attempted.add(candidate_id)
+        self._shadow_peer = candidate_id
+        self._shadow_state = AssocState.AUTHENTICATING
+        self._shadow_start_t = float(self._sim.engine.now)
+        self._log("PREASSOC_START", {
+            "candidate": candidate_id,
+            "predicted_crossover_s": round(predicted, 3),
+        })
+        self._send_shadow_auth_req(candidate_id)
+
+    def _send_shadow_auth_req(self, dst: int) -> None:
+        self._shadow_auth_req_t = float(self._sim.engine.now)
+        frame = self._make_mgmt_frame(
+            ftype=FrameType.AUTH, dst=dst, size=self._auth_size,
+            ctrl={"algorithm": 0, "seq_no": 1, "status": 0, "for": "req"},
+        )
+        self._log("PREASSOC_AUTH_REQ_TX", {"dst": dst})
+        self._queue_for_tx(frame)
+
+    def _send_shadow_assoc_req(self, dst: int) -> None:
+        self._shadow_assoc_req_t = float(self._sim.engine.now)
+        frame = self._make_mgmt_frame(
+            ftype=FrameType.ASSOC_REQ, dst=dst, size=self._assoc_req_size,
+            ctrl={"capability": 0x0001, "listen_interval": 10, "s1g_cap": True},
+        )
+        self._log("PREASSOC_ASSOC_REQ_TX", {"dst": dst})
+        self._queue_for_tx(frame)
+
+    def _on_shadow_auth_resp(self, frame: MacFrame) -> None:
+        ctrl = frame.ctrl or {}
+        if int(ctrl.get("seq_no", 0)) != 2:
+            return
+        if int(ctrl.get("status", 1)) != 0:
+            self._log("PREASSOC_AUTH_FAILED", {"candidate": self._shadow_peer, "status": ctrl.get("status")})
+            self._shadow_peer = None
+            self._shadow_state = AssocState.UNASSOCIATED
+            return
+        self._shadow_state = AssocState.ASSOCIATING
+        self._log("PREASSOC_AUTH_DONE", {"candidate": self._shadow_peer})
+        self._send_shadow_assoc_req(self._shadow_peer)
+
+    def _on_shadow_assoc_resp(self, frame: MacFrame) -> None:
+        ctrl = frame.ctrl or {}
+        if int(ctrl.get("status", 1)) != 0:
+            self._log("PREASSOC_ASSOC_FAILED", {"candidate": self._shadow_peer, "status": ctrl.get("status")})
+            self._shadow_peer = None
+            self._shadow_state = AssocState.UNASSOCIATED
+            return
+        self._shadow_state = AssocState.ASSOCIATED
+        self._log("PREASSOC_READY", {
+            "candidate": self._shadow_peer,
+            "preassoc_time_ms": round((float(self._sim.engine.now) - self._shadow_start_t) * 1000, 3),
+        })
+        # Deliberately does NOT touch self._ctx._assoc_state/_assoc_peer_id
+        # -- the STA is still genuinely on its current peer for data-plane
+        # purposes. _roam_to promotes this to the real association (see
+        # _promote_shadow) once the reactive trigger actually fires.
 
     def _send_auth_req(self, dst: int) -> None:
         self._sta_auth_req_t = float(self._sim.engine.now)
@@ -451,6 +710,14 @@ class AssocManager:
 
     def on_auth_resp_received(self, frame: MacFrame) -> None:
         """Called by MacLayer when AUTH frame with seq_no=2 arrives at STA."""
+        # A response for the predictive shadow handshake (see
+        # _maybe_start_preassoc) arrives on this same callback -- dispatch
+        # it before the primary-only checks below, which would otherwise
+        # silently drop it (frame.src won't match self._target_peer, since
+        # this isn't the primary handshake at all).
+        if int(frame.src) == self._shadow_peer and self._shadow_state == AssocState.AUTHENTICATING:
+            self._on_shadow_auth_resp(frame)
+            return
         if self._ctx._assoc_state != AssocState.AUTHENTICATING:
             return
         if int(frame.src) != self._target_peer:
@@ -495,6 +762,10 @@ class AssocManager:
 
     def on_assoc_resp_received(self, frame: MacFrame) -> None:
         """Called by MacLayer when ASSOC_RESP frame arrives at STA."""
+        # See on_auth_resp_received -- same shadow-handshake dispatch.
+        if int(frame.src) == self._shadow_peer and self._shadow_state == AssocState.ASSOCIATING:
+            self._on_shadow_assoc_resp(frame)
+            return
         if self._ctx._assoc_state != AssocState.ASSOCIATING:
             return
         if int(frame.src) != self._target_peer:
@@ -614,7 +885,24 @@ class AssocManager:
         rng   = self._sim.engine.rng
         delay = self._ctx.difs + rng.randint(0, self._ctx.cw_min) * self._ctx.slot_time
 
-        if ftype == FrameType.AUTH and self._ctx._assoc_state == AssocState.AUTHENTICATING:
+        # Shadow (predictive pre-association) handshake retries are checked
+        # FIRST, matched tightly against self._shadow_peer specifically --
+        # the primary branches below don't check frame.dst at all (a
+        # pre-existing property, left alone: retargeting via STUCK_RETARGET
+        # means a stale primary frame's dst can legitimately differ from
+        # self._target_peer, and the original code already tolerates that).
+        # Checking shadow first with an explicit dst match means a shadow
+        # frame can never be misrouted into the looser primary branch, even
+        # in the narrow case where a stale shadow frame surfaces just after
+        # _roam_to has already reset shadow state and moved the primary
+        # machine into AUTHENTICATING for an unrelated target.
+        if ftype == FrameType.AUTH and self._shadow_state == AssocState.AUTHENTICATING and int(frame.dst) == self._shadow_peer:
+            dst = frame.dst
+            self._sim.engine.schedule_in(delay, lambda: self._send_shadow_auth_req(dst))
+        elif ftype == FrameType.ASSOC_REQ and self._shadow_state == AssocState.ASSOCIATING and int(frame.dst) == self._shadow_peer:
+            dst = frame.dst
+            self._sim.engine.schedule_in(delay, lambda: self._send_shadow_assoc_req(dst))
+        elif ftype == FrameType.AUTH and self._ctx._assoc_state == AssocState.AUTHENTICATING:
             dst = frame.dst
             self._sim.engine.schedule_in(delay, lambda: self._send_auth_req(dst))
         elif ftype == FrameType.ASSOC_REQ and self._ctx._assoc_state == AssocState.ASSOCIATING:
