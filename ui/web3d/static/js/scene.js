@@ -4,14 +4,28 @@
 // nearest-filtered pixel-art blocks.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { SKY_COLOR, tiledClone } from './core.js';
 import { TEX } from './textures.js';
 
 const canvas = document.getElementById('app-canvas');
-export const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
+// antialias:true smooths block silhouette edges (a geometry-edge fix, not
+// a lighting/material change) -- previously off, and every screenshot of
+// this scene showed visibly jagged block/roof edges as a result.
+export const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.BasicShadowMap;
+// PCFSoftShadowMap softens shadow EDGES only -- materials stay flat
+// Lambert, no PBR/bloom added, so this stays inside the "blocky-game
+// look" above. BasicShadowMap's hard-edged, slightly aliased shadow
+// boundary was the single most obviously "unpolished" thing in every
+// screenshot of this scene; Minecraft's own default shadows are soft-
+// edged too, so this isn't fighting the voxel aesthetic, just cleaning
+// up an artifact of the cheapest shadow-map filter.
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.NoToneMapping;
 
@@ -53,11 +67,36 @@ controls.minDistance = 20;
 controls.maxDistance = 6500;
 controls.target.set(0, 15, 0);
 
+// Contact-shadow-only SSAO: small kernel radius so it darkens the seams
+// where blocks actually touch (ground/building corners, prop clusters)
+// rather than producing the big soft grey halos a large-radius AO pass
+// casts around every object -- that broad-halo look reads as hazy/washed
+// out against flat Lambert materials and would fight the "blocky-game
+// look" this scene deliberately keeps (see the top-of-file comment).
+// Materials, lighting model and tone mapping are untouched; this only
+// adds a multiplicative darkening term in the few pixels where geometry
+// actually occludes itself.
+export const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const ssaoPass = new SSAOPass(scene, camera, window.innerWidth, window.innerHeight);
+ssaoPass.kernelRadius = 6;
+ssaoPass.minDistance = 0.0005;
+ssaoPass.maxDistance = 0.03;
+composer.addPass(ssaoPass);
+// Must be the last pass -- EffectComposer's intermediate render targets
+// don't apply the renderer's own sRGB output conversion automatically;
+// without this the composited frame comes out visibly washed out
+// relative to a plain renderer.render() call using the same
+// outputColorSpace setting above.
+composer.addPass(new OutputPass());
+
 export function resize() {
   const w = window.innerWidth, h = window.innerHeight;
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h);
+  composer.setSize(w, h);
+  ssaoPass.setSize(w, h);
 }
 window.addEventListener('resize', resize);
 

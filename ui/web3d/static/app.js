@@ -6,7 +6,7 @@
 // props), entities.js (nodes/links/packets/vehicles), smoke.js, hud.js.
 import { POLL_MS } from './js/core.js';
 import { loadAllTextures } from './js/textures.js';
-import { scene, camera, renderer, controls, resize, applyEnvironment } from './js/scene.js';
+import { camera, composer, controls, resize, applyEnvironment } from './js/scene.js';
 import {
   rebuildProps, rebuildBuildings, rebuildRoads,
   industrialRoadLoops, rebuildIndustrialTraffic, stepIndustrialTraffic,
@@ -111,7 +111,7 @@ function animate() {
   stepIndustrialTraffic(latestSimTime);
   stepMilitaryPatrol(latestSimTime, dt);
   controls.update();
-  renderer.render(scene, camera);
+  composer.render();
 }
 
 async function main() {
