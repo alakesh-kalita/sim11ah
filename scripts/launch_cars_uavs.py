@@ -7,8 +7,10 @@ shell) so the process isn't tied to that session's lifetime:
 
 3 APs in a line, 4 cars driving a highway back and forth through all of
 them, 3 UAVs flying random-waypoint across the whole corridor -- watch the
-node colors/edges change as cars and UAVs hand over between APs. Ctrl+C or
-close the Dashboard window to stop it.
+node colors/edges change as cars and UAVs hand over between APs. Opens
+both the 2D dashboard and the live 3D view (a browser tab) -- same layout,
+same live sim state, two ways to watch it. Ctrl+C or close the Dashboard
+window to stop it.
 
 No dropdown exposes this topology yet -- the interactive Network Topology
 control only composes star/relay x ground/UAV STA x grounded/aerial relay,
@@ -43,6 +45,8 @@ sim = build_sim(
 )
 gui = Dashboard(sim=sim, sim_builder=build_sim, initial_settings=initial)
 gui.update_idletasks()
+
+gui._open_3d_view()  # starts Web3DServer + opens the 3D view in your browser
 
 
 def _on_close():

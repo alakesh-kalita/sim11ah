@@ -88,9 +88,14 @@ class Web3DServer:
                     # The AP is a fixed reference point everything else (roads,
                     # filler buildings, the plaza) is laid out around -- same
                     # rule the 2D topology canvas's own drag handler enforces
-                    # (ui/topology_canvas.py's _on_press), so it's rejected
-                    # here too rather than trusting the browser alone.
-                    if node is None or node_id == 0:
+                    # (ui/topology_canvas.py's _on_press) and entities.js's
+                    # client-side draggable=false already prevents starting a
+                    # drag on any AP-role node -- rejected here too (not just
+                    # node 0, under multi-AP) as a server-side backstop rather
+                    # than trusting the browser alone.
+                    canvas = getattr(dashboard, "_net_canvas", None)
+                    ap_ids = getattr(canvas, "_ap_ids", {0}) if canvas is not None else {0}
+                    if node is None or node_id in ap_ids:
                         self._send_bytes(json.dumps({"ok": False}).encode("utf-8"),
                                           "application/json", cache=False)
                         return

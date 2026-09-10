@@ -217,6 +217,7 @@ function ensureNodeMesh(n) {
   if (entry) return entry;
   let built;
   if (n.is_drone || n.is_uav) built = buildDrone(n.role === 'RELAY');
+  else if (n.is_car) built = buildCar();
   else if (n.role === 'AP') built = buildApOrRelay(true);
   else if (n.role === 'RELAY') built = buildApOrRelay(false);
   else built = buildStation();
@@ -253,6 +254,9 @@ function altitudeFor(n, sx, sz) {
   // real-map twin reads) -- not a single flat height for every drone/UAV.
   if (n.is_drone || n.is_uav) return typeof n.altitude_m === 'number' ? n.altitude_m : 42;
   if (n.role === 'AP') return 0;
+  // A car is road-bound, not a building occupant -- unlike a plain STA,
+  // it should never rise onto a rooftop its (x, y) happens to cross.
+  if (n.is_car) return 0;
   const roof = roofHeightAt(sx, sz);
   return roof === null ? 0 : roof;
 }
@@ -267,6 +271,17 @@ export function updateNodes(nodesData) {
     if (entry.info) {
       updateInfoSprite(entry.info, nodeInfoText(n), nodeInfoColor(n));
     }
+    // A car's heading only ever flips instantly at each end of its
+    // highway (see sim11ah/mobility.py's highway_bounce_step) -- no
+    // mid-drive turning to animate, so this is a direct set, not lerped
+    // like position below. Same world-heading -> rotation.y convention
+    // updateVehicles already uses for the decorative Smart City traffic
+    // (local model forward is +X; three.js's rotation.y maps that to
+    // exactly the world heading, no sign flip needed).
+    if (n.is_car && typeof n.heading === 'number') {
+      entry.group.rotation.y = n.heading;
+    }
+
     // While a node is being dragged, interact.js owns its position
     // directly -- skip the server-driven lerp target so the drag doesn't
     // fight the next poll's (now-stale) position.
@@ -445,12 +460,17 @@ export function updatePackets(packets, pulses, nodesData) {
   }
 }
 
-// ---- Smart City vehicles (pure scenery, driven by server-computed
-// racetrack positions -- see ui/web3d/snapshot.py::_vehicles) -----------------
+// ---- Car body geometry, shared by two independent consumers:
+// buildVehicle (pure Smart City scenery, driven by server-computed
+// racetrack positions -- see ui/web3d/snapshot.py::_vehicles) and buildCar
+// (real "cars_uavs" topology STAs -- see ensureNodeMesh) below. The shape
+// itself doesn't care whether its position/color come from a decorative
+// time formula or a real node's live (x, y) and role -- only the two
+// callers differ. -----------------------------------------------------------
 const wheelMat = new THREE.MeshLambertMaterial({ color: 0x15171b });
-function buildVehicle() {
+function buildCarBody(bodyColor) {
   const group = new THREE.Group();
-  const bodyMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const bodyMat = new THREE.MeshLambertMaterial({ color: bodyColor });
   const body = new THREE.Mesh(new THREE.BoxGeometry(4.6, 1.4, 2.1), bodyMat);
   body.position.y = 0.95;
   body.castShadow = true;
@@ -479,6 +499,26 @@ function buildVehicle() {
   }
   return { group, bodyMat };
 }
+
+function buildVehicle() {
+  return buildCarBody(0xffffff); // recolored per-instance below, in updateVehicles
+}
+
+// Real network car (role 'STA', is_car -- see ensureNodeMesh): fixed body
+// color as its role marker (matches _CITY_VEHICLE_COLORS[0] in the 2D
+// topology canvas's own real-car overlay, for a loose visual echo between
+// the two views), plus the same live-status LED every other real node
+// gets (statusHex() sets it on every updateNodes() call, same as
+// buildStation()'s).
+function buildCar() {
+  const built = buildCarBody(0xc0392b);
+  const ledMat = new THREE.MeshBasicMaterial({ color: 0x34d399 });
+  const led = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.3, 1.3), ledMat);
+  led.position.set(0, 2.5, 0);
+  built.group.add(led);
+  return { group: built.group, ledMat, rotors: null };
+}
+
 let vehicleMeshes = [];
 export function updateVehicles(vehicles) {
   while (vehicleMeshes.length < vehicles.length) {

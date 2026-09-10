@@ -57,7 +57,7 @@ def _stable_bounds(canvas):
     constant: the city stops breathing, and the near-centre tall-building
     band stays put regardless of where the UAVs currently are.
     """
-    moving = canvas.drone_ids | canvas.uav_ids
+    moving = canvas.drone_ids | canvas.uav_ids | canvas.car_ids
     xs, ys = [], []
     for nid, n in canvas.sim.nodes.items():
         if nid in moving:
@@ -156,13 +156,30 @@ def _node_dict(canvas, nid: int, n, sim) -> Dict[str, Any]:
     assoc_state = int(getattr(ctx, "_assoc_state", 0)) if ctx is not None else 0
     assoc_peer = getattr(ctx, "_assoc_peer_id", None) if ctx is not None else None
     aid = getattr(ctx, "_aid", None) if ctx is not None else None
-    role = "AP" if nid == 0 else ("RELAY" if nid in canvas._relay_ids else "STA")
+    # canvas._ap_ids is a multi-AP-aware set (sim.config["topology"]["ap_ids"],
+    # falling back to {0}) -- was hardcoded to nid==0, which under multi-AP
+    # silently drew every AP past the first as a plain STA box in the 3D
+    # scene too (same bug the 2D canvas had -- see topology_canvas.py's
+    # sync_from_sim, which is where _ap_ids actually gets computed).
+    role = "AP" if nid in canvas._ap_ids else ("RELAY" if nid in canvas._relay_ids else "STA")
     try:
         range_m = range_m_for_node(n) or None
     except Exception:
         range_m = None
     is_drone = nid in canvas.drone_ids
     is_uav = nid in canvas.uav_ids
+    # Real network node on a highway_bounce_step crossing (see
+    # sim11ah/topology.py's CarsUavsBuilder / sim11ah/mobility.py) --
+    # distinct from is_drone/is_uav, entities.js dispatches it to its own
+    # car mesh the same way. Heading comes straight from sim._car_dirs
+    # (the ±1 flag highway_bounce_step maintains), not from diffing
+    # consecutive positions like the decorative Smart City vehicles below
+    # do -- cheaper and exact rather than a one-poll-lagged estimate.
+    is_car = nid in canvas.car_ids
+    heading = None
+    if is_car:
+        car_dirs = getattr(sim, "_car_dirs", {})
+        heading = 0.0 if car_dirs.get(nid, 1) >= 0 else math.pi
     altitude_m = None
     if is_drone or is_uav:
         try:
@@ -174,7 +191,7 @@ def _node_dict(canvas, nid: int, n, sim) -> Dict[str, Any]:
     # same code for the exact same node, rather than each view guessing
     # independently (or not showing one at all).
     error_code = None
-    if nid != 0:
+    if nid not in canvas._ap_ids:
         try:
             diag = _diagnose_unjoined(n, sim)
             if diag is not None:
@@ -198,6 +215,8 @@ def _node_dict(canvas, nid: int, n, sim) -> Dict[str, Any]:
         "aid": None if aid is None else int(aid),
         "is_drone": is_drone,
         "is_uav": is_uav,
+        "is_car": is_car,
+        "heading": heading,
         "range_m": range_m,
         "altitude_m": altitude_m,
         "error_code": error_code,
