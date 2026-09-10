@@ -72,6 +72,7 @@ def _make_traffic_model(cfg, traffic: str):
 def build_sim(
     num_stas: int, seed: int, traffic: str, raw_enable: bool,
     sensor_profile: str = None, environment: str = "Open Area",
+    num_aps: int = 1, ap_spacing_m: float = 400.0,
 ) -> Simulator:
     # A --sensor-profile overrides traffic and everything else in its
     # preset (see sim11ah/sensor_profiles.py) -- looked up against
@@ -88,17 +89,42 @@ def build_sim(
         cfg = default_config(raw_enable=raw_enable, traffic_mode=traffic)
     sim = Simulator(config=cfg, seed=seed)
 
-    StarBuilder.build(
-        sim,
-        num_stas=int(num_stas),
-        link_cfg={"rate_bps": 300000, "prop_delay": 0.0003, "per": 0.0},
-    )
+    if int(num_aps) > 1:
+        MultiApBuilder.build(
+            sim, num_aps=int(num_aps), ap_spacing_m=float(ap_spacing_m),
+            num_stas=int(num_stas),
+            link_cfg={"rate_bps": 300000, "prop_delay": 0.0003, "per": 0.0},
+        )
+    else:
+        StarBuilder.build(
+            sim,
+            num_stas=int(num_stas),
+            link_cfg={"rate_bps": 300000, "prop_delay": 0.0003, "per": 0.0},
+        )
 
     for nid, node in sim.nodes.items():
-        if nid == 0:
+        if node.is_ap:
             node.app.set_traffic_model(None)
         else:
             node.app.set_traffic_model(_make_traffic_model(cfg, effective_traffic))
+
+    # Multi-AP: phase-stagger each AP's first beacon (see
+    # mac/facade.py's ap_start_beacons) before Simulator.start() runs --
+    # this file never calls node.start()/ap_start_beacons() itself, relying
+    # entirely on Simulator.start() (invoked internally by run()/
+    # run_and_finalize()) to auto-start each AP's beacon loop at offset 0.0.
+    # ap_start_beacons() is idempotent (only the first call per node
+    # schedules anything), so calling it explicitly here first makes this
+    # staggered call win over that later automatic one. Single-AP
+    # (num_aps==1, the default) is untouched -- no explicit call, same as
+    # before.
+    if int(num_aps) > 1:
+        ap_ids = sim.config.get("topology", {}).get("ap_ids", [])
+        beacon_interval = float(cfg["mac"]["beacon_interval"])
+        for idx, ap_id in enumerate(ap_ids):
+            sim.nodes[ap_id].mac.ap_start_beacons(
+                phase_offset_s=idx * beacon_interval / max(1, len(ap_ids))
+            )
 
     return sim
 
