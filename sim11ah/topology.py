@@ -296,6 +296,119 @@ class MultiApBuilder:
         return 2.0 * float(ap0.phy.nominal_range_m()) - float(ap_spacing_m)
 
 
+class CarsUavsBuilder:
+    """
+    A multi-AP corridor populated with two kinds of mobile STA: cars
+    driving a straight highway through the AP chain, and UAVs flying
+    random-waypoint across the same span -- a layout for visualizing
+    inter-AP handover with vehicle-mounted and airborne devices instead of
+    static ground STAs. Built ON TOP of MultiApBuilder (same AP layout +
+    all-pairs linking), not a fork of it -- this class only adds role
+    tagging and initial positions for the two mobility kinds; actually
+    driving them each tick is sim11ah/mobility.py's job
+    (highway_bounce_step / uav_waypoint_step), called from wherever runs
+    the simulation (a GUI tick loop, or a headless script).
+
+    Node layout:
+      0 .. K-1                              : AP nodes (MultiApBuilder's layout)
+      K .. K+num_cars-1                     : car STAs
+      K+num_cars .. K+num_cars+num_uavs-1   : UAV STAs
+
+    sim.config["topology"]["car_ids"] / "uav_ids" record which STA ids are
+    which, mirroring the existing ap_ids/relay_ids convention -- callers
+    (GUI icon/mobility drivers, headless scripts) key off these rather
+    than guessing from node_id ranges.
+
+    KNOWN LIMITATION -- build with raw_enable=False for this layout. With
+    RAW enabled, a STA whose reactive roam trigger fires repeatedly while
+    flying/driving through a dense multi-AP overlap band (several APs'
+    coverage circles all reaching it at once) can get permanently stuck:
+    AUTH_REQ goes out, never gets ACKed, STUCK_RETARGET cycles to a
+    different AP, repeat forever -- confirmed via direct event trace (the
+    STA's own AUTH_REQ transmissions simply stop completing once this
+    starts, for the rest of the run) with 3 APs at 900m spacing. Root
+    cause not diagnosed (something in the RAW slot/schedule interaction
+    for an unassociated STA mid-handshake near multiple APs' independent,
+    staggered RAW schedules, not a mobility or topology bug -- confirmed
+    by re-running the identical scenario with raw_enable=False, which
+    associates and hands over cleanly). Fixing that is a separate,
+    deeper investigation; this layout exists to visualize handover
+    behavior, not stress-test RAW scheduling under it, so DCF-only is the
+    right default until that's understood.
+    """
+
+    @staticmethod
+    def build(
+        sim: "Simulator",
+        num_aps: int,
+        ap_spacing_m: float,
+        num_cars: int,
+        num_uavs: int,
+        link_cfg: Dict[str, Any],
+        car_lane_offset_m: float = 25.0,
+    ) -> List["Node"]:
+        num_aps = max(1, int(num_aps))
+        num_cars = int(num_cars)
+        num_uavs = int(num_uavs)
+        if num_cars < 0 or num_uavs < 0:
+            raise ValueError(
+                f"num_cars ({num_cars}) and num_uavs ({num_uavs}) must both be >= 0"
+            )
+
+        span = max(1.0, (num_aps - 1) * float(ap_spacing_m))
+
+        # Cars start on the highway itself (a fixed-offset lane parallel to
+        # the AP axis, alternating sides so opposite-direction traffic
+        # doesn't visually overlap -- purely cosmetic, doesn't affect
+        # RSSI/PHY, which only cares about the resulting (x, y)).
+        # highway_bounce_step then drives them back and forth for real.
+        car_positions = []
+        for j in range(num_cars):
+            frac = (j + 0.5) / max(1, num_cars)
+            lane = car_lane_offset_m if j % 2 == 0 else -car_lane_offset_m
+            car_positions.append((frac * span, lane))
+
+        # UAVs start scattered near the corridor; uav_waypoint_step then
+        # flies them on a random-waypoint pattern across the whole
+        # AP-spanning region (see uav_region below), not anchored to a
+        # single AP.
+        uav_positions = [
+            ((j + 0.5) / max(1, num_uavs) * span, 0.0)
+            for j in range(num_uavs)
+        ]
+
+        sta_positions = car_positions + uav_positions
+        num_stas = num_cars + num_uavs
+
+        all_nodes = MultiApBuilder.build(
+            sim, num_aps=num_aps, ap_spacing_m=ap_spacing_m,
+            num_stas=num_stas, link_cfg=link_cfg,
+            sta_positions=sta_positions if sta_positions else None,
+        )
+
+        car_ids = [num_aps + j for j in range(num_cars)]
+        uav_ids = [num_aps + num_cars + j for j in range(num_uavs)]
+
+        topo_cfg = sim.config.setdefault("topology", {})
+        topo_cfg["mode"] = "cars_uavs"
+        topo_cfg["car_ids"] = car_ids
+        topo_cfg["uav_ids"] = uav_ids
+        topo_cfg["corridor_span_m"] = span
+
+        return all_nodes
+
+    @staticmethod
+    def uav_region(
+        sim: "Simulator", ap_spacing_m: float, num_aps: int, margin_m: float = 150.0,
+    ) -> Tuple[float, float, float, float]:
+        """(x_min, y_min, x_max, y_max) spanning the whole AP corridor plus
+        a margin -- the region to pass to mobility.uav_waypoint_step so
+        UAVs wander across every AP's coverage instead of drifting off
+        past the last one or clumping in the middle."""
+        span = max(1.0, (max(1, int(num_aps)) - 1) * float(ap_spacing_m))
+        return (-float(margin_m), -float(margin_m), span + float(margin_m), float(margin_m))
+
+
 class StarBuilder:
     @staticmethod
     def build(sim: "Simulator", num_stas: int, link_cfg: Dict[str, Any]) -> List["Node"]:
