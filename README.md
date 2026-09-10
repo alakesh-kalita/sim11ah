@@ -378,22 +378,6 @@ No third-party simulation frameworks are required. The entire discrete-event eng
 
 ---
 
-## Citation
-
-If you use sim11ah in your research, please cite:
-
-```bibtex
-@article{kalita2026sim11ah,
-  title   = {sim11ah: A Discrete-Event Simulator for IEEE 802.11ah
-             MAC/PHY Optimization in Dense IoT Deployments},
-  author  = {Kalita, Alakesh},
-  journal = {IEEE Access},
-  year    = {2026},
-}
-```
-
----
-
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.
