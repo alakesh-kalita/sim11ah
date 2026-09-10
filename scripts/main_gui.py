@@ -1,6 +1,6 @@
 from sim11ah.config import default_config
 from sim11ah.simulator import Simulator
-from sim11ah.topology import StarBuilder, RelayBuilder, MultiApBuilder
+from sim11ah.topology import StarBuilder, RelayBuilder, MultiApBuilder, CarsUavsBuilder
 from sim11ah.app import (
     PeriodicTraffic,
     PoissonTraffic,
@@ -71,6 +71,8 @@ def build_sim(
     app_overrides: dict | None = None,
     num_aps: int = 2,
     ap_spacing_m: float = 400.0,
+    num_cars: int = 3,
+    num_uavs: int = 3,
 ):
     # A sensor profile (sim11ah/sensor_profiles.py) carries its own
     # traffic/packet_size_bytes/etc., which should win over the plain
@@ -141,6 +143,20 @@ def build_sim(
         MultiApBuilder.build(
             sim, num_aps=max(1, int(num_aps)), ap_spacing_m=float(ap_spacing_m),
             num_stas=int(num_stas), link_cfg=access_cfg,
+        )
+    elif topology == "cars_uavs":
+        # See CarsUavsBuilder's own docstring for why raw_enable is forced
+        # off here regardless of the raw_enable argument: RAW scheduling
+        # has a confirmed, currently-undiagnosed failure mode for a STA
+        # repeatedly re-triggering handovers while moving through a dense
+        # multi-AP overlap band (permanently stuck AUTH_REQ retries, 0%
+        # eventual association) -- this layout exists to visualize
+        # handover, not silently produce a broken demo.
+        cfg["mac"]["raw_enable"] = False
+        CarsUavsBuilder.build(
+            sim, num_aps=max(1, int(num_aps)), ap_spacing_m=float(ap_spacing_m),
+            num_cars=max(0, int(num_cars)), num_uavs=max(0, int(num_uavs)),
+            link_cfg=access_cfg,
         )
     else:
         StarBuilder.build(sim, num_stas=int(num_stas), link_cfg=access_cfg)
