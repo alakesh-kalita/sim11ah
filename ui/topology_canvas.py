@@ -2374,7 +2374,19 @@ class NetworkCanvas(tk.Canvas):
             {1: self._bg_industrial_v1, 2: self._bg_industrial_v2,
              3: self._bg_industrial_v3}[variant](W, H)
         elif self.environment == "Smart City":
-            {1: self._bg_city_v1, 2: self._bg_city_v2, 3: self._bg_city_v3}[variant](W, H)
+            # cars_uavs mode gets its own dedicated highway background
+            # instead of the generic downtown-grid v1/v2/v3 -- those draw
+            # streets at arbitrary box-fraction offsets with no
+            # relationship to where real cars/scooters actually drive
+            # (see CarsUavsBuilder's car_lane_offset_m), so the real
+            # vehicles were rendering beside the drawn road, not on it.
+            # Ignores layout_variant entirely, same as the 3D fix
+            # (ui/web3d/snapshot.py's _road_loops) this mirrors.
+            mode = self.sim.config.get("topology", {}).get("mode") if self.sim else None
+            if mode == "cars_uavs":
+                self._bg_city_highway(W, H)
+            else:
+                {1: self._bg_city_v1, 2: self._bg_city_v2, 3: self._bg_city_v3}[variant](W, H)
         elif self.environment == "Military Zone":
             # Single consolidated layout -- no variant switch (see
             # _bg_military_v1's docstring for what it includes).
@@ -3559,6 +3571,73 @@ class NetworkCanvas(tk.Canvas):
             rx, ry = (bx0 + bx1) / 2.0 + skew, (by0 + by1) / 2.0 - h
             self.create_oval(rx - 3, ry - 3, rx + 3, ry + 3,
                               fill=roof, outline=_TOWER_EDGE, width=1)
+
+    def _bg_city_highway(self, W: int, H: int) -> None:
+        """cars_uavs mode's dedicated Smart City background: a real
+        highway, not the generic 3x3 downtown grid v1/v2/v3 draw. Its two
+        paved lanes sit at world y = +/-car_lane_offset_m -- the exact
+        same y real cars/scooters drive at (see CarsUavsBuilder's
+        car_lane_offset_m / sim11ah/mobility.py's highway_bounce_step) --
+        rather than at some arbitrary fraction of the live view's
+        bounding box, so a car always renders sitting on this road, not
+        floating beside it. Low-rise buildings line both shoulders the
+        length of the corridor, mirroring the 3D view's own dedicated
+        cars_uavs road loops (ui/web3d/snapshot.py's _road_loops)."""
+        self.create_rectangle(0, 0, W, H, fill=_CITY_PARK_LT, outline="")
+        scale = self._transform()[0]
+
+        topo_cfg = self.sim.config.get("topology", {})
+        car_off = float(topo_cfg.get("car_lane_offset_m", 25.0))
+        span = float(topo_cfg.get("corridor_span_m", 0.0))
+
+        road_px = max(10, min(26, int(7.0 * scale)))
+        sidewalk_px = max(3, int(road_px * 0.28))
+
+        # The road itself extends a little past each end AP -- fixed
+        # world coordinates, not the live auto-fit bounds (which shrink/
+        # grow as UAVs wander), so the highway always reads as a real
+        # road continuing past the visible cluster rather than one that
+        # resizes under it.
+        x0, x1 = -60.0, span + 60.0
+        for lane_y in (car_off, -car_off):
+            p0 = self._world_to_px(x0, lane_y)
+            p1 = self._world_to_px(x1, lane_y)
+            self.create_line(p0[0], p0[1], p1[0], p1[1], fill=_CITY_SIDEWALK,
+                              width=road_px + sidewalk_px * 2)
+            self.create_line(p0[0], p0[1], p1[0], p1[1], fill=_CITY_ROAD, width=road_px)
+            self.create_line(p0[0], p0[1], p1[0], p1[1], fill=_CITY_ROAD_MARK,
+                              width=1, dash=(8, 7))
+
+        # Low-rise buildings line both shoulders, spaced along the whole
+        # corridor and offset just past the road's outer sidewalk edge --
+        # same _city_tower glyph/obstacle registration v1-v3 use, just
+        # arranged along a straight strip instead of a 3x3 block grid.
+        losses = {1: 30.0, 2: 22.0, 3: 15.0}
+        tower_wh = {1: (30.0, 26.0), 2: (26.0, 22.0), 3: (20.0, 18.0)}
+        shoulder = car_off + 26.0
+        spacing = 90.0
+        n_slots = max(1, int(span / spacing))
+        for row_sign in (1.0, -1.0):
+            for i in range(n_slots + 1):
+                wx = i * spacing
+                if self._hash01(int(wx), int(row_sign), 41) < 0.35:
+                    continue  # the occasional gap, not solid wall-to-wall
+                tier = 1 if self._hash01(int(wx), int(row_sign), 42) < 0.15 else (
+                    2 if self._hash01(int(wx), int(row_sign), 43) < 0.55 else 3)
+                w_m, h_m = tower_wh[tier]
+                wy = row_sign * (shoulder + h_m / 2.0)
+                bx0, by0 = self._world_to_px(wx - w_m / 2.0, wy - h_m / 2.0)
+                bx1, by1 = self._world_to_px(wx + w_m / 2.0, wy + h_m / 2.0)
+                rect = (min(bx0, bx1), min(by0, by1), max(bx0, bx1), max(by0, by1))
+                self._city_tower(*rect, tier=tier, seed=int(wx) * 7 + (1 if row_sign > 0 else 0))
+                self._register_obstacle(Obstacle(
+                    kind="rect",
+                    x0=wx - w_m / 2.0, y0=wy - h_m / 2.0,
+                    x1=wx + w_m / 2.0, y1=wy + h_m / 2.0,
+                    loss_db=losses[tier], label=f"hwy-{int(wx)}-{int(row_sign)}",
+                ))
+
+        self._map_chrome(W, H)
 
     def _bg_city_v1(self, W: int, H: int) -> None:
         """Layout variant 1 -- "Downtown Grid": a 3x3 block street grid,
