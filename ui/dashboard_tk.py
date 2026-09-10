@@ -53,6 +53,9 @@ except ImportError:
         _ap_range_m,
     )
 
+from sim11ah.mobility import highway_bounce_step, uav_waypoint_step
+from sim11ah.topology import CarsUavsBuilder
+
 from sim11ah.sensor_profiles import list_profiles as _sensor_list_profiles, get_profile as _sensor_get_profile
 
 # ─── Colour Palette ───────────────────────────────────────────────────────────
@@ -2237,6 +2240,39 @@ class Dashboard(tk.Tk):
                 if uav_ids:
                     self.sim._uav_speed_mps = float(self._uav_speed_var.get())
                     advance_uav_positions(self.sim, uav_ids, float(self.step_dt))
+
+            # Cars + UAVs multi-AP layout (see sim11ah/topology.py's
+            # CarsUavsBuilder): a distinct mode from plain "uav" above --
+            # multiple real APs (topo_cfg["ap_ids"]), cars driving a
+            # highway (sim11ah/mobility.py's highway_bounce_step) rather
+            # than wandering, and UAVs flying across the WHOLE corridor
+            # (uav_waypoint_step) rather than circling a single AP, so
+            # this can't reuse advance_uav_positions above (anchored on
+            # node 0 specifically). Reuses the existing UAV Speed slider
+            # for the UAV leg -- no dedicated Car Speed control exists
+            # yet, so highway speed is a fixed, realistic default for now.
+            if mode == "cars_uavs":
+                car_ids = topo_cfg.get("car_ids", [])
+                uav_ids2 = topo_cfg.get("uav_ids", [])
+                dt = float(self.step_dt)
+                if car_ids:
+                    span = float(topo_cfg.get("corridor_span_m", 0.0))
+                    car_speed_mps = 15.0  # ~54 km/h
+                    for cid in car_ids:
+                        if cid in self.sim.nodes:
+                            lane_y = self.sim.nodes[cid].pos[1]
+                            highway_bounce_step(
+                                self.sim, cid, dt, car_speed_mps,
+                                lane_y=lane_y, x_min=0.0, x_max=span,
+                            )
+                if uav_ids2:
+                    num_aps = len(topo_cfg.get("ap_ids", [0]))
+                    ap_spacing_m = float(topo_cfg.get("corridor_span_m", 0.0)) / max(1, num_aps - 1) if num_aps > 1 else 0.0
+                    region = CarsUavsBuilder.uav_region(self.sim, ap_spacing_m=ap_spacing_m, num_aps=num_aps)
+                    uav_speed_mps = float(self._uav_speed_var.get())
+                    for uid in uav_ids2:
+                        if uid in self.sim.nodes:
+                            uav_waypoint_step(self.sim, uid, dt, uav_speed_mps, region=region)
         except Exception:
             pass
 

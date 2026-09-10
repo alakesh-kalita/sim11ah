@@ -1202,6 +1202,8 @@ class NetworkCanvas(tk.Canvas):
         self._relay_ids: Set[int] = set()
         self.drone_ids: Set[int] = set()
         self.uav_ids: Set[int] = set()
+        self.car_ids: Set[int] = set()
+        self._ap_ids: Set[int] = {0}
         self._drone_trails: Dict[int, list] = {}
         self._drag_id: Optional[int] = None
         # Group-drag state: which nodes are actively being dragged right
@@ -1315,11 +1317,23 @@ class NetworkCanvas(tk.Canvas):
         self._relay_ids = set(topo_cfg.get("relay_ids", []))
         mode = topo_cfg.get("mode", "star")
         relay_placement = topo_cfg.get("relay_placement", "optimal")
+        # ap_ids is only ever set by MultiApBuilder/CarsUavsBuilder (mirrors
+        # relay_ids' own convention) -- every other topology has exactly
+        # one AP, at node 0, same as always.
+        self._ap_ids = set(topo_cfg.get("ap_ids", [0]))
         self.drone_ids = set(self._relay_ids) if mode in ("aerial_relay", "aerial_relay_uav") else set()
-        self.uav_ids = (
-            set(nid for nid in sim.nodes if nid != 0 and nid not in self._relay_ids)
-            if mode in ("uav", "aerial_relay_uav", "relay_uav") else set()
-        )
+        if mode == "cars_uavs":
+            # Real ids from the builder, not "everything that isn't node
+            # 0" -- that guess would misclassify the OTHER APs (node ids
+            # 1..K-1) as end nodes under multi-AP.
+            self.car_ids = set(topo_cfg.get("car_ids", []))
+            self.uav_ids = set(topo_cfg.get("uav_ids", []))
+        else:
+            self.car_ids = set()
+            self.uav_ids = (
+                set(nid for nid in sim.nodes if nid != 0 and nid not in self._relay_ids)
+                if mode in ("uav", "aerial_relay_uav", "relay_uav") else set()
+            )
         self._drone_trails.clear()
         self._manual_scale = None    # a rebuilt/reset topology re-fits the view
         self._view_center = None
@@ -1416,6 +1430,7 @@ class NetworkCanvas(tk.Canvas):
         self._draw_selection_overlay(nodes)
         self._draw_drones_overlay(nodes)
         self._draw_uavs_overlay(nodes)
+        self._draw_cars_overlay(nodes)
         self._draw_vehicles_overlay(nodes)
         self._draw_military_overlay(nodes)
 
@@ -1539,11 +1554,19 @@ class NetworkCanvas(tk.Canvas):
         nothing else to associate with. In "aerial_relay_uav" mode (UAV
         end-nodes flying alongside aerial relays) it's just as often a
         relay, so the link is drawn to whichever node id the UAV's real
-        _assoc_peer_id resolves to, not hardcoded to the AP."""
+        _assoc_peer_id resolves to, not hardcoded to the AP.
+
+        The roam-boundary circle below is skipped for "cars_uavs" mode:
+        it's anchored on a single AP (node 0), but that mode's UAVs fly
+        random-waypoint across the WHOLE multi-AP corridor
+        (uav_waypoint_step), not a fixed annulus around one AP -- drawing
+        it there would show a boundary the UAVs routinely fly outside of,
+        which is misleading rather than just incomplete."""
         if not self.uav_ids:
             return
+        mode = self.sim.config.get("topology", {}).get("mode") if self.sim else None
         ap = nodes.get(0)
-        if ap is not None:
+        if ap is not None and mode != "cars_uavs":
             apx, apy = self._world_to_px(*ap.pos)
             scale = self._transform()[0]
             _, roam_max = _uav_roam_bounds(self.sim)
@@ -1575,6 +1598,44 @@ class NetworkCanvas(tk.Canvas):
             self._draw_fading_trail(trail)
 
             self._draw_drone_icon(upx, upy, uid, prefix="U", node=un)
+
+    def _draw_cars_overlay(self, nodes) -> None:
+        """Cars in "cars_uavs" mode (see sim11ah/topology.py's
+        CarsUavsBuilder): real simulator nodes on a live highway_bounce_step
+        crossing, unlike _draw_vehicles_overlay's Smart-City traffic (pure
+        decoration, no association/physics) -- reuses that method's own
+        _draw_car_icon glyph, since the icon itself doesn't care whether
+        its position came from a decorative time formula or a real node's
+        actual (x, y), just heading and pixel position.
+
+        Heading comes from sim._car_dirs (the direction flag
+        highway_bounce_step maintains, +1/-1 along the corridor's x-axis)
+        rather than from consecutive positions like the Smart City loop
+        does -- cheaper, and exact rather than a one-tick-lagged estimate."""
+        if not self.car_ids or self.sim is None:
+            return
+        car_dirs = getattr(self.sim, "_car_dirs", {})
+        n = len(_CITY_VEHICLE_COLORS)
+        for i, cid in enumerate(sorted(self.car_ids)):
+            cn = nodes.get(cid)
+            if cn is None:
+                continue
+            cpx, cpy = self._world_to_px(*cn.pos)
+
+            peer_id = _assoc_peer(cn)
+            peer = nodes.get(peer_id) if peer_id is not None else None
+            if peer is not None:
+                ppx, ppy = self._world_to_px(*peer.pos)
+                self.create_line(ppx, ppy, cpx, cpy, fill=_BORDER, width=1, tags=("ovl",))
+
+            trail = self._drone_trails.setdefault(cid, [])
+            trail.append(cn.pos)
+            if len(trail) > 16:
+                del trail[0]
+            self._draw_fading_trail(trail)
+
+            heading = 0.0 if car_dirs.get(cid, 1) >= 0 else math.pi
+            self._draw_car_icon(cpx, cpy, heading, _CITY_VEHICLE_COLORS[i % n])
 
     # ── Smart City traffic (pure scenery -- not simulator nodes) ─────────
     def _rect_loop_pos(self, cx: float, cy: float, hw: float, hh: float, t: float):
@@ -1993,7 +2054,7 @@ class NetworkCanvas(tk.Canvas):
         # regardless of real MAC state made every node look connected even
         # when it wasn't.
         for nid, n in nodes.items():
-            if nid == 0 or nid in self.drone_ids or nid in self.uav_ids:
+            if nid in self._ap_ids or nid in self.drone_ids or nid in self.uav_ids or nid in self.car_ids:
                 continue
             peer = _assoc_peer(n)
             if peer is None or peer not in nodes:
@@ -2002,19 +2063,20 @@ class NetworkCanvas(tk.Canvas):
             pxp, pyp = self._world_to_px(*nodes[peer].pos)
             if nid in self._relay_ids:
                 self.create_line(pxp, pyp, px1, py1, fill=_PURPLE, width=2, dash=(5, 3))
-            elif peer == 0:
+            elif peer in self._ap_ids:
                 self.create_line(pxp, pyp, px1, py1, fill=_GREEN, dash=(2, 3))
             else:
                 self.create_line(pxp, pyp, px1, py1, fill=_BORDER, width=1)
 
-        # Nodes (drones/UAVs excluded -- drawn every tick by the overlay
-        # instead, since their position changes every tick, not fixed).
+        # Nodes (drones/UAVs/cars excluded -- drawn every tick by their own
+        # overlay instead, since their position changes every tick, not
+        # fixed).
         for nid, n in nodes.items():
-            if nid in self.drone_ids or nid in self.uav_ids:
+            if nid in self.drone_ids or nid in self.uav_ids or nid in self.car_ids:
                 continue
             px, py = self._world_to_px(*n.pos)
-            if nid == 0:
-                r, fill, outline, inner = 14, _BLUE, _BLUE_DK, "AP"
+            if nid in self._ap_ids:
+                r, fill, outline, inner = 14, _BLUE, _BLUE_DK, "AP" if len(self._ap_ids) == 1 else f"AP{nid}"
             elif nid in self._relay_ids:
                 # Role (relay) stays legible via the purple outline/label;
                 # fill reflects this relay's own live uplink association to
@@ -2036,7 +2098,7 @@ class NetworkCanvas(tk.Canvas):
             else:
                 self.create_text(px, py, text=str(nid), font=("Arial", 7, "bold"), fill="white")
 
-            if nid != 0:
+            if nid not in self._ap_ids:
                 self.create_text(px, py + r + 9, text=_fmt_dist_m(dist_to_ap_m(n, self.sim)),
                                   font=("Arial", 7), fill=_MUTED)
                 self.create_text(px, py + r + 19, text=_fmt_rssi(n),
