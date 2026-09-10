@@ -127,6 +127,45 @@ def _road_loops(canvas) -> List[Dict[str, float]]:
     xmin, xmax, ymin, ymax = _stable_bounds(canvas)
     cx_w, cy_w = (xmin + xmax) / 2.0, (ymin + ymax) / 2.0
     wxs, wys = xmax - xmin, ymax - ymin
+
+    # "cars_uavs" mode gets its own dedicated pair of loops, ignoring
+    # layout_variant entirely -- the generic downtown-grid/nested-loop
+    # shapes above are all fractions (13-40%) of the padded stable_bounds
+    # box, tuned for a roughly SQUARE scatter radiating out from one
+    # central AP. This corridor is nothing like that: it's a long, narrow
+    # strip (a 3-AP, 900m-spacing corridor is ~7x wider than it is deep),
+    # so those same fractions left the drawn roads/buildings covering only
+    # the middle third or so of the highway's actual length -- real cars
+    # and UAVs were correctly staying inside _stable_bounds the whole
+    # time, just driving/flying straight past the point where the visible
+    # city stopped, which is exactly what reads as "outside the area".
+    #
+    # Inner loop = the actual highway: hh is set to car_lane_offset_m
+    # itself (not a fraction of anything), so ringMesh's paved band --
+    # centred at y = cy_w +/- hh, width (ROAD_HALF_W+SIDEWALK_W)*2 either
+    # side of that -- lands exactly straddling the real car lanes
+    # highway_bounce_step drives (see CarsUavsBuilder's _lane_positions,
+    # cars at +/-car_lane_offset_m, scooters at the smaller
+    # +/-scooter_lane_offset_m, inside the same band nearer its inner
+    # edge). hw reaches a little past each end AP so the highway visibly
+    # continues beyond the cluster instead of stopping dead at it.
+    #
+    # Outer loop = the city limits: exactly the _stable_bounds box itself
+    # (the same region CarsUavsBuilder.uav_region constrains UAVs to), not
+    # a fraction of it -- a UAV can never actually fly past this ring, so
+    # it can never again read as having wandered outside the city, and
+    # addCityFillerBuildings fills the band between the two loops with
+    # buildings lining both sides of the highway all the way to that
+    # ring, rather than stopping at the old, much smaller fraction.
+    topo_cfg = canvas.sim.config.get("topology", {})
+    if topo_cfg.get("mode") == "cars_uavs":
+        span = float(topo_cfg.get("corridor_span_m", wxs))
+        car_off = float(topo_cfg.get("car_lane_offset_m", 25.0))
+        return [
+            {"cx": cx_w, "cy": cy_w, "hw": span / 2.0 + 60.0, "hh": car_off, "period_s": 22.0},
+            {"cx": cx_w, "cy": cy_w, "hw": wxs / 2.0, "hh": wys / 2.0, "period_s": 34.0},
+        ]
+
     variant = int(getattr(canvas, "layout_variant", 1) or 1)
     if variant == 3:
         return [

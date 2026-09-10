@@ -350,7 +350,14 @@ class CarsUavsBuilder:
         link_cfg: Dict[str, Any],
         num_scooters: int = 0,
         car_lane_offset_m: float = 25.0,
-        scooter_lane_offset_m: float = 12.0,
+        # 15.0, not a value closer to 0 -- ui/web3d/snapshot.py's
+        # _road_loops draws the 3D highway's paved band straddling
+        # +/-car_lane_offset_m with an ~11m-wide unpaved median either
+        # side of the centreline (ROAD_HALF_W+SIDEWALK_W=14 short of
+        # car_lane_offset_m=25); 15.0 clears that median by a comfortable
+        # 4m rather than sitting right on its edge, so scooters render on
+        # pavement, not straddling the kerb.
+        scooter_lane_offset_m: float = 15.0,
         uav_margin_m: float = 150.0,
     ) -> List["Node"]:
         num_aps = max(1, int(num_aps))
