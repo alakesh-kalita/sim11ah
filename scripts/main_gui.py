@@ -1,6 +1,6 @@
 from sim11ah.config import default_config
 from sim11ah.simulator import Simulator
-from sim11ah.topology import StarBuilder, RelayBuilder
+from sim11ah.topology import StarBuilder, RelayBuilder, MultiApBuilder
 from sim11ah.app import (
     PeriodicTraffic,
     PoissonTraffic,
@@ -69,6 +69,8 @@ def build_sim(
     raw_slot_duration: float = 0.014,
     video_fps: float = 5.0,
     app_overrides: dict | None = None,
+    num_aps: int = 2,
+    ap_spacing_m: float = 400.0,
 ):
     # A sensor profile (sim11ah/sensor_profiles.py) carries its own
     # traffic/packet_size_bytes/etc., which should win over the plain
@@ -135,6 +137,11 @@ def build_sim(
             #   relay_uav        -- relays grounded, STAs fly independently
             #   aerial_relay_uav -- both fly at once
             sim.config.setdefault("topology", {})["mode"] = topology
+    elif topology == "multi_ap":
+        MultiApBuilder.build(
+            sim, num_aps=max(1, int(num_aps)), ap_spacing_m=float(ap_spacing_m),
+            num_stas=int(num_stas), link_cfg=access_cfg,
+        )
     else:
         StarBuilder.build(sim, num_stas=int(num_stas), link_cfg=access_cfg)
         if topology == "uav":
@@ -146,13 +153,26 @@ def build_sim(
             sim.config.setdefault("topology", {})["mode"] = "uav"
 
     for nid, node in sim.nodes.items():
-        if nid == 0 or node.role == "RELAY":
+        if node.is_ap or node.role == "RELAY":
             node.app.set_traffic_model(None)
         else:
             node.app.set_traffic_model(_make_traffic(cfg, effective_traffic))
 
-    if 0 in sim.nodes:
-        sim.nodes[0].mac.ap_start_beacons()
+    # Every AP starts beaconing with its own phase offset, not just node 0 --
+    # ap_ids is only set by MultiApBuilder (mirrors relay_ids' existing
+    # convention); StarBuilder/RelayBuilder topologies fall back to [0],
+    # their only AP, unchanged. MUST run BEFORE node.start(): MacLayer.
+    # start() itself unconditionally calls ap_start_beacons() (offset 0.0)
+    # for every AP, but ap_start_beacons() is now idempotent (see
+    # mac/facade.py) so whichever call happens first wins -- this explicit,
+    # phase-staggered call must be first so start()'s automatic zero-offset
+    # call becomes the suppressed no-op instead of the other way around.
+    ap_ids = sim.config.get("topology", {}).get("ap_ids", [0] if 0 in sim.nodes else [])
+    beacon_interval = float(cfg["mac"]["beacon_interval"])
+    for idx, ap_id in enumerate(ap_ids):
+        sim.nodes[ap_id].mac.ap_start_beacons(
+            phase_offset_s=idx * beacon_interval / max(1, len(ap_ids))
+        )
 
     for node in sim.nodes.values():
         node.start()

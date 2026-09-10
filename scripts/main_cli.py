@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 from sim11ah.config import default_config
 from sim11ah.simulator import Simulator
-from sim11ah.topology import StarBuilder
+from sim11ah.topology import StarBuilder, MultiApBuilder
 from sim11ah.app import (
     PeriodicTraffic,
     PoissonTraffic,

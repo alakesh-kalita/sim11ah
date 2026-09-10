@@ -436,6 +436,21 @@ class MacLayer:
     def ap_start_beacons(self, phase_offset_s: float = 0.0) -> None:
         if not self._is_ap():
             return
+        # Idempotency guard: each call schedules its own independent,
+        # self-perpetuating engine event chain (_ap_send_beacon reschedules
+        # itself via schedule_in on every firing) -- it does NOT cancel a
+        # chain from a prior call. MacLayer.start() unconditionally calls
+        # this (offset 0.0) for every AP node; a caller that wants a
+        # phase-staggered first beacon (multi-AP) must call this explicitly
+        # BEFORE node.start(), and this guard makes that explicit call win,
+        # suppressing start()'s automatic follow-up call as a no-op. Without
+        # this guard, two chains end up interleaved and racing on the same
+        # shared ctx._ap_beacon_count/_next_beacon_target state -- caught
+        # empirically as a genuine duplicate beacon transmission ~7ms after
+        # simulation start, present even in the plain single-AP case.
+        if getattr(self.ctx, "_beacon_chain_started", False):
+            return
+        self.ctx._beacon_chain_started = True
 
         self.ctx._ap_beacon_count = 0
         self.ctx._next_beacon_target = self.sim.engine.now + max(0.0, float(phase_offset_s))
