@@ -32,7 +32,7 @@ Reference:
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 
 from sim11ah.constants import FrameType
 from sim11ah.mac.common import AssocState
@@ -127,6 +127,19 @@ class AssocManager:
         # out of ASSOCIATED except an explicit handover to the AP.
         self._last_peer_beacon_t: float = 0.0
         self._beacon_liveness_token: int = 0
+
+        # RSSI-based roam trigger (multi-AP). node_id -> (rssi_dbm, heard_t).
+        # Updated on every beacon actually received from an AP-role source
+        # (see on_beacon_received), not just the current peer, so a
+        # comparison is available the moment a second AP becomes audible.
+        # PhyLayer sets phy._last_rssi_dbm_value synchronously right before
+        # invoking this callback (single-threaded engine, same call frame),
+        # so it's always the RSSI of the beacon currently being processed.
+        self._heard_ap_rssi: Dict[int, Tuple[float, float]] = {}
+        # -inf, not 0.0: a STA's very first handover (relay -> AP, or the
+        # first AP-vs-AP roam) must not be blocked by roam_min_dwell_s just
+        # because it hasn't happened yet.
+        self._last_handover_t: float = float("-inf")
 
         if not self._is_ap() and self._assoc_enable:
             self._sta_start_t = float(self._sim.engine.now)
@@ -264,6 +277,24 @@ class AssocManager:
         if self._is_ap() or not self._assoc_enable:
             return
 
+        # Whether the SOURCE of this beacon is an AP-role node, not
+        # specifically node 0 -- with an old hardcoded ==0 check, a beacon
+        # from any AP other than node 0 was misclassified as "not from an
+        # AP" (i.e. treated like a relay), so a STA would always hold off
+        # for node 0's beacon regardless of which AP it actually heard
+        # first or how the APs' beacon timing was staggered.
+        src_node = self._sim.nodes.get(int(beacon_frame.src))
+        is_from_ap = bool(getattr(src_node, "is_ap", int(beacon_frame.src) == 0))
+
+        if is_from_ap:
+            # Record in every state, not just once ASSOCIATED, so a
+            # comparison is already available the moment a STA becomes
+            # associated instead of needing to wait for a second beacon.
+            self._heard_ap_rssi[int(beacon_frame.src)] = (
+                float(getattr(self._node.phy, "_last_rssi_dbm_value", float("-inf"))),
+                float(self._sim.engine.now),
+            )
+
         if (self._ctx._assoc_state == AssocState.UNASSOCIATED
                 and not self._first_beacon_seen
                 and float(self._sim.engine.now) < self._get_assoc_ready_t()):
@@ -272,13 +303,13 @@ class AssocManager:
         if self._ctx._assoc_state == AssocState.ASSOCIATED:
             # Already on the BSS -- a beacon from the current peer proves
             # the link is still alive, so push the missed-beacon deadline
-            # back out. Also keep listening for the real AP's own beacon
-            # specifically, so a STA that joined a relay while out of AP
-            # range can hand over once it's back in range, instead of
-            # forwarding through a relay it no longer needs.
+            # back out. Also keep listening for other APs' beacons, so a
+            # STA that joined a relay (or a weaker/farther AP) can roam
+            # once something better becomes reachable.
             if int(beacon_frame.src) == getattr(self._ctx, "_assoc_peer_id", None):
                 self._arm_beacon_liveness_timer()
-            self._maybe_handover_to_ap(beacon_frame)
+            if is_from_ap:
+                self._maybe_roam(int(beacon_frame.src))
             return
         # Per-node association preference (GUI-settable, defaults to
         # "auto" = AP first, relay as a fallback -- see _ap_first_grace_s
@@ -288,18 +319,6 @@ class AssocManager:
         # kind of source arrives, instead of ever falling back to the
         # other one.
         pref = getattr(self._ctx, "_assoc_preference", "auto")
-        # Whether the SOURCE of this beacon is an AP-role node, not
-        # specifically node 0 -- with the old hardcoded ==0 check, a beacon
-        # from any AP other than node 0 was misclassified as "not from an
-        # AP" (i.e. treated like a relay) by the "auto" preference logic
-        # below, so a STA would always hold off for node 0's beacon
-        # regardless of which AP it actually heard first or how the two
-        # APs' beacon timing was staggered -- basic multi-AP discovery was
-        # broken, not just AP-vs-AP RSSI selection (that's a separate,
-        # later concern: which AP to prefer once more than one is a valid
-        # candidate).
-        src_node = self._sim.nodes.get(int(beacon_frame.src))
-        is_from_ap = bool(getattr(src_node, "is_ap", int(beacon_frame.src) == 0))
         if pref == "ap" and not is_from_ap:
             return
         if pref == "relay" and is_from_ap:
@@ -344,45 +363,74 @@ class AssocManager:
         self._attempt_start_t = float(self._sim.engine.now)
         self._send_auth_req(dst=dst)
 
-    def _maybe_handover_to_ap(self, beacon_frame: MacFrame) -> None:
-        """Hand over from a relay to the real AP once the AP becomes
-        directly reachable. Only ever triggered by the AP's *own* beacon
-        (never by a relay's beacon, and never while already on the AP);
-        never fires for a STA the user pinned to "Relay only" in the GUI.
+    def _maybe_roam(self, beacon_src: int) -> None:
+        """Hand over to a different AP-role peer than the one currently
+        associated, triggered by hearing THAT peer's beacon directly
+        (never a relay's -- on_beacon_received only calls this when
+        is_from_ap is True). Two cases:
+
+        1. Currently on a relay: direct AP reachability always wins over
+           an indirect relay hop, no RSSI comparison needed -- mirrors the
+           original relay->AP behavior, just no longer restricted to node
+           0 specifically as "the" AP.
+        2. Currently on a real AP, beacon heard from a DIFFERENT real AP:
+           only roam if the candidate's measured RSSI is meaningfully
+           stronger (roam_hysteresis_db) than the current peer's, and
+           roam_min_dwell_s has elapsed since the last handover. Without
+           hysteresis, two APs with near-identical RSSI in the overlap
+           region would bounce the STA back and forth on every beacon;
+           without min-dwell, even a hysteresis-respecting decision could
+           ping-pong if both APs' RSSI estimates wobble near the margin.
+
         Re-runs the exact same auth/assoc procedure a fresh join uses, so
         this reuses all the existing state-machine/retry logic rather than
         adding a special-cased handover path."""
-        if int(beacon_frame.src) != 0:
-            return
         peer = getattr(self._ctx, "_assoc_peer_id", None)
-        if peer is None or peer == 0:
-            return  # unknown peer, or already associated directly with the AP
-        # `peer != 0` used to mean "must be on a relay" (only relays and
-        # node-0-AP existed), so this always continued into the relay->AP
-        # handover below. Under multi-AP, `peer != 0` can also mean "already
-        # properly associated with a different real AP" -- that STA should
-        # NOT get silently bounced onto node 0 just because node 0's beacon
-        # happens to arrive; caught empirically (RAW_CONNECTED_AIDS on the
-        # non-zero AP staying stale/nonempty for a STA whose own
-        # _assoc_peer_id had already moved to node 0). Real AP-vs-AP
-        # preference (which of several legitimate APs to prefer/roam to) is
-        # separate, future work -- this only restores "don't leave a
-        # functioning AP for another AP for no reason," the same standard
-        # already applied to two relays (this method is never called at all
-        # for a beacon from a non-AP source, so relay<->relay was never at
-        # risk here).
+        if peer is None or int(peer) == beacon_src:
+            return  # unknown peer, or already associated with this exact source
         peer_node = self._sim.nodes.get(int(peer))
-        if bool(getattr(peer_node, "is_ap", False)):
-            return  # already on a legitimate AP other than node 0 -- stay put
-        if getattr(self._ctx, "_assoc_preference", "auto") == "relay":
-            return  # user explicitly pinned this STA to its relay
+        peer_is_ap = bool(getattr(peer_node, "is_ap", False))
 
-        self._log("HANDOVER_TO_AP", {"from_peer": peer})
+        if not peer_is_ap:
+            if getattr(self._ctx, "_assoc_preference", "auto") == "relay":
+                return  # user explicitly pinned this STA to its relay
+            self._roam_to(beacon_src, from_peer=int(peer))
+            return
+
+        mac_cfg = self._ctx.cfg.get("mac", {})
+        hysteresis_db = float(mac_cfg.get("roam_hysteresis_db", 6.0))
+        min_dwell_s = float(mac_cfg.get("roam_min_dwell_s", 2.0 * self._beacon_interval))
+
+        now = float(self._sim.engine.now)
+        if now - self._last_handover_t < min_dwell_s:
+            return
+
+        stale_after_s = 3.0 * self._beacon_interval
+        candidate_rssi = self._heard_ap_rssi.get(beacon_src, (float("-inf"), -1.0))[0]
+        peer_entry = self._heard_ap_rssi.get(int(peer))
+        if peer_entry is None or (now - peer_entry[1]) > stale_after_s:
+            # Current peer's own beacon hasn't been heard recently --
+            # treat its signal as effectively gone rather than trusting a
+            # possibly-ancient reading, so a STA can roam off a dying link
+            # even before the (slower) missed-beacon liveness timeout
+            # would declare it lost outright.
+            peer_rssi = float("-inf")
+        else:
+            peer_rssi = peer_entry[0]
+
+        if candidate_rssi <= peer_rssi + hysteresis_db:
+            return  # not meaningfully stronger -- stay put
+
+        self._roam_to(beacon_src, from_peer=int(peer))
+
+    def _roam_to(self, new_peer: int, from_peer: int) -> None:
+        self._log("HANDOVER", {"from_peer": from_peer, "to_peer": new_peer})
         self._ctx._assoc_state = AssocState.UNASSOCIATED
         self._ctx._assoc_peer_id = None
         self._first_beacon_seen = True  # skip scan-time bookkeeping; go straight to auth
         self._sta_auth_req_t = float(self._sim.engine.now)
-        self._begin_auth(0)
+        self._last_handover_t = float(self._sim.engine.now)
+        self._begin_auth(new_peer)
 
     def _send_auth_req(self, dst: int) -> None:
         self._sta_auth_req_t = float(self._sim.engine.now)

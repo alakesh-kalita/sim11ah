@@ -534,7 +534,15 @@ class MacLayer:
             },
             frame=beacon,
         )
-        self.node.phy.send(beacon, tx_id=0, rx_id=-1)
+        # tx_id, not just the frame's own src field above, must be this
+        # node's real id too -- PhyLayer computes RSSI/path-loss from
+        # tx_id's position (see PhyLayer._rssi_dbm/_path_loss_db), so a
+        # hardcoded tx_id=0 here made every AP's beacon get RSSI-scored
+        # from AP #1's position regardless of which AP actually sent it.
+        # Caught empirically: a STA far from AP #1 but next to AP #2 still
+        # measured the exact same (weak) RSSI for both APs' beacons,
+        # silently defeating Phase 4's RSSI-based roam comparison.
+        self.node.phy.send(beacon, tx_id=self.node.node_id, rx_id=-1)
 
         self.raw.update_periodic_after_beacon()
 
