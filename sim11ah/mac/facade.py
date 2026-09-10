@@ -433,22 +433,29 @@ class MacLayer:
     def debug_state(self) -> Dict[str, Any]:
         return self.debug_queue_state()
 
-    def ap_start_beacons(self) -> None:
+    def ap_start_beacons(self, phase_offset_s: float = 0.0) -> None:
         if not self._is_ap():
             return
 
         self.ctx._ap_beacon_count = 0
-        self.ctx._next_beacon_target = self.sim.engine.now
+        self.ctx._next_beacon_target = self.sim.engine.now + max(0.0, float(phase_offset_s))
         self._log(
             "AP_BEACON_START",
             {
                 "beacon_interval": self.ctx.beacon_interval,
                 "dtim_period": self.ctx.dtim_period,
                 "raw_enable": int(self.ctx.raw_enable),
+                "phase_offset_s": float(phase_offset_s),
             },
         )
-        self.sim.engine.schedule(
-            self.sim.engine.now,
+        # phase_offset_s staggers the FIRST beacon of each AP under multi-AP
+        # (see MultiApBuilder) so beacon intervals don't all fire perfectly
+        # in phase -- otherwise every overlap-region STA would see correlated
+        # collisions on every interval instead of the independent pattern a
+        # real deployment would have, which could be mistaken for the actual
+        # residence-time effect this feature exists to measure.
+        self.sim.engine.schedule_in(
+            max(0.0, float(phase_offset_s)),
             self._schedule_ap_send_beacon,
             name="MAC_AP_SEND_BEACON",
         )
@@ -486,7 +493,14 @@ class MacLayer:
         self.ctx._tx_seq_ctr += 1
         beacon = MacFrame(
             ftype=FrameType.BEACON,
-            src=0,
+            # This node's own id, not a hardcoded 0 -- under multi-AP a
+            # beacon from AP #2 (node_id != 0) previously claimed src=0
+            # regardless, making every STA that heard it think it came from
+            # AP #1 instead (assoc_peer_id, roam-trigger AP identification,
+            # etc. all key off this field). _ap_send_beacon is only ever
+            # scheduled from ap_start_beacons's already-_is_ap()-gated path,
+            # so self.node here is always the actual AP sending it.
+            src=self.node.node_id,
             dst=-1,
             size_bytes=self.ctx.beacon_size_bytes,
             frame_seq=self.sim.next_frame_seq(),

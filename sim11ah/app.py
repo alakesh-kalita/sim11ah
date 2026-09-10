@@ -377,6 +377,20 @@ class ApplicationLayer:
 
     def _pick_dst(self) -> int:
         if self.dst_mode == "ap":
+            # STA's own live association peer (whichever AP it's actually
+            # associated with right now), not a hardcoded 0 -- with a single
+            # AP this was always node 0 anyway so the bug was invisible, but
+            # under multi-AP it silently made every packet undeliverable to
+            # any AP whose node_id isn't literally 0 (see the meta["ap_sink"]
+            # tag in _generate_one, which is what actually makes delivery
+            # work regardless of which AP ends up receiving it -- this
+            # return value is for logging/delivered_by_dst bookkeeping only).
+            try:
+                peer = self.node.mac.ctx._assoc_peer_id
+                if peer is not None:
+                    return int(peer)
+            except Exception:
+                pass
             return 0
         if self.dst_mode == "broadcast":
             return -1
@@ -515,6 +529,18 @@ class ApplicationLayer:
         except Exception:
             pass
 
+        if self.dst_mode == "ap":
+            # Delivery accepts this packet at whichever AP actually
+            # receives it, not only the specific AP id captured in `dst`
+            # at generation time (see recv_up_from_transport) -- routing
+            # already follows the STA's live association peer, so a
+            # packet queued just before a handover can legitimately arrive
+            # at a different AP than the one `dst` names. Without this,
+            # such packets are silently dropped as "not_for_me", biasing
+            # exactly the handover-transient PDR measurements multi-AP
+            # roaming exists to produce.
+            pkt.meta["ap_sink"] = True
+
         try:
             if self.dscp is None:
                 pkt.dscp = int(self._TRAFFIC_TYPE_DSCP.get(self.traffic_type, 0))
@@ -558,7 +584,13 @@ class ApplicationLayer:
         if not self.enable_sink:
             return
 
-        if packet.dst != self.node.node_id and packet.dst != -1:
+        # An "ap_sink" packet (dst_mode=="ap", see _generate_one) is
+        # deliverable at whichever AP actually receives it, not only the
+        # specific AP id its `dst` field named at generation time -- see
+        # the comment there for why (live-peer routing vs. a static dst
+        # snapshotted before a possible mid-flight handover).
+        is_ap_sink = bool(self.node.is_ap and packet.meta.get("ap_sink"))
+        if packet.dst != self.node.node_id and packet.dst != -1 and not is_ap_sink:
             self._log(
                 "WARN",
                 {"reason": "not_for_me", "dst": packet.dst, "my_id": self.node.node_id},

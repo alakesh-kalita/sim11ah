@@ -219,10 +219,22 @@ class NetworkLayer:
           AP broadcast          -> -1
         """
         if self.topo_mode not in _RELAY_MODES:
-            # Original star logic
+            # Original star logic. A STA/relay routes uplink to its live
+            # association peer (mirrors the relay-mode branch below) rather
+            # than a hardcoded 0 -- under a single AP those were always the
+            # same value, but with multiple APs a STA associated with AP #2
+            # would otherwise have every uplink packet routed to AP #1
+            # regardless of who it's actually associated with. Falls back
+            # to 0 only pre-association (bootstrap case, unchanged).
             if dst == -1:
-                return -1 if self._is_ap() else 0
-            return dst if self._is_ap() else 0
+                if self._is_ap():
+                    return -1
+                peer = self._live_assoc_peer()
+                return peer if peer is not None else 0
+            if self._is_ap():
+                return dst
+            peer = self._live_assoc_peer()
+            return peer if peer is not None else 0
 
         # ---- Relay topology (also covers "aerial_relay" -- same AP<->
         # relay<->STA link topology, just with relay-role nodes flown
