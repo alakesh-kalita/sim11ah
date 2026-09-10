@@ -314,6 +314,26 @@ class AssocManager:
         self._first_beacon_seen = False
         self._target_peer = None
 
+        # Also abandon a still-in-flight (not yet ready) shadow attempt --
+        # the normal scan/join flow that runs next can target ANY beacon
+        # source, not necessarily the shadow's own candidate, and a fresh
+        # primary handshake racing an abandoned-but-still-alive shadow
+        # AUTH_REQ/ASSOC_REQ to that SAME peer is the same cross-talk risk
+        # _roam_to already guards against (on_auth_resp_received/
+        # on_assoc_resp_received route purely by frame.src + state, so two
+        # simultaneous in-flight attempts to one peer can't be told apart).
+        # A shadow that hadn't finished by the time the link was
+        # already declared lost has already been too slow to save this
+        # handover -- letting the fresh scan/join proceed uncontested is
+        # both safer and likely faster than leaving it competing for the
+        # same channel time and AP responses.
+        if self._shadow_peer is not None:
+            self._log("PREASSOC_ABANDON_STALE", {
+                "candidate": self._shadow_peer, "reason": "link_lost",
+            })
+            self._shadow_peer = None
+            self._shadow_state = AssocState.UNASSOCIATED
+
     def on_beacon_received(self, beacon_frame: MacFrame) -> None:
         """Called by MacLayer._handle_beacon() when a beacon is received."""
         if self._is_ap() or not self._assoc_enable:
@@ -475,16 +495,29 @@ class AssocManager:
         self._roam_to(beacon_src, from_peer=int(peer))
 
     def _roam_to(self, new_peer: int, from_peer: int) -> None:
-        self._last_handover_t = float(self._sim.engine.now)
-
-        if self._shadow_peer == new_peer and self._shadow_state == AssocState.ASSOCIATED:
-            # A predictive pre-association (see _maybe_start_preassoc)
-            # already ran the full auth/assoc handshake with new_peer in
-            # the background while still on from_peer -- promote it
-            # instantly instead of paying that latency again now, at
-            # exactly the moment it matters most (a short residence
-            # window).
-            self._promote_shadow(new_peer, from_peer)
+        if self._shadow_peer == new_peer:
+            if self._shadow_state == AssocState.ASSOCIATED:
+                # A predictive pre-association (see _maybe_start_preassoc)
+                # already ran the full auth/assoc handshake with new_peer
+                # in the background while still on from_peer -- promote it
+                # instantly instead of paying that latency again now, at
+                # exactly the moment it matters most (a short residence
+                # window).
+                self._promote_shadow(new_peer, from_peer)
+            # else: a shadow handshake with this EXACT peer is already
+            # mid-flight (AUTHENTICATING/ASSOCIATING) -- do NOT abandon it
+            # and start a second, independent handshake to the same
+            # target. Caught empirically: doing so left the abandoned
+            # shadow's own request still in flight at the AP, and its
+            # eventual response arrived indistinguishable from the new
+            # handshake's own response (on_assoc_resp_received only keys
+            # off frame.src == self._target_peer, and both attempts share
+            # the same src), corrupting the fresh handshake with a stale
+            # reply. Just wait -- _maybe_roam re-checks on every
+            # subsequent beacon, so this fires again once the shadow
+            # resolves one way or the other. Deliberately does not touch
+            # _last_handover_t here: no handover has actually happened
+            # yet, so the dwell timer must not reset.
             return
 
         # Abandon any other shadow attempt in flight -- it was for a
@@ -493,6 +526,7 @@ class AssocManager:
         self._shadow_state = AssocState.UNASSOCIATED
         self._preauth_attempted.clear()
 
+        self._last_handover_t = float(self._sim.engine.now)
         self._log("HANDOVER", {"from_peer": from_peer, "to_peer": new_peer})
         self._ctx._assoc_state = AssocState.UNASSOCIATED
         self._ctx._assoc_peer_id = None
@@ -513,8 +547,14 @@ class AssocManager:
         measure connectivity_gap_s (see scripts/roam_experiment.py) picks
         this up automatically, and since both fire in the same tick here,
         the measured gap correctly comes out at ~0s instead of silently
-        vanishing from the metric."""
+        vanishing from the metric.
+
+        Called from both _roam_to (reactive trigger, shadow already ready)
+        and _check_beacon_liveness (missed-beacon recovery) -- updates
+        _last_handover_t itself so BOTH paths correctly arm roam_min_dwell_s
+        against a follow-up ping-pong, instead of only the reactive one."""
         now = float(self._sim.engine.now)
+        self._last_handover_t = now
         self._log("HANDOVER", {
             "from_peer": from_peer, "to_peer": new_peer, "via": "preassoc",
             "preassoc_lead_s": round(now - self._shadow_start_t, 3),
@@ -615,8 +655,33 @@ class AssocManager:
     def _maybe_start_preassoc(self, candidate_id: int) -> None:
         if not bool(self._ctx.cfg.get("mac", {}).get("roam_predictive_enable", False)):
             return
-        if candidate_id == self._shadow_peer:
-            return  # already pre-associating with this candidate
+        mac_cfg = self._ctx.cfg.get("mac", {})
+        lead_time_s = float(mac_cfg.get("roam_predictive_lead_time_s", 2.0 * self._beacon_interval))
+
+        if self._shadow_peer is not None:
+            if self._shadow_peer == candidate_id:
+                return  # already pre-associating with this exact candidate
+            # A shadow for a DIFFERENT candidate is active or already ready.
+            # Only ever one shadow attempt at a time -- a STA has a real,
+            # bounded channel-time budget for background handshakes, and
+            # silently overwriting an in-progress or completed attempt the
+            # moment a second candidate's beacon happens to arrive would
+            # both waste the work already done and (for a ready shadow)
+            # throw away a completed pre-association for no reason. Only
+            # replace it once it's gone stale -- sat unpromoted far longer
+            # than the lead time that started it, e.g. a prediction that
+            # never panned out because the STA changed course -- rather
+            # than on every subsequent beacon from some other AP.
+            stale_after_s = 3.0 * lead_time_s
+            if float(self._sim.engine.now) - self._shadow_start_t <= stale_after_s:
+                return
+            self._log("PREASSOC_ABANDON_STALE", {
+                "candidate": self._shadow_peer,
+                "age_s": round(float(self._sim.engine.now) - self._shadow_start_t, 3),
+            })
+            self._shadow_peer = None
+            self._shadow_state = AssocState.UNASSOCIATED
+
         if candidate_id in self._preauth_attempted:
             return  # already tried this candidate since the last real handover
         peer = getattr(self._ctx, "_assoc_peer_id", None)
@@ -628,8 +693,6 @@ class AssocManager:
         predicted = self._predict_crossover_s(candidate_id)
         if predicted is None:
             return
-        mac_cfg = self._ctx.cfg.get("mac", {})
-        lead_time_s = float(mac_cfg.get("roam_predictive_lead_time_s", 2.0 * self._beacon_interval))
         if predicted > lead_time_s:
             return  # too far out to be worth starting yet
 
