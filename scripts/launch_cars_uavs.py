@@ -5,12 +5,17 @@ shell) so the process isn't tied to that session's lifetime:
 
     python3 scripts/launch_cars_uavs.py
 
-3 APs in a line, 4 cars driving a highway back and forth through all of
-them, 3 UAVs flying random-waypoint across the whole corridor -- watch the
-node colors/edges change as cars and UAVs hand over between APs. Opens
-both the 2D dashboard and the live 3D view (a browser tab) -- same layout,
-same live sim state, two ways to watch it. Ctrl+C or close the Dashboard
-window to stop it.
+3 APs in a line, 10 cars + 6 scooters driving a highway back and forth
+through all of them (on their own separate lanes), 5 UAVs flying
+random-waypoint across the whole corridor -- watch the node colors/edges
+change as vehicles hand over between APs. Runs in the Smart City
+environment for a fuller scene (roads, buildings, its own decorative
+background traffic) -- the real simulator vehicles are visually distinct
+from that decoration: their own vivid non-green colour palette, a live
+peer-link line, a motion trail, and a small status LED, none of which the
+background traffic has. Opens both the 2D dashboard and the live 3D view
+(a browser tab) -- same layout, same live sim state, two ways to watch it.
+Ctrl+C or close the Dashboard window to stop it.
 
 No dropdown exposes this topology yet -- the interactive Network Topology
 control only composes star/relay x ground/UAV STA x grounded/aerial relay,
@@ -33,7 +38,7 @@ initial = {
     "raw_policy": "static",
     "packet_size": 128, "packet_interval": 2.0, "freq_mhz": 915.0,
     "topology": "cars_uavs", "num_aps": 3, "ap_spacing_m": 900.0,
-    "num_cars": 4, "num_uavs": 3,
+    "num_cars": 10, "num_uavs": 5, "num_scooters": 6,
 }
 sim = build_sim(
     num_stas=initial["num_stas"], seed=initial["seed"], traffic=initial["traffic"],
@@ -41,9 +46,16 @@ sim = build_sim(
     packet_interval=initial["packet_interval"], freq_mhz=initial["freq_mhz"],
     topology=initial["topology"], num_aps=initial["num_aps"],
     ap_spacing_m=initial["ap_spacing_m"], num_cars=initial["num_cars"],
-    num_uavs=initial["num_uavs"],
+    num_uavs=initial["num_uavs"], num_scooters=initial["num_scooters"],
 )
 gui = Dashboard(sim=sim, sim_builder=build_sim, initial_settings=initial)
+
+# Smart City for a much richer scene (roads, buildings, its own background
+# traffic) than the flat "Open Area" default -- see this file's module
+# docstring for how the real cars/scooters/UAVs stay visually distinct
+# from that environment's purely decorative loop traffic.
+gui._env_var.set("Smart City")
+gui._on_env_change()
 gui.update_idletasks()
 
 gui._open_3d_view()  # starts Web3DServer + opens the 3D view in your browser

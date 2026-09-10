@@ -264,6 +264,7 @@ function ensureNodeMesh(n) {
   let built;
   if (n.is_drone || n.is_uav) built = buildDrone(n.role === 'RELAY');
   else if (n.is_car) built = buildCar();
+  else if (n.is_scooter) built = buildScooter();
   else if (n.role === 'AP') built = buildApOrRelay(true);
   else if (n.role === 'RELAY') built = buildApOrRelay(false);
   else built = buildStation();
@@ -300,9 +301,9 @@ function altitudeFor(n, sx, sz) {
   // real-map twin reads) -- not a single flat height for every drone/UAV.
   if (n.is_drone || n.is_uav) return typeof n.altitude_m === 'number' ? n.altitude_m : 42;
   if (n.role === 'AP') return 0;
-  // A car is road-bound, not a building occupant -- unlike a plain STA,
-  // it should never rise onto a rooftop its (x, y) happens to cross.
-  if (n.is_car) return 0;
+  // A car/scooter is road-bound, not a building occupant -- unlike a plain
+  // STA, it should never rise onto a rooftop its (x, y) happens to cross.
+  if (n.is_car || n.is_scooter) return 0;
   const roof = roofHeightAt(sx, sz);
   return roof === null ? 0 : roof;
 }
@@ -317,14 +318,14 @@ export function updateNodes(nodesData) {
     if (entry.info) {
       updateInfoSprite(entry.info, nodeInfoText(n), nodeInfoColor(n));
     }
-    // A car's heading only ever flips instantly at each end of its
-    // highway (see sim11ah/mobility.py's highway_bounce_step) -- no
-    // mid-drive turning to animate, so this is a direct set, not lerped
-    // like position below. Same world-heading -> rotation.y convention
-    // updateVehicles already uses for the decorative Smart City traffic
-    // (local model forward is +X; three.js's rotation.y maps that to
-    // exactly the world heading, no sign flip needed).
-    if (n.is_car && typeof n.heading === 'number') {
+    // A car/scooter's heading only ever flips instantly at each end of its
+    // highway (see sim11ah/mobility.py's highway_bounce_step, shared by
+    // both) -- no mid-drive turning to animate, so this is a direct set,
+    // not lerped like position below. Same world-heading -> rotation.y
+    // convention updateVehicles already uses for the decorative Smart City
+    // traffic (local model forward is +X; three.js's rotation.y maps that
+    // to exactly the world heading, no sign flip needed).
+    if ((n.is_car || n.is_scooter) && typeof n.heading === 'number') {
       entry.group.rotation.y = n.heading;
     }
 
@@ -451,7 +452,10 @@ export function updateLinks(nodesData) {
     if ((n.role === 'RELAY' || n.role === 'STA') && n.assoc_peer !== null) {
       peerId = n.assoc_peer;
       if (n.role === 'RELAY') { color = 0x8b5cf6; opacity = 0.6; }
-      else color = n.assoc_state === ASSOC.ASSOCIATED ? 0x22c55e : 0xfbbf24;
+      // Blue, not green -- green is reserved for the per-node status LED
+      // (see statusHex()/buildStation()'s ledMat), so an ASSOCIATED link
+      // doubling it up made a fully-connected scene read as solid green.
+      else color = n.assoc_state === ASSOC.ASSOCIATED ? 0x3b82f6 : 0xfbbf24;
     }
     if (peerId === null || !byId.has(peerId)) continue;
     const peer = byId.get(peerId);
@@ -555,7 +559,7 @@ function buildVehicle() {
 }
 
 // Real network car (role 'STA', is_car -- see ensureNodeMesh): fixed body
-// color as its role marker (matches _CITY_VEHICLE_COLORS[0] in the 2D
+// color as its role marker (matches _REAL_CAR_COLORS[0] in the 2D
 // topology canvas's own real-car overlay, for a loose visual echo between
 // the two views), plus the same live-status LED every other real node
 // gets (statusHex() sets it on every updateNodes() call, same as
@@ -567,6 +571,44 @@ function buildCar() {
   led.position.set(0, 2.5, 0);
   built.group.add(led);
   return { group: built.group, ledMat, rotors: null };
+}
+
+// Real network scooter (role 'STA', is_scooter -- see ensureNodeMesh):
+// same fixed-body-colour + status-LED convention as buildCar, but its own
+// smaller, two-wheeled shape (a deck + handlebar stem) rather than
+// buildCarBody's boxy sedan, so the two real vehicle kinds read apart by
+// silhouette, not just by size. Local model forward is +X, same as
+// buildCarBody, so it picks up the exact same world-heading rotation
+// convention updateNodes already applies to cars.
+function buildScooter() {
+  const group = new THREE.Group();
+  const bodyMat = new THREE.MeshLambertMaterial({ color: 0xf97316 });
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.35, 0.9), bodyMat);
+  deck.position.y = 0.55;
+  deck.castShadow = true;
+  group.add(deck);
+  const stemMat = new THREE.MeshLambertMaterial({ color: 0x2b2f38 });
+  const stem = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.3, 0.2), stemMat);
+  stem.position.set(1.0, 1.2, 0);
+  group.add(stem);
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.9), stemMat);
+  bar.position.set(1.0, 1.85, 0);
+  group.add(bar);
+  for (const sx of [-0.9, 0.9]) {
+    const wheel = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.3), wheelMat);
+    wheel.position.set(sx, 0.28, 0);
+    wheel.castShadow = true;
+    group.add(wheel);
+  }
+  const headlightMat = new THREE.MeshBasicMaterial({ color: 0xfff4d6 });
+  const hl = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 0.4), headlightMat);
+  hl.position.set(1.15, 1.0, 0);
+  group.add(hl);
+  const ledMat = new THREE.MeshBasicMaterial({ color: 0x34d399 });
+  const led = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.9, 0.9), ledMat);
+  led.position.set(0, 2.0, 0);
+  group.add(led);
+  return { group, ledMat, rotors: null };
 }
 
 let vehicleMeshes = [];

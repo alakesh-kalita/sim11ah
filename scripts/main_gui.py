@@ -73,6 +73,7 @@ def build_sim(
     ap_spacing_m: float = 400.0,
     num_cars: int = 3,
     num_uavs: int = 3,
+    num_scooters: int = 0,
 ):
     # A sensor profile (sim11ah/sensor_profiles.py) carries its own
     # traffic/packet_size_bytes/etc., which should win over the plain
@@ -156,6 +157,7 @@ def build_sim(
         CarsUavsBuilder.build(
             sim, num_aps=max(1, int(num_aps)), ap_spacing_m=float(ap_spacing_m),
             num_cars=max(0, int(num_cars)), num_uavs=max(0, int(num_uavs)),
+            num_scooters=max(0, int(num_scooters)),
             link_cfg=access_cfg,
         )
     else:

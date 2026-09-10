@@ -44,6 +44,7 @@ _TEAL    = "#14b8a6"
 _AMBER   = "#f59e0b"
 _GREEN   = "#22c55e"
 _RED     = "#ef4444"
+_STA_BODY = "#64748b"   # fixed plain-STA body colour -- status shown via a small LED instead
 _GRAY    = "#94a3b8"
 
 # Aerial-scene palettes -------------------------------------------------------
@@ -143,6 +144,16 @@ _TOWER_ROOF_LT  = "#c3d2de"
 _TOWER_EDGE     = "#2c3946"
 _TOWER_WINDOW   = "#dbe7f0"
 _CITY_VEHICLE_COLORS = ("#c0392b", "#2a6f97", "#e0a13a", "#5c6672", "#3a7d5c", "#e6d24a")
+
+# Real (non-decorative) cars_uavs-mode vehicle palettes -- deliberately
+# vivid and green-free, since _assoc_color's green is reserved for "this
+# node is ASSOCIATED" status everywhere else on the canvas; giving real
+# cars/scooters their own hue keeps a healthy, fully-associated fleet from
+# reading as a monochrome green scene. Distinct from _CITY_VEHICLE_COLORS
+# (decorative Smart City traffic) so a glance can tell "real network node"
+# from "background scenery" even before checking for a status LED.
+_REAL_CAR_COLORS = ("#ef4444", "#3b82f6", "#f59e0b", "#a855f7", "#06b6d4", "#ec4899")
+_REAL_SCOOTER_COLORS = ("#fb923c", "#38bdf8", "#f472b6", "#fbbf24", "#c084fc", "#f87171")
 
 # Military Zone palette -----------------------------------------------------------
 _MIL_BASE       = "#8f8a5e"   # dry scrubland/dirt base
@@ -1203,6 +1214,7 @@ class NetworkCanvas(tk.Canvas):
         self.drone_ids: Set[int] = set()
         self.uav_ids: Set[int] = set()
         self.car_ids: Set[int] = set()
+        self.scooter_ids: Set[int] = set()
         self._ap_ids: Set[int] = {0}
         self._drone_trails: Dict[int, list] = {}
         self._drag_id: Optional[int] = None
@@ -1327,9 +1339,11 @@ class NetworkCanvas(tk.Canvas):
             # 0" -- that guess would misclassify the OTHER APs (node ids
             # 1..K-1) as end nodes under multi-AP.
             self.car_ids = set(topo_cfg.get("car_ids", []))
+            self.scooter_ids = set(topo_cfg.get("scooter_ids", []))
             self.uav_ids = set(topo_cfg.get("uav_ids", []))
         else:
             self.car_ids = set()
+            self.scooter_ids = set()
             self.uav_ids = (
                 set(nid for nid in sim.nodes if nid != 0 and nid not in self._relay_ids)
                 if mode in ("uav", "aerial_relay_uav", "relay_uav") else set()
@@ -1431,6 +1445,7 @@ class NetworkCanvas(tk.Canvas):
         self._draw_drones_overlay(nodes)
         self._draw_uavs_overlay(nodes)
         self._draw_cars_overlay(nodes)
+        self._draw_scooters_overlay(nodes)
         self._draw_vehicles_overlay(nodes)
         self._draw_military_overlay(nodes)
 
@@ -1608,14 +1623,15 @@ class NetworkCanvas(tk.Canvas):
         its position came from a decorative time formula or a real node's
         actual (x, y), just heading and pixel position.
 
-        Heading comes from sim._car_dirs (the direction flag
-        highway_bounce_step maintains, +1/-1 along the corridor's x-axis)
-        rather than from consecutive positions like the Smart City loop
-        does -- cheaper, and exact rather than a one-tick-lagged estimate."""
+        Heading comes from sim._highway_dirs (the direction flag
+        highway_bounce_step maintains, +1/-1 along the corridor's x-axis,
+        shared with scooters -- see _draw_scooters_overlay) rather than
+        from consecutive positions like the Smart City loop does --
+        cheaper, and exact rather than a one-tick-lagged estimate."""
         if not self.car_ids or self.sim is None:
             return
-        car_dirs = getattr(self.sim, "_car_dirs", {})
-        n = len(_CITY_VEHICLE_COLORS)
+        highway_dirs = getattr(self.sim, "_highway_dirs", {})
+        n = len(_REAL_CAR_COLORS)
         for i, cid in enumerate(sorted(self.car_ids)):
             cn = nodes.get(cid)
             if cn is None:
@@ -1634,8 +1650,40 @@ class NetworkCanvas(tk.Canvas):
                 del trail[0]
             self._draw_fading_trail(trail)
 
-            heading = 0.0 if car_dirs.get(cid, 1) >= 0 else math.pi
-            self._draw_car_icon(cpx, cpy, heading, _CITY_VEHICLE_COLORS[i % n])
+            heading = 0.0 if highway_dirs.get(cid, 1) >= 0 else math.pi
+            self._draw_car_icon(cpx, cpy, heading, _REAL_CAR_COLORS[i % n])
+
+    def _draw_scooters_overlay(self, nodes) -> None:
+        """Scooters in "cars_uavs" mode: same real-node treatment as
+        _draw_cars_overlay (live highway_bounce_step crossing, not
+        decoration), just riding the inner lane (closer to the corridor
+        centreline -- see CarsUavsBuilder's scooter_lane_offset_m) with
+        their own smaller glyph (_draw_scooter_icon) and colour palette
+        so the two vehicle kinds stay visually distinct at a glance."""
+        if not self.scooter_ids or self.sim is None:
+            return
+        highway_dirs = getattr(self.sim, "_highway_dirs", {})
+        n = len(_REAL_SCOOTER_COLORS)
+        for i, sid in enumerate(sorted(self.scooter_ids)):
+            sn = nodes.get(sid)
+            if sn is None:
+                continue
+            spx, spy = self._world_to_px(*sn.pos)
+
+            peer_id = _assoc_peer(sn)
+            peer = nodes.get(peer_id) if peer_id is not None else None
+            if peer is not None:
+                ppx, ppy = self._world_to_px(*peer.pos)
+                self.create_line(ppx, ppy, spx, spy, fill=_BORDER, width=1, tags=("ovl",))
+
+            trail = self._drone_trails.setdefault(sid, [])
+            trail.append(sn.pos)
+            if len(trail) > 16:
+                del trail[0]
+            self._draw_fading_trail(trail)
+
+            heading = 0.0 if highway_dirs.get(sid, 1) >= 0 else math.pi
+            self._draw_scooter_icon(spx, spy, heading, _REAL_SCOOTER_COLORS[i % n])
 
     # ── Smart City traffic (pure scenery -- not simulator nodes) ─────────
     def _rect_loop_pos(self, cx: float, cy: float, hw: float, hh: float, t: float):
@@ -1733,6 +1781,43 @@ class NetworkCanvas(tk.Canvas):
             lx, ly = _pt(dl, 0.0)
             self.create_oval(lx - 1.1, ly - 1.1, lx + 1.1, ly + 1.1,
                               fill=lcolor, outline="", tags=("ovl",))
+
+    def _draw_scooter_icon(self, px: float, py: float, heading: float, color: str) -> None:
+        """Small top-down scooter glyph -- a slimmer, shorter footprint
+        than _draw_car_icon (narrow deck instead of a boxy body, two small
+        wheel dots fore/aft instead of a cabin inset) so it reads as a
+        distinct, lighter vehicle at a glance rather than just a smaller
+        car."""
+        length, width = 5.2, 2.2
+        ch, sh = math.cos(heading), math.sin(heading)
+        perp = heading + math.pi / 2.0
+        cp, sp = math.cos(perp), math.sin(perp)
+
+        def _pt(dl, dw):
+            return px + dl * ch + dw * cp, py + dl * sh + dw * sp
+
+        self.create_oval(px - length * 0.6 + 1.5, py - width * 0.6 + 1.5,
+                          px + length * 0.6 + 1.5, py + width * 0.6 + 1.5,
+                          fill=_SHADOW, outline="", stipple="gray50", tags=("ovl",))
+
+        # Narrow deck body -- an elongated rounded rectangle rather than
+        # the car's boxy corners, so the silhouette itself already reads
+        # as "two-wheeler" before the wheel dots are added.
+        body = []
+        for dl, dw in ((length * 0.5, -width * 0.35), (length * 0.5, width * 0.35),
+                       (-length * 0.5, width * 0.35), (-length * 0.5, -width * 0.35)):
+            body.extend(_pt(dl, dw))
+        self.create_polygon(*body, fill=color, outline="#1f2937", width=1, tags=("ovl",))
+
+        # Fore/aft wheel dots on the centreline, plus a single headlight --
+        # scooters don't get a cabin inset (nothing to put one on).
+        for dl, wcolor in ((length * 0.48, "#1f2937"), (-length * 0.48, "#1f2937")):
+            wx, wy = _pt(dl, 0.0)
+            self.create_oval(wx - 0.9, wy - 0.9, wx + 0.9, wy + 0.9,
+                              fill=wcolor, outline="", tags=("ovl",))
+        hx, hy = _pt(length * 0.52, 0.0)
+        self.create_oval(hx - 0.9, hy - 0.9, hx + 0.9, hy + 0.9,
+                          fill="#fff4d6", outline="", tags=("ovl",))
 
     def _draw_tower_icon(self, px: float, py: float, R: float, arm_count: int,
                           dk_color: str, lt_color: str, hub_fill: str) -> None:
@@ -2146,7 +2231,8 @@ class NetworkCanvas(tk.Canvas):
         # regardless of real MAC state made every node look connected even
         # when it wasn't.
         for nid, n in nodes.items():
-            if nid in self._ap_ids or nid in self.drone_ids or nid in self.uav_ids or nid in self.car_ids:
+            if (nid in self._ap_ids or nid in self.drone_ids or nid in self.uav_ids
+                    or nid in self.car_ids or nid in self.scooter_ids):
                 continue
             peer = _assoc_peer(n)
             if peer is None or peer not in nodes:
@@ -2156,15 +2242,19 @@ class NetworkCanvas(tk.Canvas):
             if nid in self._relay_ids:
                 self.create_line(pxp, pyp, px1, py1, fill=_PURPLE, width=2, dash=(5, 3))
             elif peer in self._ap_ids:
-                self.create_line(pxp, pyp, px1, py1, fill=_GREEN, dash=(2, 3))
+                # Blue, not green -- green is reserved for the STA-body
+                # status LED (ASSOCIATED), so an AP-link edge doubling it
+                # up made every fully-connected scene read as solid green.
+                self.create_line(pxp, pyp, px1, py1, fill=_BLUE, dash=(2, 3))
             else:
                 self.create_line(pxp, pyp, px1, py1, fill=_BORDER, width=1)
 
-        # Nodes (drones/UAVs/cars excluded -- drawn every tick by their own
-        # overlay instead, since their position changes every tick, not
-        # fixed).
+        # Nodes (drones/UAVs/cars/scooters excluded -- drawn every tick by
+        # their own overlay instead, since their position changes every
+        # tick, not fixed).
         for nid, n in nodes.items():
-            if nid in self.drone_ids or nid in self.uav_ids or nid in self.car_ids:
+            if (nid in self.drone_ids or nid in self.uav_ids
+                    or nid in self.car_ids or nid in self.scooter_ids):
                 continue
             px, py = self._world_to_px(*n.pos)
             if nid in self._ap_ids:
@@ -2175,7 +2265,16 @@ class NetworkCanvas(tk.Canvas):
                 self._draw_relay_icon(px, py, nid, n)
                 sel_r, stat_y = 17, 24  # clear of the "R{nid}" label _draw_relay_icon draws
             else:
-                r, fill, outline = 8, _assoc_color(n), _TEAL
+                # Fixed slate body, not _assoc_color(n) as the whole fill --
+                # that made every fully-associated scene (the common case)
+                # read as a sea of solid green, the same "AP has no
+                # assoc_state of its own" exception _draw_ap_icon's hub
+                # already makes for the same reason. Live status now shows
+                # as a small LED dot instead (see below), mirroring
+                # entities.js's buildStation() convention: fixed body
+                # colour + a separate small status light, not a body that
+                # itself changes colour.
+                r, fill, outline = 8, _STA_BODY, _TEAL
                 sh = 2.5
                 self.create_oval(px - r + sh, py - r + sh, px + r + sh, py + r + sh,
                                   fill=_SHADOW, outline="", stipple="gray50")
@@ -2191,6 +2290,10 @@ class NetworkCanvas(tk.Canvas):
                 self.create_oval(px - r * 0.4, py - r * 0.6, px + r * 0.15, py - r * 0.05,
                                   fill="", outline="#ffffff", width=0, stipple="gray25")
                 self.create_text(px, py, text=str(nid), font=("Arial", 7, "bold"), fill="white")
+                led_r = r * 0.34
+                lx, ly = px + r * 0.62, py + r * 0.62
+                self.create_oval(lx - led_r, ly - led_r, lx + led_r, ly + led_r,
+                                  fill=_assoc_color(n), outline="#0f172a", width=1)
                 sel_r, stat_y = r + 4, r + 9
 
             if nid in self._selected_ids:

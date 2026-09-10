@@ -57,7 +57,7 @@ def _stable_bounds(canvas):
     constant: the city stops breathing, and the near-centre tall-building
     band stays put regardless of where the UAVs currently are.
     """
-    moving = canvas.drone_ids | canvas.uav_ids | canvas.car_ids
+    moving = canvas.drone_ids | canvas.uav_ids | canvas.car_ids | canvas.scooter_ids
     xs, ys = [], []
     for nid, n in canvas.sim.nodes.items():
         if nid in moving:
@@ -171,15 +171,17 @@ def _node_dict(canvas, nid: int, n, sim) -> Dict[str, Any]:
     # Real network node on a highway_bounce_step crossing (see
     # sim11ah/topology.py's CarsUavsBuilder / sim11ah/mobility.py) --
     # distinct from is_drone/is_uav, entities.js dispatches it to its own
-    # car mesh the same way. Heading comes straight from sim._car_dirs
-    # (the ±1 flag highway_bounce_step maintains), not from diffing
-    # consecutive positions like the decorative Smart City vehicles below
-    # do -- cheaper and exact rather than a one-poll-lagged estimate.
+    # car/scooter mesh the same way. Heading comes straight from
+    # sim._highway_dirs (the ±1 flag highway_bounce_step maintains, shared
+    # by both cars and scooters), not from diffing consecutive positions
+    # like the decorative Smart City vehicles below do -- cheaper and
+    # exact rather than a one-poll-lagged estimate.
     is_car = nid in canvas.car_ids
+    is_scooter = nid in canvas.scooter_ids
     heading = None
-    if is_car:
-        car_dirs = getattr(sim, "_car_dirs", {})
-        heading = 0.0 if car_dirs.get(nid, 1) >= 0 else math.pi
+    if is_car or is_scooter:
+        highway_dirs = getattr(sim, "_highway_dirs", {})
+        heading = 0.0 if highway_dirs.get(nid, 1) >= 0 else math.pi
     altitude_m = None
     if is_drone or is_uav:
         try:
@@ -216,6 +218,7 @@ def _node_dict(canvas, nid: int, n, sim) -> Dict[str, Any]:
         "is_drone": is_drone,
         "is_uav": is_uav,
         "is_car": is_car,
+        "is_scooter": is_scooter,
         "heading": heading,
         "range_m": range_m,
         "altitude_m": altitude_m,

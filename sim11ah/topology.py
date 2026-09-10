@@ -298,26 +298,29 @@ class MultiApBuilder:
 
 class CarsUavsBuilder:
     """
-    A multi-AP corridor populated with two kinds of mobile STA: cars
-    driving a straight highway through the AP chain, and UAVs flying
+    A multi-AP corridor populated with three kinds of mobile STA: cars and
+    scooters driving a straight highway through the AP chain (same
+    mobility function, different lane/speed), and UAVs flying
     random-waypoint across the same span -- a layout for visualizing
     inter-AP handover with vehicle-mounted and airborne devices instead of
     static ground STAs. Built ON TOP of MultiApBuilder (same AP layout +
     all-pairs linking), not a fork of it -- this class only adds role
-    tagging and initial positions for the two mobility kinds; actually
+    tagging and initial positions for the three mobility kinds; actually
     driving them each tick is sim11ah/mobility.py's job
-    (highway_bounce_step / uav_waypoint_step), called from wherever runs
-    the simulation (a GUI tick loop, or a headless script).
+    (highway_bounce_step for cars/scooters, uav_waypoint_step for UAVs),
+    called from wherever runs the simulation (a GUI tick loop, or a
+    headless script).
 
     Node layout:
-      0 .. K-1                              : AP nodes (MultiApBuilder's layout)
-      K .. K+num_cars-1                     : car STAs
-      K+num_cars .. K+num_cars+num_uavs-1   : UAV STAs
+      0 .. K-1                    : AP nodes (MultiApBuilder's layout)
+      K .. K+num_cars-1           : car STAs
+      K+num_cars .. +num_scooters : scooter STAs
+      ... .. +num_uavs            : UAV STAs
 
-    sim.config["topology"]["car_ids"] / "uav_ids" record which STA ids are
-    which, mirroring the existing ap_ids/relay_ids convention -- callers
-    (GUI icon/mobility drivers, headless scripts) key off these rather
-    than guessing from node_id ranges.
+    sim.config["topology"]["car_ids"] / "scooter_ids" / "uav_ids" record
+    which STA ids are which, mirroring the existing ap_ids/relay_ids
+    convention -- callers (GUI icon/mobility drivers, headless scripts)
+    key off these rather than guessing from node_id ranges.
 
     KNOWN LIMITATION -- build with raw_enable=False for this layout. With
     RAW enabled, a STA whose reactive roam trigger fires repeatedly while
@@ -345,28 +348,40 @@ class CarsUavsBuilder:
         num_cars: int,
         num_uavs: int,
         link_cfg: Dict[str, Any],
+        num_scooters: int = 0,
         car_lane_offset_m: float = 25.0,
+        scooter_lane_offset_m: float = 12.0,
     ) -> List["Node"]:
         num_aps = max(1, int(num_aps))
         num_cars = int(num_cars)
         num_uavs = int(num_uavs)
-        if num_cars < 0 or num_uavs < 0:
+        num_scooters = int(num_scooters)
+        if num_cars < 0 or num_uavs < 0 or num_scooters < 0:
             raise ValueError(
-                f"num_cars ({num_cars}) and num_uavs ({num_uavs}) must both be >= 0"
+                f"num_cars ({num_cars}), num_scooters ({num_scooters}) and "
+                f"num_uavs ({num_uavs}) must all be >= 0"
             )
 
         span = max(1.0, (num_aps - 1) * float(ap_spacing_m))
 
-        # Cars start on the highway itself (a fixed-offset lane parallel to
-        # the AP axis, alternating sides so opposite-direction traffic
-        # doesn't visually overlap -- purely cosmetic, doesn't affect
-        # RSSI/PHY, which only cares about the resulting (x, y)).
-        # highway_bounce_step then drives them back and forth for real.
-        car_positions = []
-        for j in range(num_cars):
-            frac = (j + 0.5) / max(1, num_cars)
-            lane = car_lane_offset_m if j % 2 == 0 else -car_lane_offset_m
-            car_positions.append((frac * span, lane))
+        # Cars and scooters both start on the highway itself (a fixed-
+        # offset lane parallel to the AP axis, alternating sides so
+        # opposite-direction traffic doesn't visually overlap -- purely
+        # cosmetic, doesn't affect RSSI/PHY, which only cares about the
+        # resulting (x, y)). Scooters get a SMALLER offset than cars --
+        # riding closer to the centreline -- so the two vehicle kinds
+        # occupy visually distinct lanes rather than overlapping.
+        # highway_bounce_step then drives both back and forth for real.
+        def _lane_positions(count: int, offset_m: float) -> List[Tuple[float, float]]:
+            out = []
+            for j in range(count):
+                frac = (j + 0.5) / max(1, count)
+                lane = offset_m if j % 2 == 0 else -offset_m
+                out.append((frac * span, lane))
+            return out
+
+        car_positions = _lane_positions(num_cars, car_lane_offset_m)
+        scooter_positions = _lane_positions(num_scooters, scooter_lane_offset_m)
 
         # UAVs start scattered near the corridor; uav_waypoint_step then
         # flies them on a random-waypoint pattern across the whole
@@ -377,8 +392,8 @@ class CarsUavsBuilder:
             for j in range(num_uavs)
         ]
 
-        sta_positions = car_positions + uav_positions
-        num_stas = num_cars + num_uavs
+        sta_positions = car_positions + scooter_positions + uav_positions
+        num_stas = num_cars + num_scooters + num_uavs
 
         all_nodes = MultiApBuilder.build(
             sim, num_aps=num_aps, ap_spacing_m=ap_spacing_m,
@@ -387,11 +402,13 @@ class CarsUavsBuilder:
         )
 
         car_ids = [num_aps + j for j in range(num_cars)]
-        uav_ids = [num_aps + num_cars + j for j in range(num_uavs)]
+        scooter_ids = [num_aps + num_cars + j for j in range(num_scooters)]
+        uav_ids = [num_aps + num_cars + num_scooters + j for j in range(num_uavs)]
 
         topo_cfg = sim.config.setdefault("topology", {})
         topo_cfg["mode"] = "cars_uavs"
         topo_cfg["car_ids"] = car_ids
+        topo_cfg["scooter_ids"] = scooter_ids
         topo_cfg["uav_ids"] = uav_ids
         topo_cfg["corridor_span_m"] = span
 

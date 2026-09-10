@@ -2265,6 +2265,21 @@ class Dashboard(tk.Tk):
                                 self.sim, cid, dt, car_speed_mps,
                                 lane_y=lane_y, x_min=0.0, x_max=span,
                             )
+                # Scooters share the exact same highway_bounce_step
+                # primitive as cars (see sim11ah/mobility.py's docstring),
+                # just slower and on their own inner lane -- no separate
+                # mobility function needed, only a different fixed speed.
+                scooter_ids = topo_cfg.get("scooter_ids", [])
+                if scooter_ids:
+                    span = float(topo_cfg.get("corridor_span_m", 0.0))
+                    scooter_speed_mps = 8.0  # ~29 km/h
+                    for sid in scooter_ids:
+                        if sid in self.sim.nodes:
+                            lane_y = self.sim.nodes[sid].pos[1]
+                            highway_bounce_step(
+                                self.sim, sid, dt, scooter_speed_mps,
+                                lane_y=lane_y, x_min=0.0, x_max=span,
+                            )
                 if uav_ids2:
                     num_aps = len(topo_cfg.get("ap_ids", [0]))
                     ap_spacing_m = float(topo_cfg.get("corridor_span_m", 0.0)) / max(1, num_aps - 1) if num_aps > 1 else 0.0

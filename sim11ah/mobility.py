@@ -64,25 +64,28 @@ def highway_bounce_step(
     x_max: float,
 ) -> None:
     """
-    Drive a car back and forth along a straight highway at constant speed:
-    x oscillates between x_min and x_max on a fixed lane (y=lane_y),
-    reversing direction at each end instead of stopping there. Meant to be
-    called every tick indefinitely (unlike corridor_step, which is a
-    one-shot crossing) so a car keeps crossing every AP's overlap region
-    for as long as the caller keeps driving it -- see topology.py's
-    CarsUavsBuilder, which lays cars out on alternating lanes along the
-    same axis the APs sit on.
+    Drive a road vehicle back and forth along a straight highway at
+    constant speed: x oscillates between x_min and x_max on a fixed lane
+    (y=lane_y), reversing direction at each end instead of stopping there.
+    Meant to be called every tick indefinitely (unlike corridor_step,
+    which is a one-shot crossing) so the vehicle keeps crossing every AP's
+    overlap region for as long as the caller keeps driving it -- see
+    topology.py's CarsUavsBuilder, which lays cars AND scooters out on
+    lanes along the same axis the APs sit on (scooters closer to the
+    centreline, cars further out).
 
-    Direction is tracked in a small per-simulator dict (sim._car_dirs),
-    keyed by sta_id -- the same "side state lives on the Simulator object"
-    pattern ui/topology_canvas.py's advance_uav_positions already uses for
-    its own per-node mobility state (sim._uav_targets); there's no other
-    home for this in the codebase, so this follows the existing precedent
-    rather than inventing a new one (e.g. stashing it on the Node itself).
+    Vehicle-agnostic -- cars and scooters both call this exact same
+    function, just with their own speed and lane. Direction is tracked in
+    a small per-simulator dict (sim._highway_dirs), keyed by sta_id -- the
+    same "side state lives on the Simulator object" pattern ui/
+    topology_canvas.py's advance_uav_positions already uses for its own
+    per-node mobility state (sim._uav_targets); there's no other home for
+    this in the codebase, so this follows the existing precedent rather
+    than inventing a new one (e.g. stashing it on the Node itself).
     """
-    if not hasattr(sim, "_car_dirs"):
-        sim._car_dirs = {}
-    direction = sim._car_dirs.get(sta_id, 1)
+    if not hasattr(sim, "_highway_dirs"):
+        sim._highway_dirs = {}
+    direction = sim._highway_dirs.get(sta_id, 1)
 
     node = sim.nodes[sta_id]
     x, _y = node.pos
@@ -96,7 +99,7 @@ def highway_bounce_step(
         direction = 1
 
     node.pos = (new_x, float(lane_y))
-    sim._car_dirs[sta_id] = direction
+    sim._highway_dirs[sta_id] = direction
 
 
 def uav_waypoint_step(
