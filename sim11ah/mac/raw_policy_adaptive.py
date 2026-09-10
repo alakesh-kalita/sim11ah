@@ -9,6 +9,7 @@ from sim11ah.mac.common import (
     RawConfig,
     RawPeriodic,
     RawSlotDefinition,
+    sta_belongs_to_ap,
 )
 
 
@@ -522,18 +523,40 @@ class AdaptiveRawPolicy:
         if aids:
             return aids
 
+        # Fallback: this AP's own association table, ownership-filtered the
+        # same way RawEngine.connected_aids() is (see mac/common.py's
+        # sta_belongs_to_ap) -- under multi-AP, a STA that roamed to a
+        # DIFFERENT AP leaves a stale entry behind on this one's
+        # _associated_stas (never cleaned up on roam-away), so this must
+        # not trust it unfiltered.
         try:
             assoc = getattr(self.ctx, "_associated_stas", None)
             if isinstance(assoc, dict) and assoc:
-                vals = sorted(int(v) for v in assoc.values() if int(v) > 0)
+                sim_nodes = getattr(self.ctx.sim, "nodes", {})
+                vals = sorted(
+                    int(aid) for sta_id, aid in assoc.items()
+                    if int(aid) > 0 and sta_belongs_to_ap(self.ctx, sim_nodes.get(int(sta_id)))
+                )
                 if vals:
                     return vals
         except Exception:
             pass
 
+        # Last resort: every non-AP node in the simulation that belongs to
+        # THIS AP -- ownership-filtered the same way as above, not the old
+        # unscoped "every node_id in the simulation" (only ever safe with
+        # exactly one AP). Confirmed this path IS reached in practice, even
+        # for single-AP: init_configs() calls this before _associated_stas
+        # has its first entry yet, so scoping it (rather than deleting it,
+        # which regressed a real single-AP run when first tried) preserves
+        # its legitimate early-startup utility while staying multi-AP-safe.
         try:
             sim_nodes = getattr(self.ctx.sim, "nodes", {})
-            vals = sorted(int(nid) for nid in sim_nodes.keys() if int(nid) > 0)
+            vals = sorted(
+                int(nid) for nid, node in sim_nodes.items()
+                if not getattr(node, "is_ap", int(nid) == 0)
+                and sta_belongs_to_ap(self.ctx, node)
+            )
             if vals:
                 return vals
         except Exception:

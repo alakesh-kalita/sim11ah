@@ -11,6 +11,7 @@ from sim11ah.mac.common import (
     RawConfig,
     RawType,
     cslot_to_us,
+    sta_belongs_to_ap,
     us_to_cslot,
 )
 from sim11ah.mac.context import MacContext
@@ -229,28 +230,10 @@ class RawEngine:
     # Helpers
     # ------------------------------------------------------------------
     def _sta_belongs_to_me(self, sta_node: Any) -> bool:
-        """Does sta_node (a STA, not necessarily this AP's own context's key)
-        actually belong to THIS AP right now -- either directly associated
-        with it, or associated with a relay that is itself uplinked to this
-        AP? Under multi-AP, "belongs to me" is not simply "peer == my id":
-        a relay-served STA's own _assoc_peer_id is the RELAY's node_id, not
-        the AP's, even though it's legitimately part of this AP's BSS (see
-        AssocManager.on_assoc_req_received's mirror-into-uplink-AP logic).
-        Returns True (lenient/include) when peer info is unavailable, same
-        default as before any ownership filtering existed."""
-        my_id = self.ctx.node.node_id
-        mac_ctx = getattr(getattr(sta_node, "mac", None), "ctx", None)
-        peer = getattr(mac_ctx, "_assoc_peer_id", None) if mac_ctx is not None else None
-        if peer is None:
-            return True
-        if int(peer) == int(my_id):
-            return True
-        peer_node = getattr(self.ctx.sim, "nodes", {}).get(int(peer))
-        if getattr(peer_node, "role", None) == "RELAY":
-            relay_ctx = getattr(getattr(peer_node, "mac", None), "ctx", None)
-            relay_upstream = getattr(relay_ctx, "_assoc_peer_id", None) if relay_ctx is not None else None
-            return relay_upstream is not None and int(relay_upstream) == int(my_id)
-        return False  # associated with a different AP directly -- not mine
+        """Thin wrapper for readability at each call site below --
+        see mac/common.py's sta_belongs_to_ap for the actual ownership
+        rule (shared with raw_policy_adaptive.py's identical fallback)."""
+        return sta_belongs_to_ap(self.ctx, sta_node)
 
     def connected_aids(self) -> List[int]:
         if not self.ctx.node.is_ap:
@@ -347,14 +330,31 @@ class RawEngine:
         except Exception:
             pass
 
-        # 3) No further fallback under multi-AP: the old "every node_id > 0
-        # is mine" default was only ever safe with exactly one AP in the
-        # whole simulation, and would silently claim every other AP's STAs
-        # too now. An obviously-empty (visibly broken) schedule is far
-        # preferable to a silently-wrong one that produces numbers which
-        # look plausible but aren't -- if this path is hit, something
-        # upstream (association bookkeeping) is broken and should be fixed
-        # there, not papered over here.
+        # 3) Last resort: every non-AP node (STA or relay) in the whole
+        # simulation that belongs to THIS AP -- ownership-filtered the same
+        # way as above, so this stays safe under multi-AP. The old "every
+        # node_id > 0 is mine" version of this fallback was only safe with
+        # exactly one AP; simply DELETING it (an earlier pass in this same
+        # session did exactly that) turned out to be wrong too, not just
+        # overly cautious -- confirmed empirically that raw_policy_adaptive.
+        # py's init_configs() genuinely hits this path in single-AP runs
+        # (before _associated_stas has its first entry yet), and an
+        # unscoped-but-present fallback was harmlessly correct there.
+        # Scoping it by ownership, rather than removing it outright,
+        # preserves that legitimate single-AP/early-startup utility while
+        # still refusing to claim another AP's STAs under multi-AP.
+        try:
+            sim_nodes = getattr(self.ctx.sim, "nodes", {})
+            aids = sorted(
+                int(nid) for nid, node in sim_nodes.items()
+                if not getattr(node, "is_ap", int(nid) == 0)
+                and self._sta_belongs_to_me(node)
+            )
+            if aids:
+                return aids
+        except Exception:
+            pass
+
         self._log("WARN", {"reason": "connected_aids_fallback_exhausted"})
         return []
 

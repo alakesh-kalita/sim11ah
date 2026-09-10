@@ -168,3 +168,36 @@ class BAReorderBuffer:
     def reset(self) -> None:
         self._buf.clear()
         self.win_start = 0
+
+
+# ---------------------------------------------------------------------------
+# Multi-AP ownership check
+# ---------------------------------------------------------------------------
+def sta_belongs_to_ap(ctx: Any, sta_node: Any) -> bool:
+    """Does sta_node actually belong to ctx's own AP right now -- either
+    directly associated with it, or associated with a relay that is itself
+    uplinked to it? Under multi-AP, "belongs to me" is not simply
+    "peer == my id": a relay-served STA's own _assoc_peer_id is the
+    RELAY's node_id, not the AP's, even though it's legitimately part of
+    that AP's BSS (see AssocManager.on_assoc_req_received's mirror-into-
+    uplink-AP logic). Shared by RawEngine.connected_aids() and any RAW
+    policy that reads ctx._associated_stas directly as its own fallback
+    (e.g. raw_policy_adaptive.py) -- both need the identical ownership
+    rule, and this is the one place it should be edited.
+
+    Returns True (lenient/include) when peer info is unavailable, the same
+    default this had before any ownership filtering existed (single-AP)."""
+    my_id = ctx.node.node_id
+    mac_ctx = getattr(getattr(sta_node, "mac", None), "ctx", None)
+    peer = getattr(mac_ctx, "_assoc_peer_id", None) if mac_ctx is not None else None
+    if peer is None:
+        return True
+    if int(peer) == int(my_id):
+        return True
+    sim_nodes = getattr(ctx.sim, "nodes", {})
+    peer_node = sim_nodes.get(int(peer))
+    if getattr(peer_node, "role", None) == "RELAY":
+        relay_ctx = getattr(getattr(peer_node, "mac", None), "ctx", None)
+        relay_upstream = getattr(relay_ctx, "_assoc_peer_id", None) if relay_ctx is not None else None
+        return relay_upstream is not None and int(relay_upstream) == int(my_id)
+    return False  # associated with a different AP directly -- not mine
