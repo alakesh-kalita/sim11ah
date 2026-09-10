@@ -1692,13 +1692,20 @@ class NetworkCanvas(tk.Canvas):
 
     def _draw_car_icon(self, px: float, py: float, heading: float, color: str) -> None:
         """Small top-down car glyph, oriented along its heading: a cast
-        shadow, a rotated rectangular body, and a light windshield accent
-        near the front -- reads clearly at map scale like a minimap icon
-        in a driving game."""
+        shadow, a rotated rectangular body, a cabin/windshield inset, and
+        head/tail light accents front and back -- echoes the same
+        body/cabin/lights split the 3D car mesh uses (entities.js's
+        buildCarBody), just flattened to a minimap-style icon rather than
+        the tower/drone glyphs' fuller shadow+shading treatment (a car
+        population stays small, so there's room for it, but this is still
+        meant to read at a glance, not as a model kit)."""
         length, width = 9.0, 4.6
         ch, sh = math.cos(heading), math.sin(heading)
         perp = heading + math.pi / 2.0
         cp, sp = math.cos(perp), math.sin(perp)
+
+        def _pt(dl, dw):
+            return px + dl * ch + dw * cp, py + dl * sh + dw * sp
 
         self.create_oval(px - length * 0.6 + 2, py - width * 0.6 + 2,
                           px + length * 0.6 + 2, py + width * 0.6 + 2,
@@ -1707,12 +1714,97 @@ class NetworkCanvas(tk.Canvas):
         corners = []
         for dl, dw in ((length * 0.5, -width * 0.5), (length * 0.5, width * 0.5),
                        (-length * 0.5, width * 0.5), (-length * 0.5, -width * 0.5)):
-            corners.extend([px + dl * ch + dw * cp, py + dl * sh + dw * sp])
+            corners.extend(_pt(dl, dw))
         self.create_polygon(*corners, fill=color, outline="#1f2937", width=1, tags=("ovl",))
 
-        fx, fy = px + length * 0.16 * ch, py + length * 0.16 * sh
-        self.create_oval(fx - 1.8, fy - 1.8, fx + 1.8, fy + 1.8,
-                          fill="#cfe8ff", outline="", tags=("ovl",))
+        # Cabin/windshield inset -- a smaller, lighter rectangle set back
+        # from the nose, not just a single dot, so the glyph reads as "a
+        # car" rather than "a rounded rectangle with a headlight".
+        cabin = []
+        for dl, dw in ((length * 0.18, -width * 0.32), (length * 0.18, width * 0.32),
+                       (-length * 0.32, width * 0.32), (-length * 0.32, -width * 0.32)):
+            cabin.extend(_pt(dl, dw))
+        self.create_polygon(*cabin, fill="#cfe8ff", outline="", stipple="gray25", tags=("ovl",))
+
+        # Head/tail light dots, front and back -- same aviation-style "front
+        # is a distinct colour from rear" convention _draw_drone_icon's nav
+        # lights already establish for the other moving glyph on this canvas.
+        for dl, lcolor in ((length * 0.52, "#fff4d6"), (-length * 0.52, "#ff5c5c")):
+            lx, ly = _pt(dl, 0.0)
+            self.create_oval(lx - 1.1, ly - 1.1, lx + 1.1, ly + 1.1,
+                              fill=lcolor, outline="", tags=("ovl",))
+
+    def _draw_tower_icon(self, px: float, py: float, R: float, arm_count: int,
+                          dk_color: str, lt_color: str, hub_fill: str) -> None:
+        """Shared top-down radio-mast glyph for AP and relay markers: a
+        cast shadow, a hex base plate, `arm_count` radiating sector-antenna
+        arms with a panel at each tip, and a small status hub -- replaces
+        the old plain labelled circle for both role types, which read as
+        flat next to _draw_drone_icon's level of shading/detail once
+        cars/UAVs started sharing this canvas. arm_count mirrors
+        entities.js's buildApOrRelay(isAp) in the 3D view exactly: 3 arms
+        for an AP, 2 for a relay -- same role, same silhouette logic, just
+        seen from above here instead of from the side.
+
+        Callers (_draw_ap_icon / _draw_relay_icon) draw the id/role label
+        below the glyph themselves, at a y-offset that accounts for R --
+        not done here, so this stays purely the physical mast/antenna
+        shape with no role-specific text baked in."""
+        sh = 3.0
+        self.create_oval(px - R * 0.9 + sh, py - R * 0.65 + sh,
+                          px + R * 0.9 + sh, py + R * 0.65 + sh,
+                          fill=_SHADOW, outline="", stipple="gray50")
+
+        hex_pts = []
+        for k in range(6):
+            ang = math.pi / 6 + k * math.pi / 3
+            hex_pts.extend([px + R * 0.6 * math.cos(ang), py + R * 0.6 * math.sin(ang)])
+        self.create_polygon(*hex_pts, fill=dk_color, outline=_SHADOW, width=1)
+
+        for k in range(arm_count):
+            ang = k * (2.0 * math.pi / arm_count) - math.pi / 2.0
+            ax, ay = px + R * 0.95 * math.cos(ang), py + R * 0.95 * math.sin(ang)
+            self.create_line(px, py, ax, ay, fill=dk_color, width=3, capstyle="round")
+            perp = ang + math.pi / 2.0
+            wing, tip = R * 0.19, R * 0.5
+            panel = []
+            for dl, dw in ((tip, -wing), (tip, wing), (-tip * 0.25, wing), (-tip * 0.25, -wing)):
+                panel.extend([ax + dl * math.cos(ang) + dw * math.cos(perp),
+                              ay + dl * math.sin(ang) + dw * math.sin(perp)])
+            self.create_polygon(*panel, fill=lt_color, outline=dk_color, width=1)
+
+        hub_r = R * 0.42
+        self.create_oval(px - hub_r, py - hub_r, px + hub_r, py + hub_r,
+                          fill=hub_fill, outline=dk_color, width=2)
+
+    def _draw_ap_icon(self, px: float, py: float, label: str) -> None:
+        """AP marker: the _draw_tower_icon glyph (3 arms) plus a faint
+        dashed coverage-ring accent (a hint of the AP's role, not its real
+        PHY range circle -- that's the selection-time range circle drawn
+        elsewhere) and the role label below. Fixed light-blue hub, not
+        _assoc_color(n) -- the AP has no assoc_state of its own to reflect
+        (statusHex() in entities.js makes the same exception for the 3D
+        view's AP mesh)."""
+        R = 16.0
+        self.create_oval(px - R * 1.6, py - R * 1.6, px + R * 1.6, py + R * 1.6,
+                          outline=_BLUE, width=1, dash=(1, 4))
+        self._draw_tower_icon(px, py, R, arm_count=3,
+                               dk_color=_BLUE_DK, lt_color=_BLUE, hub_fill="#60a5fa")
+        self.create_text(px, py + R * 0.95 + 11, text=label,
+                          font=("Arial", 8, "bold"), fill=_BLUE_DK)
+
+    def _draw_relay_icon(self, px: float, py: float, nid: int, node) -> None:
+        """Relay marker: the _draw_tower_icon glyph (2 arms, matching
+        entities.js's buildApOrRelay(isAp=False)) with the hub filled by
+        the relay's own live uplink-association colour -- a relay that
+        hasn't associated with the AP yet can't actually relay anything,
+        the same "outline = role, fill = MAC state" split the old plain
+        circle already used, just on a more detailed glyph now."""
+        R = 12.5
+        self._draw_tower_icon(px, py, R, arm_count=2,
+                               dk_color=_PURPLE_DK, lt_color=_PURPLE, hub_fill=_assoc_color(node))
+        self.create_text(px, py + R * 0.95 + 11, text=f"R{nid}",
+                          font=("Arial", 8, "bold"), fill=_PURPLE_DK)
 
     def _draw_fading_trail(self, trail: list) -> None:
         """Contrail-style flight trail: drawn segment-by-segment so it
@@ -2076,37 +2168,44 @@ class NetworkCanvas(tk.Canvas):
                 continue
             px, py = self._world_to_px(*n.pos)
             if nid in self._ap_ids:
-                r, fill, outline, inner = 14, _BLUE, _BLUE_DK, "AP" if len(self._ap_ids) == 1 else f"AP{nid}"
+                label = "AP" if len(self._ap_ids) == 1 else f"AP{nid}"
+                self._draw_ap_icon(px, py, label)
+                sel_r, stat_y = 22, None  # AP has no dist/RSSI/diagnostic block below it
             elif nid in self._relay_ids:
-                # Role (relay) stays legible via the purple outline/label;
-                # fill reflects this relay's own live uplink association to
-                # the AP, same "outline = role, fill = MAC state" split used
-                # for STA markers in the other two views (three.js scene,
-                # real-map twin) -- a relay that hasn't associated yet can't
-                # actually relay anything, which is worth seeing at a glance.
-                r, fill, outline, inner = 11, _assoc_color(n), _PURPLE_DK, f"R{nid}"
+                self._draw_relay_icon(px, py, nid, n)
+                sel_r, stat_y = 17, 24  # clear of the "R{nid}" label _draw_relay_icon draws
             else:
-                r, fill, outline, inner = 8, _assoc_color(n), _TEAL, ""
-
-            self.create_oval(px - r, py - r, px + r, py + r,
-                              fill=fill, outline=outline, width=2)
-            if nid in self._selected_ids:
-                self.create_oval(px - r - 4, py - r - 4, px + r + 4, py + r + 4,
-                                  outline=_AMBER, width=2)
-            if inner:
-                self.create_text(px, py, text=inner, font=("Arial", 8, "bold"), fill="white")
-            else:
+                r, fill, outline = 8, _assoc_color(n), _TEAL
+                sh = 2.5
+                self.create_oval(px - r + sh, py - r + sh, px + r + sh, py + r + sh,
+                                  fill=_SHADOW, outline="", stipple="gray50")
+                # Small off-centre highlight -- a plain flat fill reads
+                # noticeably flatter next to the AP/relay towers' and
+                # drones' shaded glyphs once those got more detail, but a
+                # STA population can run into the hundreds (see
+                # _get_assoc_ready_t's own docstring on that), so this stays
+                # a single extra shape rather than the towers' full
+                # shadow+base+arms treatment.
+                self.create_oval(px - r, py - r, px + r, py + r,
+                                  fill=fill, outline=outline, width=2)
+                self.create_oval(px - r * 0.4, py - r * 0.6, px + r * 0.15, py - r * 0.05,
+                                  fill="", outline="#ffffff", width=0, stipple="gray25")
                 self.create_text(px, py, text=str(nid), font=("Arial", 7, "bold"), fill="white")
+                sel_r, stat_y = r + 4, r + 9
 
-            if nid not in self._ap_ids:
-                self.create_text(px, py + r + 9, text=_fmt_dist_m(dist_to_ap_m(n, self.sim)),
+            if nid in self._selected_ids:
+                self.create_oval(px - sel_r, py - sel_r, px + sel_r, py + sel_r,
+                                  outline=_AMBER, width=2)
+
+            if stat_y is not None:
+                self.create_text(px, py + stat_y, text=_fmt_dist_m(dist_to_ap_m(n, self.sim)),
                                   font=("Arial", 7), fill=_MUTED)
-                self.create_text(px, py + r + 19, text=_fmt_rssi(n),
+                self.create_text(px, py + stat_y + 10, text=_fmt_rssi(n),
                                   font=("Arial", 7), fill=_MUTED)
                 diag = _diagnose_unjoined(n, self.sim)
                 if diag is not None:
                     code, _label = diag
-                    self.create_text(px, py + r + 31, text=code, font=("Arial", 8, "bold"),
+                    self.create_text(px, py + stat_y + 22, text=code, font=("Arial", 8, "bold"),
                                       fill=_assoc_color(n))
 
         self._draw_error_code_legend(W, H)

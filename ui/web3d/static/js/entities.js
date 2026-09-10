@@ -130,6 +130,10 @@ function statusHex(n) {
   return STATUS_COLOR.PENDING;
 }
 
+const plinthMat = new THREE.MeshLambertMaterial({ color: 0x2a2f38 });
+const apPanelMat = new THREE.MeshLambertMaterial({ color: 0x93c5fd });
+const relayPanelMat = new THREE.MeshLambertMaterial({ color: 0xd8b4fe });
+
 function buildApOrRelay(isAp) {
   const g = new THREE.Group();
   // The AP is the one node that never moves and never sits on a rooftop
@@ -139,31 +143,64 @@ function buildApOrRelay(isAp) {
   // than a relay mast and gets a second lattice brace partway up.
   const mastH = isAp ? 58 : 24;
   const bodyMat = isAp ? apBodyMat : relayBodyMat;
+
+  // Base plinth: a short, wide concrete-style foundation the mast rises
+  // from -- previously the mast just touched the terrain at a single
+  // point, which read as a thin pole rather than an anchored structure.
+  // Every other mesh below shifts up by its height (baseH) to sit on top
+  // of it instead of sinking into it.
+  const baseH = isAp ? 1.6 : 1.2;
+  const plinth = new THREE.Mesh(
+    new THREE.CylinderGeometry(isAp ? 4.2 : 3.0, isAp ? 4.8 : 3.4, baseH, 8), plinthMat);
+  plinth.position.y = baseH / 2;
+  plinth.castShadow = true;
+  plinth.receiveShadow = true;
+  g.add(plinth);
+
   const mast = new THREE.Mesh(new THREE.BoxGeometry(2.2, mastH, 2.2), bodyMat);
-  mast.position.y = mastH / 2;
+  mast.position.y = mastH / 2 + baseH;
   mast.castShadow = true;
   g.add(mast);
   const unit = new THREE.Mesh(new THREE.BoxGeometry(6, 8, 4), bodyMat);
-  unit.position.y = mastH * 0.85;
+  unit.position.y = mastH * 0.85 + baseH;
   unit.castShadow = true;
   g.add(unit);
   const armCount = isAp ? 3 : 2;
   const braceHeights = isAp ? [0.55, 0.95] : [0.95];
+  // Sector-antenna panel at the outer tip of each arm -- previously the
+  // arm was just a bare crossbar with no end detail, unlike the 2D
+  // topology canvas's own tower glyph (_draw_tower_icon in
+  // topology_canvas.py), which already draws a panel at each arm tip;
+  // this brings the two views' visual language back in sync.
+  const panelMat = isAp ? apPanelMat : relayPanelMat;
   for (const hFrac of braceHeights) {
     for (let i = 0; i < armCount; i++) {
       const ang = (i / armCount) * Math.PI * 2 + (hFrac < 0.9 ? Math.PI / armCount : 0);
-      const arm = new THREE.Mesh(new THREE.BoxGeometry(isAp ? 12 : 9, 1.2, 1.2), armMat);
-      arm.position.y = mastH * hFrac;
+      const armLen = isAp ? 12 : 9;
+      const armY = mastH * hFrac + baseH;
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(armLen, 1.2, 1.2), armMat);
+      arm.position.y = armY;
       arm.rotation.y = ang;
       g.add(arm);
+
+      // Same rotation.y convention as the arm above: a local (+X, 0, 0)
+      // tip point transforms to world-relative (cos(ang), 0, -sin(ang))
+      // * armLen/2 once rotated by ang around Y.
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(1.0, 3.0, 2.0), panelMat);
+      panel.position.set(Math.cos(ang) * armLen * 0.5, armY, -Math.sin(ang) * armLen * 0.5);
+      panel.rotation.y = ang;
+      panel.castShadow = true;
+      g.add(panel);
     }
   }
   const ledMat = new THREE.MeshBasicMaterial({ color: isAp ? 0x60a5fa : 0xa78bfa });
   const led = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), ledMat);
-  led.position.y = mastH + 3;
+  led.position.y = mastH + baseH + 3;
   g.add(led);
   return { group: g, ledMat, rotors: null };
 }
+
+const staCapMat = new THREE.MeshLambertMaterial({ color: 0x5b6472 });
 
 function buildStation() {
   const g = new THREE.Group();
@@ -171,12 +208,21 @@ function buildStation() {
   base.position.y = 2.5;
   base.castShadow = true;
   g.add(base);
+  // Narrower top plate -- one extra shape gives the box a "stacked
+  // equipment unit" silhouette instead of one flat slab, cheap enough to
+  // afford even with a large STA population (unlike the AP/relay
+  // plinth+panels treatment, which stays reserved for the much smaller
+  // number of tower-role nodes).
+  const cap = new THREE.Mesh(new THREE.BoxGeometry(6.6, 1.2, 6.6), staCapMat);
+  cap.position.y = 5.6;
+  cap.castShadow = true;
+  g.add(cap);
   const antenna = new THREE.Mesh(new THREE.BoxGeometry(0.8, 8, 0.8), armMat);
-  antenna.position.set(2.6, 9, 0);
+  antenna.position.set(2.6, 10.2, 0);
   g.add(antenna);
   const ledMat = new THREE.MeshBasicMaterial({ color: 0x34d399 });
   const led = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.8, 1.8), ledMat);
-  led.position.set(-2.6, 5.4, 0);
+  led.position.set(-2.6, 6.5, 0);
   g.add(led);
   return { group: g, ledMat, rotors: null };
 }
@@ -382,7 +428,11 @@ export function stepNodeAnimation(dt) {
 function linkEndpointY(n, sx, sz) {
   const base = altitudeFor(n, sx, sz);
   if (n.is_drone || n.is_uav) return base + 2;
-  const mastTop = n.role === 'AP' ? 61 : n.role === 'RELAY' ? 27 : 9;
+  // AP/RELAY: mastH + baseH + 3 (the LED height buildApOrRelay actually
+  // places -- 58+1.6+3 / 24+1.2+3, updated to match when the base plinth
+  // was added there; previously 61/27, which no longer quite reached the
+  // antenna once the plinth raised everything on top of it by baseH).
+  const mastTop = n.role === 'AP' ? 62.6 : n.role === 'RELAY' ? 28.2 : 9;
   return base + mastTop;
 }
 
