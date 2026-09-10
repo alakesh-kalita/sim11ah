@@ -2810,7 +2810,7 @@ def _run_main() -> None:
 
     from sim11ah.config import default_config
     from sim11ah.simulator import Simulator
-    from sim11ah.topology import StarBuilder, RelayBuilder
+    from sim11ah.topology import StarBuilder, RelayBuilder, MultiApBuilder
     from sim11ah.app import (
         PeriodicTraffic, PoissonTraffic, CBRTraffic,
         BurstyTraffic, OnOffTraffic,
@@ -2850,6 +2850,7 @@ def _run_main() -> None:
         topology="star", num_relays=2, freq_mhz=915.0,
         raw_num_groups=4, raw_num_slots=8, raw_slot_duration=0.014,
         video_fps=5.0, app_overrides=None,
+        num_aps=2, ap_spacing_m=400.0,
     ):
         # See scripts/main_gui.py's build_sim() for why the effective
         # traffic mode must come from app_overrides (a sensor profile)
@@ -2887,19 +2888,34 @@ def _run_main() -> None:
             )
             if topology != "relay":
                 sim.config.setdefault("topology", {})["mode"] = topology
+        elif topology == "multi_ap":
+            MultiApBuilder.build(
+                sim, num_aps=max(1, int(num_aps)), ap_spacing_m=float(ap_spacing_m),
+                num_stas=int(num_stas), link_cfg=access,
+            )
         else:
             StarBuilder.build(sim, num_stas=int(num_stas), link_cfg=access)
             if topology == "uav":
                 sim.config.setdefault("topology", {})["mode"] = "uav"
 
         for nid, node in sim.nodes.items():
-            if nid == 0 or node.role == "RELAY":
+            if node.is_ap or node.role == "RELAY":
                 node.app.set_traffic_model(None)
             else:
                 node.app.set_traffic_model(_make_traffic(cfg, effective_traffic))
 
-        if 0 in sim.nodes:
-            sim.nodes[0].mac.ap_start_beacons()
+        # Every AP starts beaconing with its own phase offset, not just node
+        # 0 -- see scripts/main_gui.py's build_sim() for the full rationale
+        # (ap_ids only set by MultiApBuilder; ap_start_beacons() is
+        # idempotent so this explicit call, run before node.start(), wins
+        # over MacLayer.start()'s automatic offset-0.0 follow-up call).
+        ap_ids = sim.config.get("topology", {}).get("ap_ids", [0] if 0 in sim.nodes else [])
+        beacon_interval = float(cfg["mac"]["beacon_interval"])
+        for idx, ap_id in enumerate(ap_ids):
+            sim.nodes[ap_id].mac.ap_start_beacons(
+                phase_offset_s=idx * beacon_interval / max(1, len(ap_ids))
+            )
+
         for node in sim.nodes.values():
             node.start()
         return sim
