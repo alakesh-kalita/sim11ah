@@ -212,7 +212,7 @@ _RELAY_SCATTER_MIN_FRAC, _RELAY_SCATTER_MAX_FRAC = 0.33, 0.74
 # Each relay's STAs spread out around *it*, not the AP, far enough that
 # relay_dist + sta_offset routinely exceeds the AP's own range -- so a
 # meaningful share of them genuinely need the relay, while others land in
-# dual coverage (handover-eligible; see AssocManager._maybe_handover_to_ap)
+# dual coverage (handover-eligible; see AssocManager._maybe_roam/_roam_to)
 # instead of every STA being able to reach the AP directly regardless of
 # whether a relay exists.
 _RELAY_STA_MIN_FRAC, _RELAY_STA_MAX_FRAC = 0.12, 0.49
@@ -289,13 +289,14 @@ def _fspl_db_1m(freq_mhz: float) -> float:
 
 
 def range_m_for_node(node) -> float:
-    """Nominal coverage radius (m): distance at which RSSI == rx sensitivity."""
+    """Nominal coverage radius (m): distance at which RSSI == rx sensitivity.
+    Delegates to PhyLayer.nominal_range_m() (sim11ah/phy.py) -- the same
+    formula, kept here only as a thin node->phy convenience wrapper for this
+    module's existing call sites, so the math lives in exactly one place."""
     phy = getattr(node, "phy", None)
     if phy is None:
         return 0.0
-    fspl1 = _fspl_db_1m(phy.freq_mhz)
-    exponent = (phy.eirp_dbm - phy.rx_sensitivity_dbm - fspl1) / (10.0 * phy.path_loss_exp)
-    return float(phy.d0_m * (10.0 ** exponent))
+    return float(phy.nominal_range_m())
 
 
 _FALLBACK_RANGE_M = 1000.0  # only used if the AP/its PHY isn't built yet -- matches the ~1km default below

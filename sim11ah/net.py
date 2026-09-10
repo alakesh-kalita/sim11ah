@@ -96,10 +96,10 @@ class NetworkLayer:
         return {sta for sta, rly in self.relay_assignment.items() if rly == me}
 
     def _live_assoc_peer(self) -> Optional[int]:
-        """The node this STA is actually associated with right now: 0 if
-        directly on the real AP, a relay's node_id, or None if not yet
+        """The node this STA is actually associated with right now: an AP's
+        node_id (0 under single-AP), a relay's node_id, or None if not yet
         known. Read live from the MAC layer so uplink routing reflects a
-        completed handover (AssocManager._maybe_handover_to_ap) instead of
+        completed handover (AssocManager._maybe_roam/_roam_to) instead of
         staying pinned to the fixed topology-build-time relay assignment."""
         mac = getattr(self.node, "mac", None)
         ctx = getattr(mac, "ctx", None) if mac is not None else None
@@ -269,10 +269,11 @@ class NetworkLayer:
             return dst                             # downstream to STA (direct link)
 
         # STA: route toward whichever peer it's actually associated with
-        # right now (0 = the real AP directly), not the fixed topology-
-        # build-time relay assignment -- this is what makes a completed
-        # handover (see AssocManager._maybe_handover_to_ap) actually stop
-        # routing traffic through a relay the STA no longer needs.
+        # right now (an AP's node_id, 0 under single-AP, directly on the
+        # AP), not the fixed topology-build-time relay assignment -- this
+        # is what makes a completed handover (see AssocManager._maybe_roam/
+        # _roam_to) actually stop routing traffic through a relay the STA
+        # no longer needs.
         peer = self._live_assoc_peer()
         if peer is not None:
             return peer

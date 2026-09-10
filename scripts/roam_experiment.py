@@ -276,6 +276,18 @@ def run_one(
                 pending_gap_start = None
                 pending_gap_kind = None
 
+    # A handover/link-loss that never resolved by the end of the run (the
+    # STA never made it back to ASSOCIATED, e.g. under extreme speed/
+    # congestion) would otherwise vanish from the total instead of counting
+    # as the worst-case outcome it actually is -- close it out against the
+    # simulation's final time.
+    if pending_gap_start is not None:
+        gap = float(sim.stats.sim_time) - pending_gap_start
+        if pending_gap_kind == "handover":
+            connectivity_gap_s += gap
+        else:
+            link_loss_gap_s += gap
+
     return RunResult(
         seed=seed,
         ap_spacing_m=float(ap_spacing_m),

@@ -76,7 +76,7 @@ class RelayBuilder:
     as the STA is actually associated with its assigned relay. A STA that
     associates directly with the AP instead (in range and preferred, or
     handed over back to it -- see mac/association.py's "auto" preference
-    and _maybe_handover_to_ap) routes data straight over the AP<->STA
+    and _maybe_roam/_roam_to) routes data straight over the AP<->STA
     link like a star-topology STA would; net.py's resolve_next_hop reads
     each STA's *live* association peer, not this static assignment, so
     the AP<->STA link is not beacon-only in every case.

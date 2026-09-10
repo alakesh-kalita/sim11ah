@@ -228,34 +228,73 @@ class RawEngine:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+    def _sta_belongs_to_me(self, sta_node: Any) -> bool:
+        """Does sta_node (a STA, not necessarily this AP's own context's key)
+        actually belong to THIS AP right now -- either directly associated
+        with it, or associated with a relay that is itself uplinked to this
+        AP? Under multi-AP, "belongs to me" is not simply "peer == my id":
+        a relay-served STA's own _assoc_peer_id is the RELAY's node_id, not
+        the AP's, even though it's legitimately part of this AP's BSS (see
+        AssocManager.on_assoc_req_received's mirror-into-uplink-AP logic).
+        Returns True (lenient/include) when peer info is unavailable, same
+        default as before any ownership filtering existed."""
+        my_id = self.ctx.node.node_id
+        mac_ctx = getattr(getattr(sta_node, "mac", None), "ctx", None)
+        peer = getattr(mac_ctx, "_assoc_peer_id", None) if mac_ctx is not None else None
+        if peer is None:
+            return True
+        if int(peer) == int(my_id):
+            return True
+        peer_node = getattr(self.ctx.sim, "nodes", {}).get(int(peer))
+        if getattr(peer_node, "role", None) == "RELAY":
+            relay_ctx = getattr(getattr(peer_node, "mac", None), "ctx", None)
+            relay_upstream = getattr(relay_ctx, "_assoc_peer_id", None) if relay_ctx is not None else None
+            return relay_upstream is not None and int(relay_upstream) == int(my_id)
+        return False  # associated with a different AP directly -- not mine
+
     def connected_aids(self) -> List[int]:
         if not self.ctx.node.is_ap:
             return []
 
-        # 1) Preferred: AP association table
+        # 1) Preferred: AP association table. Under multi-AP this MUST also
+        # filter to STAs that actually still belong to THIS AP --
+        # _associated_stas is only ever appended to (on_assoc_req_received
+        # sets an entry when a STA associates, directly or via a relay
+        # mirroring into its uplink AP), never cleaned up on roam-away or
+        # link-loss, so a STA that later roams to a DIFFERENT AP leaves a
+        # permanently stale entry behind on its old AP. Harmless with a
+        # single AP (nothing else to conflict with), but caught empirically
+        # under multi-AP: two APs both claiming the same STA's AID, well
+        # past what a disjoint ownership split should allow, inflating both
+        # APs' RAW schedules with phantom slots for STAs that aren't there.
         try:
             assoc = getattr(self.ctx, "_associated_stas", None)
             if isinstance(assoc, dict) and assoc:
-                aids = sorted(
-                    int(aid) for aid in assoc.values()
-                    if isinstance(aid, int) and aid > 0
-                )
+                sim_nodes = getattr(self.ctx.sim, "nodes", {})
+                aids = []
+                for sta_id, aid in assoc.items():
+                    if not (isinstance(aid, int) and aid > 0):
+                        continue
+                    sta_node = sim_nodes.get(int(sta_id))
+                    if not self._sta_belongs_to_me(sta_node):
+                        continue
+                    aids.append(int(aid))
+                aids.sort()
                 if aids:
                     return aids
         except Exception:
             pass
 
         # 2) Fallback: node/mac context AID fields. Under multi-AP, this MUST
-        # filter to STAs whose live association peer is THIS AP -- without
-        # that, every AP would independently scan the same global node set
-        # and each would claim every associated STA in the whole simulation,
-        # regardless of which AP it's actually associated with (a real bug
-        # caught while adding multi-AP support: this method previously had
-        # no ownership check at all, only safe because there was never more
-        # than one AP to conflict with).
+        # filter to STAs that actually belong to THIS AP (directly, or via a
+        # relay uplinked to it) -- without that, every AP would independently
+        # scan the same global node set and each would claim every associated
+        # STA in the whole simulation, regardless of which AP it's actually
+        # associated with (a real bug caught while adding multi-AP support:
+        # this method previously had no ownership check at all, only safe
+        # because there was never more than one AP to conflict with).
         try:
             aids: List[int] = []
-            my_id = self.ctx.node.node_id
             for nid, node in getattr(self.ctx.sim, "nodes", {}).items():
                 if getattr(node, "is_ap", int(nid) == 0):
                     continue
@@ -265,9 +304,8 @@ class RawEngine:
                 try:
                     mac_ctx = getattr(getattr(node, "mac", None), "ctx", None)
                     if mac_ctx is not None:
-                        peer = getattr(mac_ctx, "_assoc_peer_id", None)
-                        if peer is not None and int(peer) != int(my_id):
-                            continue  # associated with a different AP -- not mine
+                        if not self._sta_belongs_to_me(node):
+                            continue  # not associated with this AP, directly or via a relay
                         for name in (
                             "aid",
                             "_aid",
