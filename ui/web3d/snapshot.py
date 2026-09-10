@@ -162,7 +162,7 @@ def _road_loops(canvas) -> List[Dict[str, float]]:
         span = float(topo_cfg.get("corridor_span_m", wxs))
         car_off = float(topo_cfg.get("car_lane_offset_m", 25.0))
         return [
-            {"cx": cx_w, "cy": cy_w, "hw": span / 2.0 + 60.0, "hh": car_off, "period_s": 22.0},
+            {"cx": cx_w, "cy": cy_w, "hw": span / 2.0 + 150.0, "hh": car_off, "period_s": 22.0},
             {"cx": cx_w, "cy": cy_w, "hw": wxs / 2.0, "hh": wys / 2.0, "period_s": 34.0},
         ]
 

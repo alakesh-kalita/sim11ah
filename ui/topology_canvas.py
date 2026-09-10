@@ -3580,9 +3580,18 @@ class NetworkCanvas(tk.Canvas):
         car_lane_offset_m / sim11ah/mobility.py's highway_bounce_step) --
         rather than at some arbitrary fraction of the live view's
         bounding box, so a car always renders sitting on this road, not
-        floating beside it. Low-rise buildings line both shoulders the
-        length of the corridor, mirroring the 3D view's own dedicated
-        cars_uavs road loops (ui/web3d/snapshot.py's _road_loops)."""
+        floating beside it. Cars/scooters only ever move along x at that
+        fixed lane y (highway_bounce_step never touches y), so this is a
+        standing guarantee, not something that can drift out of sync.
+
+        Three depth rows of low-rise-to-mid-rise buildings line both
+        shoulders the length of the corridor -- denser/shorter near the
+        road, sparser/taller further back, the usual "skyline recedes
+        from the highway" read -- instead of the single roadside row this
+        used to draw, so the city reads as an actual district flanking
+        the highway rather than a thin ribbon glued to its shoulder.
+        Mirrors the 3D view's own dedicated cars_uavs road loops
+        (ui/web3d/snapshot.py's _road_loops)."""
         self.create_rectangle(0, 0, W, H, fill=_CITY_PARK_LT, outline="")
         scale = self._transform()[0]
 
@@ -3590,15 +3599,31 @@ class NetworkCanvas(tk.Canvas):
         car_off = float(topo_cfg.get("car_lane_offset_m", 25.0))
         span = float(topo_cfg.get("corridor_span_m", 0.0))
 
+        # The built-up zone extends well past each end AP and runs deep
+        # back from the road on each side -- fixed world coordinates, not
+        # the live auto-fit bounds (which shrink/grow as UAVs wander), so
+        # the city always reads as a real district continuing past the
+        # visible cluster rather than one that resizes under it.
+        margin = 150.0
+        x0, x1 = -margin, span + margin
+        depth = 260.0
+
+        # Paved urban ground (concrete checkerboard) under the whole
+        # built-up zone, so buildings sit on pavement instead of floating
+        # on bare grass -- same base-tone treatment v1-v3 give their own
+        # block grid.
+        n_bands = max(1, int((x1 - x0) / 350.0))
+        band_w = (x1 - x0) / n_bands
+        for bi in range(n_bands):
+            gx0, gx1 = x0 + bi * band_w, x0 + (bi + 1) * band_w
+            tone = _CITY_BASE if bi % 2 == 0 else _CITY_BASE_ALT
+            px0, py0 = self._world_to_px(gx0, car_off + depth)
+            px1, py1 = self._world_to_px(gx1, -(car_off + depth))
+            self.create_rectangle(min(px0, px1), min(py0, py1), max(px0, px1), max(py0, py1),
+                                   fill=tone, outline="")
+
         road_px = max(10, min(26, int(7.0 * scale)))
         sidewalk_px = max(3, int(road_px * 0.28))
-
-        # The road itself extends a little past each end AP -- fixed
-        # world coordinates, not the live auto-fit bounds (which shrink/
-        # grow as UAVs wander), so the highway always reads as a real
-        # road continuing past the visible cluster rather than one that
-        # resizes under it.
-        x0, x1 = -60.0, span + 60.0
         for lane_y in (car_off, -car_off):
             p0 = self._world_to_px(x0, lane_y)
             p1 = self._world_to_px(x1, lane_y)
@@ -3608,34 +3633,48 @@ class NetworkCanvas(tk.Canvas):
             self.create_line(p0[0], p0[1], p1[0], p1[1], fill=_CITY_ROAD_MARK,
                               width=1, dash=(8, 7))
 
-        # Low-rise buildings line both shoulders, spaced along the whole
-        # corridor and offset just past the road's outer sidewalk edge --
-        # same _city_tower glyph/obstacle registration v1-v3 use, just
-        # arranged along a straight strip instead of a 3x3 block grid.
+        # Three depth rows per side: (offset from the road's outer edge,
+        # along-corridor spacing, (P(tier==1), P(tier<=2))) -- row 0 is
+        # dense/low-rise right off the shoulder, row 2 is sparse/tall
+        # farthest back.
         losses = {1: 30.0, 2: 22.0, 3: 15.0}
-        tower_wh = {1: (30.0, 26.0), 2: (26.0, 22.0), 3: (20.0, 18.0)}
-        shoulder = car_off + 26.0
-        spacing = 90.0
-        n_slots = max(1, int(span / spacing))
+        tower_wh = {1: (34.0, 30.0), 2: (27.0, 23.0), 3: (20.0, 18.0)}
+        rows = (
+            (car_off + 26.0, 70.0, (0.05, 0.45)),
+            (car_off + 26.0 + 90.0, 85.0, (0.20, 0.65)),
+            (car_off + 26.0 + 180.0, 100.0, (0.40, 0.85)),
+        )
         for row_sign in (1.0, -1.0):
-            for i in range(n_slots + 1):
-                wx = i * spacing
-                if self._hash01(int(wx), int(row_sign), 41) < 0.35:
-                    continue  # the occasional gap, not solid wall-to-wall
-                tier = 1 if self._hash01(int(wx), int(row_sign), 42) < 0.15 else (
-                    2 if self._hash01(int(wx), int(row_sign), 43) < 0.55 else 3)
-                w_m, h_m = tower_wh[tier]
-                wy = row_sign * (shoulder + h_m / 2.0)
-                bx0, by0 = self._world_to_px(wx - w_m / 2.0, wy - h_m / 2.0)
-                bx1, by1 = self._world_to_px(wx + w_m / 2.0, wy + h_m / 2.0)
-                rect = (min(bx0, bx1), min(by0, by1), max(bx0, bx1), max(by0, by1))
-                self._city_tower(*rect, tier=tier, seed=int(wx) * 7 + (1 if row_sign > 0 else 0))
-                self._register_obstacle(Obstacle(
-                    kind="rect",
-                    x0=wx - w_m / 2.0, y0=wy - h_m / 2.0,
-                    x1=wx + w_m / 2.0, y1=wy + h_m / 2.0,
-                    loss_db=losses[tier], label=f"hwy-{int(wx)}-{int(row_sign)}",
-                ))
+            # _city_tower must be drawn back-to-front (ascending screen-y,
+            # i.e. north/farthest first) for its extrusion to occlude
+            # correctly -- north is +y on the +1 side (farthest row =
+            # largest depth = smallest screen-y = draw first) but -y on
+            # the -1 side (farthest row = most-negative y = LARGEST
+            # screen-y = draw last), so the two sides iterate in opposite
+            # row order.
+            row_order = range(len(rows) - 1, -1, -1) if row_sign > 0 else range(len(rows))
+            for row_idx in row_order:
+                row_depth, spacing, (p_t1, p_t12) = rows[row_idx]
+                n_slots = max(1, int((x1 - x0) / spacing))
+                for i in range(n_slots + 1):
+                    wx = x0 + i * spacing
+                    if self._hash01(int(wx), row_idx, int(row_sign), 41) < 0.28:
+                        continue  # the occasional gap, not solid wall-to-wall
+                    r01 = self._hash01(int(wx), row_idx, int(row_sign), 42)
+                    tier = 1 if r01 < p_t1 else (2 if r01 < p_t12 else 3)
+                    w_m, h_m = tower_wh[tier]
+                    wy = row_sign * (row_depth + h_m / 2.0)
+                    bx0, by0 = self._world_to_px(wx - w_m / 2.0, wy - h_m / 2.0)
+                    bx1, by1 = self._world_to_px(wx + w_m / 2.0, wy + h_m / 2.0)
+                    rect = (min(bx0, bx1), min(by0, by1), max(bx0, bx1), max(by0, by1))
+                    self._city_tower(*rect, tier=tier,
+                                      seed=int(wx) * 7 + row_idx * 101 + (1 if row_sign > 0 else 0))
+                    self._register_obstacle(Obstacle(
+                        kind="rect",
+                        x0=wx - w_m / 2.0, y0=wy - h_m / 2.0,
+                        x1=wx + w_m / 2.0, y1=wy + h_m / 2.0,
+                        loss_db=losses[tier], label=f"hwy-{row_idx}-{int(wx)}-{int(row_sign)}",
+                    ))
 
         self._map_chrome(W, H)
 

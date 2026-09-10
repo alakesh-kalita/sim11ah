@@ -358,7 +358,12 @@ class CarsUavsBuilder:
         # 4m rather than sitting right on its edge, so scooters render on
         # pavement, not straddling the kerb.
         scooter_lane_offset_m: float = 15.0,
-        uav_margin_m: float = 150.0,
+        # 220.0, not 150.0 -- this doubles as the 3D city-limits ring's
+        # half-extent (ui/web3d/snapshot.py's _road_loops outer loop) and
+        # the 2D highway background's margin/depth scale, so bumping it
+        # gives the whole "cars_uavs" scene a visibly bigger city
+        # footprint on both views, not just a wider UAV flight envelope.
+        uav_margin_m: float = 220.0,
     ) -> List["Node"]:
         num_aps = max(1, int(num_aps))
         num_cars = int(num_cars)
