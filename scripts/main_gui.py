@@ -67,6 +67,7 @@ def build_sim(
     # default was silently doing versus every published benchmark result.
     raw_num_slots: int = 8,
     raw_slot_duration: float = 0.014,
+    video_fps: float = 5.0,
     app_overrides: dict | None = None,
 ):
     # A sensor profile (sim11ah/sensor_profiles.py) carries its own
@@ -94,8 +95,11 @@ def build_sim(
     cfg["mac"]["raw_slot_duration"] = float(raw_slot_duration)
     cfg["app"]["packet_size_bytes"] = int(packet_size)
     cfg["app"]["periodic_interval"] = float(packet_interval)
+    cfg["app"]["video_fps"] = float(video_fps)
     cfg["phy"]["freq_mhz"] = float(freq_mhz)
     if app_overrides:
+        # A sensor profile's own video_fps (if any) wins over the plain
+        # GUI field, same precedence as packet_size/periodic_interval above.
         cfg["app"].update(app_overrides)
 
     sim = Simulator(config=cfg, seed=seed)

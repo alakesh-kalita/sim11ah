@@ -504,6 +504,7 @@ class Dashboard(tk.Tk):
             "trace_node":      tk.StringVar(value=""),
             "trace_search":    tk.StringVar(value=""),
             "sensor_profile":  tk.StringVar(value="(none)"),
+            "video_fps":       tk.DoubleVar(value=float(s.get("video_fps", 5.0))),
         }
         self._applied = self._sig()
         _skip_trace = {"sim_speed", "log_filter", "log_autoscroll",
@@ -897,6 +898,9 @@ class Dashboard(tk.Tk):
         row("Traffic Model",
             ["periodic", "poisson", "cbr", "bursty", "onoff", "video"],
             self._vars["traffic"])
+        row("Video FPS  (Traffic Model = video)",
+            [1, 2, 5, 10, 15, 30],
+            self._vars["video_fps"])
 
         # Sensor Profile: a preset that overrides traffic/packet-size/etc.
         # with realistic values for a named sensor type (see
@@ -1741,7 +1745,7 @@ class Dashboard(tk.Tk):
             "raw_groups": 4, "raw_slots": 8, "raw_slot_duration_ms": 14.0,
             "packet_size": 128, "packet_interval": 5.0,
             "topology": "star", "num_relays": 2, "freq_mhz": 915.0,
-            "sensor_profile": "(none)",
+            "sensor_profile": "(none)", "video_fps": 5.0,
         }
         for k, v in defs.items():
             if k in self._vars:
@@ -1838,6 +1842,7 @@ class Dashboard(tk.Tk):
             raw_num_groups=int(sig["raw_groups"]),
             raw_num_slots=int(sig["raw_slots"]),
             raw_slot_duration=float(sig["raw_slot_duration_ms"]) / 1000.0,
+            video_fps=float(sig["video_fps"]),
             app_overrides=app_overrides,
         )
         # sim_builder/RelayBuilder don't know about this -- it's purely a
@@ -2844,7 +2849,7 @@ def _run_main() -> None:
         raw_policy="static", packet_size=128, packet_interval=5.0,
         topology="star", num_relays=2, freq_mhz=915.0,
         raw_num_groups=4, raw_num_slots=8, raw_slot_duration=0.014,
-        app_overrides=None,
+        video_fps=5.0, app_overrides=None,
     ):
         # See scripts/main_gui.py's build_sim() for why the effective
         # traffic mode must come from app_overrides (a sensor profile)
@@ -2864,6 +2869,7 @@ def _run_main() -> None:
         )
         cfg["app"]["packet_size_bytes"] = int(packet_size)
         cfg["app"]["periodic_interval"] = float(packet_interval)
+        cfg["app"]["video_fps"] = float(video_fps)
         cfg["phy"]["freq_mhz"] = float(freq_mhz)
         if app_overrides:
             cfg["app"].update(app_overrides)

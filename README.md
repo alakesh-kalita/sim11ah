@@ -236,7 +236,7 @@ Named, environment-linked traffic presets — not new mechanics, just realistic 
 | Industrial Site | Vibration / Temperature Sensor | `periodic`, 30 s | |
 | Military Zone | Acoustic / Motion Sensor | `bursty` | Long quiet stretches, then a quick run of detection reports |
 
-**GUI:** Settings tab → Sensor Profile dropdown (choices depend on the Environment picked in the Topology tab; overrides Traffic Model/Packet Size on Apply & Rebuild).
+**GUI:** Settings tab → Sensor Profile dropdown (choices depend on the Environment picked in the Topology tab; overrides Traffic Model/Packet Size on Apply & Rebuild). A separate **Video FPS** field is always available in Settings for manually tuning the `video` traffic model's frame rate — a Sensor Profile's own `video_fps` (e.g. Security Camera's) takes precedence over it when a profile is active.
 
 **CLI:**
 ```bash
