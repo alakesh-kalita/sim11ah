@@ -85,7 +85,7 @@ class NetworkLayer:
     # ------------------------------------------------------------------
 
     def _is_ap(self) -> bool:
-        return int(self.node.node_id) == 0
+        return self.node.is_ap
 
     def _is_relay(self) -> bool:
         return getattr(self.node, "role", "") == "RELAY"

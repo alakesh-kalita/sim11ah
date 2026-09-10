@@ -59,7 +59,7 @@ class MacLayer:
     # Helpers
     # ------------------------------------------------------------------
     def _is_ap(self) -> bool:
-        return int(self.node.node_id) == 0
+        return self.node.is_ap
 
     def _extract_duplicate_key(self, frame: MacFrame) -> Tuple[int, str, int]:
         """

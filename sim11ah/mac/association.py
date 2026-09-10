@@ -140,7 +140,7 @@ class AssocManager:
     # ------------------------------------------------------------------
 
     def _is_ap(self) -> bool:
-        return int(self._node.node_id) == 0
+        return self._node.is_ap
 
     def _serves_associations(self) -> bool:
         """True for anything a STA can associate WITH: the real AP, or a
@@ -583,7 +583,20 @@ class AssocManager:
         aid = sta_id
         self._ctx._associated_stas[sta_id] = aid
         if not self._is_ap():
-            ap_node = self._sim.nodes.get(0)
+            # Mirror into whichever AP THIS relay is itself uplinked to
+            # (self._ctx._assoc_peer_id, set when the relay's own STA-side
+            # association completed -- the same MacContext instance serves
+            # both this relay's "AP-response-side" role for STAs below it
+            # and its own "STA-side" uplink role, so the field is already
+            # populated by the time it's serving associations at all under
+            # normal operation). Previously hardcoded to node 0, which
+            # silently mirrored into the wrong AP's table as soon as a
+            # relay could be uplinked to anything other than the one AP
+            # that happened to be node 0.
+            target_ap_id = getattr(self._ctx, "_assoc_peer_id", None)
+            if target_ap_id is None:
+                target_ap_id = 0
+            ap_node = self._sim.nodes.get(target_ap_id)
             ap_mac = getattr(ap_node, "mac", None)
             if ap_mac is not None:
                 ap_mac.ctx._associated_stas[sta_id] = aid

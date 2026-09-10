@@ -23,17 +23,17 @@ class Node:
 
         role_norm = str(role).upper()
 
-        # Node 0 is always AP. Node_id>0 can be RELAY or STA.
-        if self.node_id == 0:
+        # An explicit role="AP" wins (multi-AP topologies construct APs at
+        # node_ids other than 0 this way); node_id==0 is only a backward-
+        # compatible default for the common case of an unlabeled node 0,
+        # which every existing StarBuilder/RelayBuilder call site relies on.
+        if role_norm == "AP":
             self.role = "AP"
         elif role_norm == "RELAY":
             self.role = "RELAY"
+        elif self.node_id == 0:
+            self.role = "AP"
         else:
-            if role_norm == "AP":
-                raise ValueError(
-                    f"Node {self.node_id}: only node_id 0 can have role 'AP' "
-                    f"in the current simulator design"
-                )
             self.role = "STA"
 
         if pos is None:

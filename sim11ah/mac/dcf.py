@@ -224,7 +224,7 @@ class DcfEngine:
         return self.ctx.node.phy.is_channel_busy(self.ctx.node.node_id)
 
     def can_tx_now(self) -> bool:
-        if self.ctx.node.node_id == 0:
+        if self.ctx.node.is_ap:
             return True
         if self.ctx._dozing:
             return False
@@ -264,7 +264,7 @@ class DcfEngine:
                 assoc_en = bool(self.ctx.cfg.get("mac", {}).get("association_enable", True))
                 not_assoc = (
                     assoc_en
-                    and self.ctx.node.node_id != 0
+                    and not self.ctx.node.is_ap
                     and self.ctx._assoc_state != AssocState.ASSOCIATED
                 )
                 if not_assoc:
@@ -455,7 +455,7 @@ class DcfEngine:
                 return
 
         # Final guard against transmitting too close to RAW-slot end.
-        if self.ctx.raw_enable and self.ctx.node.node_id != 0 and fr.ftype == FrameType.DATA and fr.dst != -1:
+        if self.ctx.raw_enable and not self.ctx.node.is_ap and fr.ftype == FrameType.DATA and fr.dst != -1:
             now = self.ctx.sim.engine.now
             remaining = self.ctx._raw_slot_exit_t - now if self.ctx._raw_slot_exit_t > 0.0 else float("inf")
             final_margin = max(self.ctx.slot_time, self.ctx.ack_guard) + rts_overhead_s

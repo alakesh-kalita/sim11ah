@@ -337,7 +337,7 @@ class ApplicationLayer:
             except Exception:
                 pass
 
-        if self.node.node_id == 0:
+        if self.node.is_ap:
             self._running = True
             self._log("START", {"role": "ap_sink_only"})
             return

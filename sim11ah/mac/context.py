@@ -360,7 +360,7 @@ def build_mac_context(node: Any, cfg: Dict[str, Any]) -> MacContext:
 
         twt_enable=bool(mac_cfg.get("twt_enable", False)),
 
-        raw_allowed=(not bool(mac_cfg["raw_enable"])) or (node.node_id == 0),
+        raw_allowed=(not bool(mac_cfg["raw_enable"])) or node.is_ap,
         _cw=int(mac_cfg.get("cw_min", 15)),
         _util_window_s=float(mac_cfg.get("util_window_s", 1.0)),
     )

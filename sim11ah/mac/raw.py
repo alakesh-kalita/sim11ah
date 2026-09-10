@@ -99,7 +99,7 @@ class RawEngine:
         Return the station's associated AID if available.
         Fallback to node_id only when no explicit AID field exists.
         """
-        if self.ctx.node.node_id == 0:
+        if self.ctx.node.is_ap:
             return 0
 
         candidate_names = (
@@ -229,7 +229,7 @@ class RawEngine:
     # Helpers
     # ------------------------------------------------------------------
     def connected_aids(self) -> List[int]:
-        if self.ctx.node.node_id != 0:
+        if not self.ctx.node.is_ap:
             return []
 
         # 1) Preferred: AP association table
@@ -245,11 +245,19 @@ class RawEngine:
         except Exception:
             pass
 
-        # 2) Fallback: node/mac context AID fields
+        # 2) Fallback: node/mac context AID fields. Under multi-AP, this MUST
+        # filter to STAs whose live association peer is THIS AP -- without
+        # that, every AP would independently scan the same global node set
+        # and each would claim every associated STA in the whole simulation,
+        # regardless of which AP it's actually associated with (a real bug
+        # caught while adding multi-AP support: this method previously had
+        # no ownership check at all, only safe because there was never more
+        # than one AP to conflict with).
         try:
             aids: List[int] = []
+            my_id = self.ctx.node.node_id
             for nid, node in getattr(self.ctx.sim, "nodes", {}).items():
-                if int(nid) == 0:
+                if getattr(node, "is_ap", int(nid) == 0):
                     continue
 
                 found = None
@@ -257,6 +265,9 @@ class RawEngine:
                 try:
                     mac_ctx = getattr(getattr(node, "mac", None), "ctx", None)
                     if mac_ctx is not None:
+                        peer = getattr(mac_ctx, "_assoc_peer_id", None)
+                        if peer is not None and int(peer) != int(my_id):
+                            continue  # associated with a different AP -- not mine
                         for name in (
                             "aid",
                             "_aid",
@@ -298,14 +309,19 @@ class RawEngine:
         except Exception:
             pass
 
-        # 3) Final fallback: simulator STA node IDs
-        try:
-            return sorted(int(nid) for nid in self.ctx.sim.nodes.keys() if int(nid) > 0)
-        except Exception:
-            return []
+        # 3) No further fallback under multi-AP: the old "every node_id > 0
+        # is mine" default was only ever safe with exactly one AP in the
+        # whole simulation, and would silently claim every other AP's STAs
+        # too now. An obviously-empty (visibly broken) schedule is far
+        # preferable to a silently-wrong one that produces numbers which
+        # look plausible but aren't -- if this path is hit, something
+        # upstream (association bookkeeping) is broken and should be fixed
+        # there, not papered over here.
+        self._log("WARN", {"reason": "connected_aids_fallback_exhausted"})
+        return []
 
     def refresh_dynamic_configs(self) -> None:
-        if not self.ctx.raw_enable or self.ctx.node.node_id != 0:
+        if not self.ctx.raw_enable or not self.ctx.node.is_ap:
             return
 
         aids = self.connected_aids()
@@ -362,7 +378,7 @@ class RawEngine:
         return
 
     def update_aid_indices(self) -> None:
-        if self.ctx.node.node_id != 0:
+        if not self.ctx.node.is_ap:
             return
 
         aid_list = self.connected_aids()
@@ -485,7 +501,7 @@ class RawEngine:
         if not self.ctx.raw_enable:
             return rps
 
-        if self.ctx.node.node_id == 0:
+        if self.ctx.node.is_ap:
             # If the policy outputs RawConfig objects, refresh them first.
             self.refresh_dynamic_configs()
             self.update_aid_indices()
@@ -559,7 +575,7 @@ class RawEngine:
     def apply_rps(self, rps: List[Dict[str, Any]], raw_guard: float) -> None:
         self._ensure_raw_stats()
 
-        if self.ctx._metrics is not None and self.ctx.node.node_id == 0:
+        if self.ctx._metrics is not None and self.ctx.node.is_ap:
             self.ctx._metrics.register_raw_slots(
                 rps=rps,
                 beacon_rx_t=self.ctx.sim.engine.now,
@@ -720,7 +736,7 @@ class RawEngine:
             )
             return
 
-        if self.ctx.node.node_id == 0:
+        if self.ctx.node.is_ap:
             self._log(
                 "RAW_ENTER_SKIPPED",
                 {
@@ -795,7 +811,7 @@ class RawEngine:
             )
             return
 
-        if self.ctx.node.node_id == 0:
+        if self.ctx.node.is_ap:
             return
 
         saved = False
@@ -859,7 +875,7 @@ class RawEngine:
     ) -> bool:
         self._ensure_raw_stats()
 
-        if not self.ctx.raw_enable or self.ctx.node.node_id == 0:
+        if not self.ctx.raw_enable or self.ctx.node.is_ap:
             self._inc_stat("raw_fit_pass")
             return True
 
