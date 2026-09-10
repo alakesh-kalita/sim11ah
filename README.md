@@ -2,6 +2,8 @@
 
 A discrete-event simulator for the IEEE 802.11ah (Wi-Fi HaLow) sub-1 GHz MAC/PHY protocol, purpose-built for large-scale IoT research. Includes a full-featured GUI dashboard, CLI batch runner, relay topology support, and reproducible paper experiments.
 
+> **Usage notice:** Please inform **Dr. Alakesh Kalita** (alakesh.kalita1025@gmail.com) before using this code.
+
 ---
 
 ## Table of Contents

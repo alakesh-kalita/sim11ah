@@ -28,6 +28,7 @@ def _log_uncaught_exception(exc_type, exc_value, exc_tb):
 _sys.excepthook = _log_uncaught_exception
 
 import numpy
+import csv
 import math
 import os
 import webbrowser
@@ -455,6 +456,7 @@ class Dashboard(tk.Tk):
         self.step_dt = 0.2
         self._tput_max = 1.0
         self._pkt_log_ptr = 0
+        self._trace_log_ptr = 0
         self._init_metrics_state()
         self._web3d_server = None
 
@@ -495,9 +497,14 @@ class Dashboard(tk.Tk):
             "sim_speed":       tk.StringVar(value="Normal (7 fps)"),
             "log_filter":      tk.StringVar(value="ALL"),
             "log_autoscroll":  tk.BooleanVar(value=True),
+            "trace_filter":    tk.StringVar(value="ALL"),
+            "trace_autoscroll": tk.BooleanVar(value=True),
+            "trace_node":      tk.StringVar(value=""),
+            "trace_search":    tk.StringVar(value=""),
         }
         self._applied = self._sig()
-        _skip_trace = {"sim_speed", "log_filter", "log_autoscroll"}
+        _skip_trace = {"sim_speed", "log_filter", "log_autoscroll",
+                       "trace_filter", "trace_autoscroll", "trace_node", "trace_search"}
         for _k, _v in self._vars.items():
             if _k not in _skip_trace:
                 _v.trace_add("write", self._on_settings_change)
@@ -540,6 +547,13 @@ class Dashboard(tk.Tk):
               foreground=[("selected", P["blue"])])
         s.configure("Horizontal.TProgressbar",
                     troughcolor=P["border"], background=P["blue"])
+        # Dark console theme to match the Log Viewer tab's tk.Text styling
+        # (P["log_bg"]) -- ttk.Treeview ignores plain bg=/fg=, needs Style.
+        s.configure("Trace.Treeview", background=P["log_bg"], fieldbackground=P["log_bg"],
+                    foreground="#e2e8f0", font=("Courier New", 9), rowheight=20, borderwidth=0)
+        s.configure("Trace.Treeview.Heading", background=P["side"], foreground="#cbd5e1",
+                    font=("Arial", 9, "bold"), relief="flat")
+        s.map("Trace.Treeview", background=[("selected", P["blue_dk"])])
 
     # ── Header bar ────────────────────────────────────────────────────────────
     def _build_header(self):
@@ -587,18 +601,21 @@ class Dashboard(tk.Tk):
         self._tab_overview = tk.Frame(nb, bg=P["bg"])
         self._tab_nodes    = tk.Frame(nb, bg=P["bg"])
         self._tab_log      = tk.Frame(nb, bg=P["bg"])
+        self._tab_trace    = tk.Frame(nb, bg=P["bg"])
         self._tab_settings = tk.Frame(nb, bg=P["bg"])
         self._tab_topology = tk.Frame(nb, bg=P["bg"])
 
         nb.add(self._tab_overview, text="  Overview  ")
         nb.add(self._tab_nodes,    text="  Node Analytics  ")
         nb.add(self._tab_log,      text="  Log Viewer  ")
+        nb.add(self._tab_trace,    text="  Packet Trace  ")
         nb.add(self._tab_settings, text="  Settings  ")
         nb.add(self._tab_topology, text="  Topology  ")
 
         self._build_overview_tab(self._tab_overview)
         self._build_nodes_tab(self._tab_nodes)
         self._build_log_tab(self._tab_log)
+        self._build_trace_tab(self._tab_trace)
         self._build_settings_tab(self._tab_settings)
         self._build_topology_tab(self._tab_topology)
 
@@ -1801,6 +1818,7 @@ class Dashboard(tk.Tk):
         self._applied = sig
         self._tput_max = 1.0
         self._pkt_log_ptr = 0
+        self._trace_log_ptr = 0
         self._init_metrics_state()
         self._lc_pdr.clear()
         self._lc_tput.clear()
@@ -1808,6 +1826,7 @@ class Dashboard(tk.Tk):
         self._lc_drop.clear()
         for c in self._net_canvases():
             c.clear_packets()
+        self._clear_trace_table()
         self._refresh_topology()
         self.after(150, self._refresh_topology)   # re-draw after canvas re-renders
         return was_running
@@ -2098,6 +2117,7 @@ class Dashboard(tk.Tk):
 
             # ── Log ───────────────────────────────────────────────────────────
             self._refresh_log()
+            self._refresh_trace_table()
 
             # ── Drone mobility + live packet-transmission animation ────────────
             self._advance_drones()
@@ -2236,6 +2256,307 @@ class Dashboard(tk.Tk):
 
     def _clear_log(self):
         self._log.delete("1.0", "end")
+
+    # ── Tab: Packet Trace ───────────────────────────────────────────────────────
+    _TRACE_MAX_ROWS = 3000
+    # Outcome-bucketed events (from sim11ah/mac/dcf.py, sim11ah/phy.py's own
+    # "event=" / self._log("...") call sites) -- gives the trace table's
+    # colour coding real, load-bearing meaning instead of guessing from the
+    # event name string at render time.
+    _TRACE_OK_EVENTS = {"TX_SUCCESS", "ACK_RX", "ACK_RX_FRAG", "CTS_RX"}
+    _TRACE_BAD_EVENTS = {"DROP", "ACK_TIMEOUT", "CTS_TIMEOUT", "RX_BELOW_SENSITIVITY",
+                         "RX_LINK_MISSING", "RX_UNSUPPORTED_MODE"}
+    _TRACE_RETRY_EVENTS = {"RTS_RETRY"}
+
+    def _build_trace_tab(self, parent):
+        toolbar = tk.Frame(parent, bg=P["bg"], pady=6)
+        toolbar.pack(fill="x", padx=12)
+
+        tk.Label(toolbar, text="Layer:", bg=P["bg"], fg=P["fg"],
+                 font=("Arial", 10, "bold")).pack(side="left")
+        ttk.Combobox(
+            toolbar, textvariable=self._vars["trace_filter"],
+            values=["ALL", "APP", "MAC", "PHY", "NET", "TP"],
+            width=6, state="readonly",
+        ).pack(side="left", padx=(4, 10))
+
+        tk.Label(toolbar, text="Node:", bg=P["bg"], fg=P["fg"],
+                 font=("Arial", 10, "bold")).pack(side="left")
+        tk.Entry(toolbar, textvariable=self._vars["trace_node"], width=6,
+                 bg="white", relief="solid", bd=1).pack(side="left", padx=(4, 10))
+
+        tk.Label(toolbar, text="Search:", bg=P["bg"], fg=P["fg"],
+                 font=("Arial", 10, "bold")).pack(side="left")
+        tk.Entry(toolbar, textvariable=self._vars["trace_search"], width=14,
+                 bg="white", relief="solid", bd=1).pack(side="left", padx=(4, 10))
+
+        ttk.Checkbutton(
+            toolbar, text="Auto-scroll",
+            variable=self._vars["trace_autoscroll"],
+        ).pack(side="left")
+
+        ttk.Button(toolbar, text="Export Trace…", command=self._export_trace_csv
+                   ).pack(side="right", padx=(6, 0))
+        ttk.Button(toolbar, text="Clear", command=self._clear_trace_table
+                   ).pack(side="right")
+
+        # ── Live stats bar: commercial network-simulator trace views (e.g.
+        # NetSim's Packet Trace) always pair the table with running
+        # counts, not just raw rows -- these track every row actually
+        # inserted (i.e. already passed the active filters), reset on Clear.
+        stats = tk.Frame(parent, bg=P["side"], pady=4)
+        stats.pack(fill="x", padx=12, pady=(0, 6))
+
+        def _stat(label, color):
+            f = tk.Frame(stats, bg=P["side"])
+            f.pack(side="left", padx=14)
+            tk.Label(f, text=label, bg=P["side"], fg=P["side_fg"],
+                     font=("Arial", 8, "bold")).pack(anchor="w")
+            v = tk.Label(f, text="0", bg=P["side"], fg=color, font=("Courier New", 13, "bold"))
+            v.pack(anchor="w")
+            return v
+
+        self._trace_stat_total = _stat("TOTAL", "#e2e8f0")
+        self._trace_stat_ok    = _stat("SUCCESS", "#86efac")
+        self._trace_stat_bad   = _stat("DROP / TIMEOUT", "#fca5a5")
+        self._trace_stat_retry = _stat("RETRY", "#fde68a")
+        self._trace_stats = {"total": 0, "ok": 0, "bad": 0, "retry": 0}
+
+        tk.Label(toolbar,
+                 text="  click a heading to sort  ·  click a row to inspect below",
+                 bg=P["bg"], fg=P["muted"], font=("Arial", 9)).pack(side="left")
+
+        cols = ("time", "node", "dst", "layer", "event", "ftype", "seq")
+        headings = {"time": "Time (s)", "node": "Node", "dst": "Dst", "layer": "Layer",
+                    "event": "Event", "ftype": "Frame", "seq": "Seq"}
+        widths = {"time": 80, "node": 50, "dst": 50, "layer": 55, "event": 140,
+                  "ftype": 70, "seq": 60}
+
+        wrap = tk.Frame(parent, bg=P["bg"])
+        wrap.pack(fill="both", expand=True, padx=12, pady=(0, 4))
+
+        tv = ttk.Treeview(wrap, columns=cols, show="headings", style="Trace.Treeview",
+                           selectmode="browse")
+        for c in cols:
+            tv.heading(c, text=headings[c],
+                       command=lambda _c=c: self._sort_trace_column(_c, False))
+            tv.column(c, width=widths[c], anchor="w", stretch=(c == "event"))
+        tv.pack(side="left", fill="both", expand=True)
+
+        sy = tk.Scrollbar(wrap, orient="vertical", command=tv.yview)
+        sy.pack(side="right", fill="y")
+        tv.configure(yscrollcommand=sy.set)
+
+        # Outcome colour (foreground) x zebra stripe (background) -- both
+        # combined into one tag per row rather than relying on multi-tag
+        # option precedence, which Tk resolves per-option by tag order and
+        # is easy to get subtly wrong (e.g. a stripe tag silently winning
+        # over the outcome colour on some options but not others).
+        base_tags = {
+            "":            "#e2e8f0",
+            "trace_ok":    "#86efac",
+            "trace_bad":   "#fca5a5",
+            "trace_retry": "#fde68a",
+            "APP": "#86efac", "MAC": "#67e8f9", "PHY": "#fde68a",
+            "NET": "#c4b5fd", "TP": "#fda4af",
+        }
+        stripe_bg = {"even": P["log_bg"], "odd": "#161b22"}
+        for base, fg in base_tags.items():
+            for parity, bg in stripe_bg.items():
+                name = f"{base or 'none'}_{parity}"
+                tv.tag_configure(name, foreground=fg, background=bg)
+
+        detail = tk.Text(parent, height=4, bg=P["log_bg"], fg="#e2e8f0",
+                          font=("Courier New", 9), relief="flat", wrap="word")
+        detail.pack(fill="x", padx=12, pady=(4, 10))
+        detail.insert("end", "Select a row to see its full detail fields.")
+        detail.configure(state="disabled")
+
+        tv.bind("<<TreeviewSelect>>", self._on_trace_row_select)
+
+        self._trace_tv = tv
+        self._trace_detail = detail
+        self._trace_records = {}
+        self._trace_row_seq = 0
+
+    def _trace_row_outcome_tag(self, event: str, layer: str) -> str:
+        eu = event.upper()
+        lu = layer.upper()
+        if eu in self._TRACE_BAD_EVENTS:
+            return "trace_bad"
+        if eu in self._TRACE_OK_EVENTS:
+            return "trace_ok"
+        if eu in self._TRACE_RETRY_EVENTS:
+            return "trace_retry"
+        if lu in ("APP", "MAC", "PHY", "NET", "TP"):
+            return lu
+        return ""
+
+    def _refresh_trace_table(self):
+        tv = getattr(self, "_trace_tv", None)
+        if tv is None:
+            return
+        try:
+            filt = self._vars["trace_filter"].get()
+            node_filt = self._vars["trace_node"].get().strip()
+            search = self._vars["trace_search"].get().strip().lower()
+            logger = self.sim.logger
+            n = logger.log_count()
+            if n < self._trace_log_ptr:
+                self._trace_log_ptr = 0   # log was reset out from under us
+            new = logger.entries_from(self._trace_log_ptr)
+            self._trace_log_ptr = n
+
+            for rec in new:
+                layer = str(rec.get("layer", ""))
+                if filt != "ALL" and layer.upper() != filt:
+                    continue
+                node_id = rec.get("node_id", "")
+                if node_filt and str(node_id) != node_filt:
+                    continue
+                event = str(rec.get("event", ""))
+                details = rec.get("details") or {}
+                dst = rec.get("dst")
+                if dst is None:
+                    dst = details.get("rx_id", rec.get("next_hop"))
+                seq = rec.get("packet_seq")
+                if seq is None:
+                    seq = rec.get("frame_seq")
+                if seq is None:
+                    seq = rec.get("tx_seq")
+                if seq is None:
+                    seq = rec.get("net_seq")
+                ftype = classify_frame_kind(rec.get("ftype")) if rec.get("ftype") else ""
+
+                if search:
+                    haystack = " ".join(str(x) for x in (
+                        event, ftype, layer, node_id, dst, seq,
+                        " ".join(f"{k}={v}" for k, v in details.items()),
+                    )).lower()
+                    if search not in haystack:
+                        continue
+
+                base_tag = self._trace_row_outcome_tag(event, layer)
+                parity = "even" if (self._trace_row_seq % 2 == 0) else "odd"
+                tag = f"{base_tag or 'none'}_{parity}"
+
+                iid = str(self._trace_row_seq)
+                self._trace_row_seq += 1
+                tv.insert("", "end", iid=iid, values=(
+                    f"{float(rec.get('time', 0.0)):.4f}",
+                    node_id,
+                    dst if dst is not None else "",
+                    layer,
+                    event,
+                    ftype,
+                    seq if seq is not None else "",
+                ), tags=(tag,))
+                self._trace_records[iid] = rec
+
+                self._trace_stats["total"] += 1
+                if base_tag == "trace_ok":
+                    self._trace_stats["ok"] += 1
+                elif base_tag == "trace_bad":
+                    self._trace_stats["bad"] += 1
+                elif base_tag == "trace_retry":
+                    self._trace_stats["retry"] += 1
+
+            # Cap total rows so a long run doesn't grow the widget (and this
+            # dict) unbounded -- same rationale as SimLogger's own
+            # max_records cap, just applied to the UI's copy. Stats keep
+            # counting every row ever inserted, not just what's still
+            # displayed -- they're a running total, the table is a window.
+            children = tv.get_children()
+            overflow = len(children) - self._TRACE_MAX_ROWS
+            if overflow > 0:
+                for old_iid in children[:overflow]:
+                    self._trace_records.pop(old_iid, None)
+                    tv.delete(old_iid)
+
+            if self._vars["trace_autoscroll"].get():
+                remaining = tv.get_children()
+                if remaining:
+                    tv.see(remaining[-1])
+
+            st = self._trace_stats
+            self._trace_stat_total.config(text=str(st["total"]))
+            self._trace_stat_ok.config(text=str(st["ok"]))
+            self._trace_stat_bad.config(text=str(st["bad"]))
+            self._trace_stat_retry.config(text=str(st["retry"]))
+        except Exception:
+            pass
+
+    def _clear_trace_table(self):
+        tv = getattr(self, "_trace_tv", None)
+        if tv is None:
+            return
+        for iid in tv.get_children():
+            tv.delete(iid)
+        self._trace_records.clear()
+        self._trace_stats = {"total": 0, "ok": 0, "bad": 0, "retry": 0}
+        self._trace_stat_total.config(text="0")
+        self._trace_stat_ok.config(text="0")
+        self._trace_stat_bad.config(text="0")
+        self._trace_stat_retry.config(text="0")
+
+    def _export_trace_csv(self):
+        tv = getattr(self, "_trace_tv", None)
+        if tv is None or not tv.get_children():
+            messagebox.showinfo("Export Trace", "No packet trace rows to export yet.")
+            return
+        path = filedialog.asksaveasfilename(
+            title="Save Packet Trace",
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        try:
+            cols = ("time", "node", "dst", "layer", "event", "ftype", "seq", "details")
+            with open(path, "w", newline="") as f:
+                w = csv.writer(f)
+                w.writerow(cols)
+                for iid in tv.get_children():
+                    vals = list(tv.item(iid, "values"))
+                    rec = self._trace_records.get(iid) or {}
+                    det = rec.get("details") or {}
+                    vals.append("; ".join(f"{k}={v}" for k, v in det.items()))
+                    w.writerow(vals)
+            self._badge_detail.config(text=f"Exported {len(tv.get_children())} trace rows to {path}")
+        except Exception as e:
+            messagebox.showerror("Export Trace", f"Could not export: {e}")
+
+    def _on_trace_row_select(self, _event=None):
+        detail = self._trace_detail
+        sel = self._trace_tv.selection()
+        detail.configure(state="normal")
+        detail.delete("1.0", "end")
+        rec = self._trace_records.get(sel[0]) if sel else None
+        if rec is not None:
+            det = rec.get("details") or {}
+            header = (f"node_id={rec.get('node_id')}  src={rec.get('src')}  "
+                      f"dst={rec.get('dst')}  ftype={rec.get('ftype')}")
+            body = "  ".join(f"{k}={v}" for k, v in det.items()) or "(no extra detail fields)"
+            detail.insert("end", header + "\n" + body)
+        else:
+            detail.insert("end", "Select a row to see its full detail fields.")
+        detail.configure(state="disabled")
+
+    def _sort_trace_column(self, col, reverse):
+        tv = self._trace_tv
+        items = [(tv.set(iid, col), iid) for iid in tv.get_children("")]
+
+        def key(pair):
+            v = pair[0]
+            try:
+                return (0, float(v))
+            except (TypeError, ValueError):
+                return (1, v)
+
+        items.sort(key=key, reverse=reverse)
+        for index, (_, iid) in enumerate(items):
+            tv.move(iid, "", index)
+        tv.heading(col, command=lambda: self._sort_trace_column(col, not reverse))
 
     # ── Export / Results ──────────────────────────────────────────────────────
     def export_csv(self):
