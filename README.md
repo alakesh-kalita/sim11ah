@@ -17,6 +17,7 @@ A discrete-event simulator for the IEEE 802.11ah (Wi-Fi HaLow) sub-1 GHz MAC/PHY
   - [CLI Batch Runner](#cli-batch-runner)
 - [Configuration Parameters](#configuration-parameters)
 - [Traffic Models](#traffic-models)
+- [Sensor Profiles](#sensor-profiles)
 - [Topology Modes](#topology-modes)
 - [Deployment Scenarios](#deployment-scenarios)
 - [RAW Scheduling Policies](#raw-scheduling-policies)
@@ -51,7 +52,8 @@ The simulator was built to reproduce and extend results from the associated IEEE
 | Node counts | Tested up to N = 200 STAs |
 | Topologies | Star (AP ↔ STAs) and Relay (AP ↔ Relays ↔ STAs) |
 | RAW policies | Static, Adaptive, Cluster-Adaptive, Cluster-CSV |
-| Traffic models | Periodic, Poisson, CBR, Bursty, On-Off |
+| Traffic models | Periodic, Poisson, CBR, Bursty, On-Off, Video |
+| Sensor profiles | Environment-linked realistic presets (soil sensor, gas sensor, camera, ...) |
 | GUI | Live charts, topology canvas, three-state sim control (Start/Pause/Resume/Stop) |
 | CLI | Headless batch runs with CSV export |
 | Paper scripts | Reproducible experiment sweeps for all paper tables and figures |
@@ -202,6 +204,8 @@ All parameters are set via `sim11ah.config.default_config()` and can be overridd
 | `burst_size` | `3` | Packets per burst for Bursty traffic |
 | `onoff_on_time_s` | `1.0` | ON-period duration for On-Off traffic |
 | `onoff_off_time_s` | `3.0` | OFF-period duration for On-Off traffic |
+| `video_fps` | `5.0` | Frame rate for Video traffic |
+| `video_size_table` | `None` (uses the built-in P/I mix) | `[(size_bytes, weight), ...]` override for Video traffic's frame-size distribution |
 
 ---
 
@@ -214,6 +218,33 @@ All parameters are set via `sim11ah.config.default_config()` and can be overridd
 | `cbr` | `CBRTraffic` | Constant bit-rate, packet size determines interval |
 | `bursty` | `BurstyTraffic` | Burst of N packets, then silent off-period |
 | `onoff` | `OnOffTraffic` | Poisson arrivals during ON, silent during OFF |
+| `video` | `PeriodicTraffic` + weighted size table | Low-power HaLow camera/video sensor: frames at a fixed `video_fps` (default 5), with a GOP-like size mix — mostly small P-frames, a minority of much larger I-frames (default: 1200 B × 90%, 6000 B × 10%, ~67 kb/s average). I-frames exceed `rts_threshold`, so they exercise the RTS/CTS path; there is no MAC-layer fragmentation in this codebase (`dcf.py`'s `TX_FRAG` machinery is unreachable dead code — `_pending_fragments` is never populated), so an oversized frame is sent whole as one longer-duration transmission, not split into multiple MPDUs. |
+
+---
+
+## Sensor Profiles
+
+Named, environment-linked traffic presets — not new mechanics, just realistic parameter bundles on top of the traffic models above (`sim11ah/sensor_profiles.py`), so you don't have to work out plausible values per sensor type yourself:
+
+| Environment | Profile | Traffic | Notes |
+|---|---|---|---|
+| Open Area | Generic IoT Sensor | `periodic`, 5 s | Baseline, matches the default config |
+| Paddy Field | Soil Moisture Sensor | `periodic`, 600 s | Slow-changing reading, tiny 24 B payload |
+| Smart City | Gas / Air Quality Sensor | `onoff` | Mostly idle, denser reporting during a 10 s alert window every ~5 min |
+| Smart City | Smart Meter | `periodic`, 60 s | |
+| Industrial Site | Security Camera | `video`, 5 fps | See the `video` traffic model above |
+| Industrial Site | Vibration / Temperature Sensor | `periodic`, 30 s | |
+| Military Zone | Acoustic / Motion Sensor | `bursty` | Long quiet stretches, then a quick run of detection reports |
+
+**GUI:** Settings tab → Sensor Profile dropdown (choices depend on the Environment picked in the Topology tab; overrides Traffic Model/Packet Size on Apply & Rebuild).
+
+**CLI:**
+```bash
+python scripts/main_cli.py --list-sensor-profiles
+
+python scripts/main_cli.py --num-stas 20 --sim-time 300 \
+  --environment "Paddy Field" --sensor-profile "Soil Moisture Sensor"
+```
 
 ---
 

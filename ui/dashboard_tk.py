@@ -53,6 +53,8 @@ except ImportError:
         _ap_range_m,
     )
 
+from sim11ah.sensor_profiles import list_profiles as _sensor_list_profiles, get_profile as _sensor_get_profile
+
 # ─── Colour Palette ───────────────────────────────────────────────────────────
 P: Dict[str, str] = {
     "bg":       "#f1f5f9",
@@ -501,6 +503,7 @@ class Dashboard(tk.Tk):
             "trace_autoscroll": tk.BooleanVar(value=True),
             "trace_node":      tk.StringVar(value=""),
             "trace_search":    tk.StringVar(value=""),
+            "sensor_profile":  tk.StringVar(value="(none)"),
         }
         self._applied = self._sig()
         _skip_trace = {"sim_speed", "log_filter", "log_autoscroll",
@@ -892,8 +895,32 @@ class Dashboard(tk.Tk):
             [0, 1, 2, 3, 4, 5, 10, 20, 42, 99, 100],
             self._vars["seed"])
         row("Traffic Model",
-            ["periodic", "poisson", "cbr", "bursty", "onoff"],
+            ["periodic", "poisson", "cbr", "bursty", "onoff", "video"],
             self._vars["traffic"])
+
+        # Sensor Profile: a preset that overrides traffic/packet-size/etc.
+        # with realistic values for a named sensor type (see
+        # sim11ah/sensor_profiles.py) -- offered options depend on the
+        # environment picked in the Topology tab, so the list is
+        # refreshed from postcommand (fires right before the dropdown
+        # opens) rather than fixed at build time like the rows above.
+        sp_row = tk.Frame(inner, bg=P["bg"])
+        sp_row.pack(fill="x", padx=20, pady=3)
+        tk.Label(sp_row, text="Sensor Profile", font=("Arial", 10), bg=P["bg"],
+                 fg=P["fg"], width=26, anchor="w").pack(side="left")
+        sp_cb = ttk.Combobox(sp_row, textvariable=self._vars["sensor_profile"],
+                              state="readonly", width=22)
+
+        def _refresh_sensor_profile_choices():
+            env = self._env_var.get() if hasattr(self, "_env_var") else "Open Area"
+            sp_cb["values"] = ["(none)"] + _sensor_list_profiles(env)
+
+        sp_cb.configure(postcommand=_refresh_sensor_profile_choices)
+        _refresh_sensor_profile_choices()
+        sp_cb.pack(side="left", padx=(8, 0))
+        tk.Label(sp_row, text="  overrides traffic/packet size with a realistic preset",
+                 font=("Arial", 9), bg=P["bg"], fg=P["muted"]).pack(side="left", padx=(8, 0))
+
         row("Packet Size (bytes)",
             [32, 64, 128, 256, 512, 1024],
             self._vars["packet_size"])
@@ -1714,6 +1741,7 @@ class Dashboard(tk.Tk):
             "raw_groups": 4, "raw_slots": 8, "raw_slot_duration_ms": 14.0,
             "packet_size": 128, "packet_interval": 5.0,
             "topology": "star", "num_relays": 2, "freq_mhz": 915.0,
+            "sensor_profile": "(none)",
         }
         for k, v in defs.items():
             if k in self._vars:
@@ -1783,6 +1811,19 @@ class Dashboard(tk.Tk):
 
         self._shutdown_sim()
 
+        # A chosen Sensor Profile (Settings tab) overrides traffic/packet-
+        # size/etc. with a realistic preset for whatever environment is
+        # active (Topology tab) -- looked up fresh here rather than cached
+        # from the dropdown's own change event, so it can never go stale
+        # relative to whichever environment is actually selected right now.
+        profile_name = str(sig.get("sensor_profile", "(none)"))
+        app_overrides = None
+        if profile_name and profile_name != "(none)":
+            try:
+                app_overrides = _sensor_get_profile(self._env_var.get(), profile_name)
+            except KeyError:
+                app_overrides = None
+
         self.sim = self.sim_builder(
             num_stas=int(sig["num_stas"]),
             seed=int(sig["seed"]),
@@ -1797,6 +1838,7 @@ class Dashboard(tk.Tk):
             raw_num_groups=int(sig["raw_groups"]),
             raw_num_slots=int(sig["raw_slots"]),
             raw_slot_duration=float(sig["raw_slot_duration_ms"]) / 1000.0,
+            app_overrides=app_overrides,
         )
         # sim_builder/RelayBuilder don't know about this -- it's purely a
         # layout-seeding concern (see topology_canvas.py's
@@ -2787,6 +2829,14 @@ def _run_main() -> None:
             return OnOffTraffic(lambda_on=float(ac.get("onoff_lambda_on", 2.0)),
                                 on_time=float(ac.get("onoff_on_time_s", 1.0)),
                                 off_time=float(ac.get("onoff_off_time_s", 3.0)))
+        if t == "video":
+            # Matches ApplicationLayer._build_traffic_model's "video" branch
+            # (sim11ah/app.py) -- only the interval-generator half; size_mode/
+            # size_table/traffic_type were already set correctly on node.app
+            # during its own construction and set_traffic_model() (the
+            # caller) only replaces the traffic-model object.
+            fps = max(0.1, float(ac.get("video_fps", 5.0)))
+            return PeriodicTraffic(1.0 / fps, float(ac.get("video_jitter_s", 0.0)))
         return PeriodicTraffic(float(ac.get("periodic_interval", 5.0)))
 
     def _build_sim(
@@ -2794,8 +2844,13 @@ def _run_main() -> None:
         raw_policy="static", packet_size=128, packet_interval=5.0,
         topology="star", num_relays=2, freq_mhz=915.0,
         raw_num_groups=4, raw_num_slots=8, raw_slot_duration=0.014,
+        app_overrides=None,
     ):
-        cfg = default_config(raw_enable=raw_enable, traffic_mode=traffic)
+        # See scripts/main_gui.py's build_sim() for why the effective
+        # traffic mode must come from app_overrides (a sensor profile)
+        # when one is given, not the plain traffic= argument.
+        effective_traffic = str((app_overrides or {}).get("traffic", traffic))
+        cfg = default_config(raw_enable=raw_enable, traffic_mode=effective_traffic)
         cfg["mac"]["raw_policy"] = raw_policy
         cfg["mac"]["raw_num_groups"] = int(raw_num_groups)
         cfg["mac"]["raw_num_slots"] = int(raw_num_slots)
@@ -2810,6 +2865,8 @@ def _run_main() -> None:
         cfg["app"]["packet_size_bytes"] = int(packet_size)
         cfg["app"]["periodic_interval"] = float(packet_interval)
         cfg["phy"]["freq_mhz"] = float(freq_mhz)
+        if app_overrides:
+            cfg["app"].update(app_overrides)
 
         sim = Simulator(config=cfg, seed=seed)
         access = {"rate_bps": 300_000, "prop_delay": 3e-4, "per": 0.0}
@@ -2833,7 +2890,7 @@ def _run_main() -> None:
             if nid == 0 or node.role == "RELAY":
                 node.app.set_traffic_model(None)
             else:
-                node.app.set_traffic_model(_make_traffic(cfg, traffic))
+                node.app.set_traffic_model(_make_traffic(cfg, effective_traffic))
 
         if 0 in sim.nodes:
             sim.nodes[0].mac.ap_start_beacons()

@@ -4,7 +4,7 @@ from sim11ah.mac.adaptive_config_policy import compute_dynamic_slot_range
 
 
 def default_config(raw_enable: bool, traffic_mode: str) -> Dict[str, Any]:
-    allowed_traffic = {"periodic", "poisson", "cbr", "burst", "bursty", "onoff"}
+    allowed_traffic = {"periodic", "poisson", "cbr", "burst", "bursty", "onoff", "video"}
     if traffic_mode not in allowed_traffic:
         raise ValueError(
             f"Unsupported traffic_mode={traffic_mode!r}. "
@@ -336,6 +336,13 @@ def default_config(raw_enable: bool, traffic_mode: str) -> Dict[str, Any]:
             "onoff_lambda_on": 2.0,
             "onoff_on_time_s": 1.0,
             "onoff_off_time_s": 3.0,
+
+            # "video" traffic model (see ApplicationLayer._build_traffic_model
+            # in sim11ah/app.py) -- low-power HaLow camera/video sensor.
+            # video_size_table overrides DEFAULT_VIDEO_SIZE_TABLE if set.
+            "video_fps": 5.0,
+            "video_jitter_s": 0.0,
+            "video_size_table": None,
         },
 
         # ------------------------------------------------------------------

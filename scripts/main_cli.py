@@ -53,14 +53,39 @@ def _make_traffic_model(cfg, traffic: str):
             off_time=float(app_cfg.get("onoff_off_time_s", 2.0)),
         )
 
+    if traffic == "video":
+        # Matches ApplicationLayer._build_traffic_model's "video" branch
+        # (sim11ah/app.py) -- only the interval-generator half; size_mode/
+        # size_table/traffic_type were already set correctly on node.app
+        # during its own construction and set_traffic_model() (the caller
+        # of this function) only replaces the traffic-model object, not
+        # those other attributes.
+        fps = max(0.1, float(app_cfg.get("video_fps", 5.0)))
+        return PeriodicTraffic(1.0 / fps, float(app_cfg.get("video_jitter_s", 0.0)))
+
     return PeriodicTraffic(float(app_cfg.get("periodic_interval", 0.2)))
 
 
 # ==============================
 # Build Simulator
 # ==============================
-def build_sim(num_stas: int, seed: int, traffic: str, raw_enable: bool) -> Simulator:
-    cfg = default_config(raw_enable=raw_enable, traffic_mode=traffic)
+def build_sim(
+    num_stas: int, seed: int, traffic: str, raw_enable: bool,
+    sensor_profile: str = None, environment: str = "Open Area",
+) -> Simulator:
+    # A --sensor-profile overrides traffic and everything else in its
+    # preset (see sim11ah/sensor_profiles.py) -- looked up against
+    # --environment, applied on top of app_cfg before the traffic model is
+    # actually built, so the effective traffic mode below reflects the
+    # profile, not necessarily the plain --traffic value.
+    effective_traffic = traffic
+    if sensor_profile:
+        from sim11ah.sensor_profiles import apply_profile
+        cfg = default_config(raw_enable=raw_enable, traffic_mode=traffic)
+        apply_profile(cfg["app"], environment, sensor_profile)
+        effective_traffic = str(cfg["app"]["traffic"])
+    else:
+        cfg = default_config(raw_enable=raw_enable, traffic_mode=traffic)
     sim = Simulator(config=cfg, seed=seed)
 
     StarBuilder.build(
@@ -73,7 +98,7 @@ def build_sim(num_stas: int, seed: int, traffic: str, raw_enable: bool) -> Simul
         if nid == 0:
             node.app.set_traffic_model(None)
         else:
-            node.app.set_traffic_model(_make_traffic_model(cfg, traffic))
+            node.app.set_traffic_model(_make_traffic_model(cfg, effective_traffic))
 
     return sim
 
@@ -312,10 +337,26 @@ def parse_args(argv):
     p.add_argument(
         "--traffic",
         default="periodic",
-        choices=["periodic", "poisson", "cbr", "bursty", "onoff"],
+        choices=["periodic", "poisson", "cbr", "bursty", "onoff", "video"],
     )
     p.add_argument("--raw-enable", default="1", choices=["0", "1"])
     p.add_argument("--out", default="results")
+    p.add_argument(
+        "--environment", default="Open Area",
+        choices=["Open Area", "Paddy Field", "Smart City", "Industrial Site", "Military Zone"],
+        help="Deployment environment a --sensor-profile is looked up against.",
+    )
+    p.add_argument(
+        "--sensor-profile", default=None,
+        help="Named sensor-type preset (see sim11ah/sensor_profiles.py) that "
+             "overrides --traffic and packet size with realistic values for that "
+             "sensor, e.g. --environment 'Paddy Field' --sensor-profile 'Soil Moisture Sensor'. "
+             "Use --list-sensor-profiles to see what's available per environment.",
+    )
+    p.add_argument(
+        "--list-sensor-profiles", action="store_true",
+        help="Print available sensor profiles per environment and exit.",
+    )
     return p.parse_args(argv)
 
 
@@ -324,6 +365,14 @@ def parse_args(argv):
 # ==============================
 def main(argv):
     args = parse_args(argv)
+
+    if args.list_sensor_profiles:
+        from sim11ah.sensor_profiles import SENSOR_PROFILES
+        for env, profiles in SENSOR_PROFILES.items():
+            print(f"{env}:")
+            for name, params in profiles.items():
+                print(f"  {name!r}: {params}")
+        return
 
     root = os.path.join(args.out, f"run_{_timestamp()}")
     _mkdir(root)
@@ -338,7 +387,10 @@ def main(argv):
     for raw, label in runs:
         print(f"\n===== {label} =====")
 
-        sim = build_sim(args.num_stas, args.seed, args.traffic, raw)
+        sim = build_sim(
+            args.num_stas, args.seed, args.traffic, raw,
+            sensor_profile=args.sensor_profile, environment=args.environment,
+        )
         run_dir = os.path.join(root, label.lower())
         _mkdir(run_dir)
 

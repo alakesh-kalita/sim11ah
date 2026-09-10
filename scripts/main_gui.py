@@ -35,6 +35,15 @@ def _make_traffic(cfg: dict, traffic: str):
             on_time=float(ac.get("onoff_on_time_s", 1.0)),
             off_time=float(ac.get("onoff_off_time_s", 3.0)),
         )
+    if traffic == "video":
+        # Matches ApplicationLayer._build_traffic_model's "video" branch
+        # (sim11ah/app.py) -- only the interval-generator half; size_mode/
+        # size_table/traffic_type were already set correctly on node.app
+        # during its own construction and set_traffic_model() (the caller
+        # of this function) only replaces the traffic-model object, not
+        # those other attributes.
+        fps = max(0.1, float(ac.get("video_fps", 5.0)))
+        return PeriodicTraffic(1.0 / fps, float(ac.get("video_jitter_s", 0.0)))
     return PeriodicTraffic(float(ac.get("periodic_interval", 5.0)))
 
 
@@ -58,8 +67,16 @@ def build_sim(
     # default was silently doing versus every published benchmark result.
     raw_num_slots: int = 8,
     raw_slot_duration: float = 0.014,
+    app_overrides: dict | None = None,
 ):
-    cfg = default_config(raw_enable=raw_enable, traffic_mode=traffic)
+    # A sensor profile (sim11ah/sensor_profiles.py) carries its own
+    # traffic/packet_size_bytes/etc., which should win over the plain
+    # traffic/packet_size/packet_interval args below when both are given
+    # (the GUI doesn't necessarily keep those in sync with a chosen
+    # profile) -- so the *effective* traffic mode is whichever the
+    # override dict specifies, falling back to the argument otherwise.
+    effective_traffic = str((app_overrides or {}).get("traffic", traffic))
+    cfg = default_config(raw_enable=raw_enable, traffic_mode=effective_traffic)
     cfg["mac"]["raw_policy"] = raw_policy
     cfg["mac"]["raw_num_groups"] = int(raw_num_groups)
     # raw_nodes_per_group caps how many AIDs a single fixed group can cover
@@ -78,6 +95,8 @@ def build_sim(
     cfg["app"]["packet_size_bytes"] = int(packet_size)
     cfg["app"]["periodic_interval"] = float(packet_interval)
     cfg["phy"]["freq_mhz"] = float(freq_mhz)
+    if app_overrides:
+        cfg["app"].update(app_overrides)
 
     sim = Simulator(config=cfg, seed=seed)
 
@@ -126,7 +145,7 @@ def build_sim(
         if nid == 0 or node.role == "RELAY":
             node.app.set_traffic_model(None)
         else:
-            node.app.set_traffic_model(_make_traffic(cfg, traffic))
+            node.app.set_traffic_model(_make_traffic(cfg, effective_traffic))
 
     if 0 in sim.nodes:
         sim.nodes[0].mac.ap_start_beacons()

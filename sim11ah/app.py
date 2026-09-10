@@ -6,6 +6,14 @@ from typing import Any, Dict, Optional, List, Tuple
 
 from sim11ah.models import Packet
 
+# P-frame-heavy / I-frame-light size mix for the "video" traffic model
+# (see ApplicationLayer._build_traffic_model) -- (size_bytes, weight)
+# pairs consumed by _pick_size's size_mode="table" weighted choice.
+# ~10% I-frames approximates a GOP length of ~10 at the model's default
+# 5 fps (a new I-frame roughly every 2s), without needing a strict
+# repeating sequence the probabilistic table mechanism doesn't support.
+DEFAULT_VIDEO_SIZE_TABLE = [(1200, 0.90), (6000, 0.10)]
+
 
 class TrafficModel:
     def next_interval(self, rng: random.Random) -> float:
@@ -131,7 +139,6 @@ class ApplicationLayer:
         self.dst_mode = str(app_cfg.get("dst_mode", "random_sta")).lower()
         self.enable_sink = bool(app_cfg.get("enable_sink", True))
 
-        self._traffic: Optional[TrafficModel] = self._build_traffic_model(app_cfg)
         self._running = False
 
         self.start_spread_s = float(
@@ -150,6 +157,13 @@ class ApplicationLayer:
 
         self.traffic_type = str(app_cfg.get("traffic_type", "sensor"))
         self.dscp = app_cfg.get("dscp", None)
+
+        # After size_mode/size_table/traffic_type so the "video" branch's
+        # side-effect overrides (see _build_traffic_model) are the final
+        # word for that traffic type, not silently clobbered by the plain
+        # app_cfg.get() defaults above -- every other traffic type is
+        # unaffected since only "video" mutates these.
+        self._traffic: Optional[TrafficModel] = self._build_traffic_model(app_cfg)
 
         self._in_flight: Dict[Tuple[int, int], float] = {}
         self.max_in_flight = int(app_cfg.get("max_in_flight", 0))
@@ -226,6 +240,47 @@ class ApplicationLayer:
                 float(app_cfg.get("onoff_lambda_on", 20.0)),
                 float(app_cfg.get("onoff_on_time_s", 2.0)),
                 float(app_cfg.get("onoff_off_time_s", 2.0)),
+            )
+        if traffic == "video":
+            # Low-power HaLow camera/video sensor: frames arrive roughly
+            # periodically at a target frame rate, with a GOP-like size mix
+            # -- most frames are small P-frames, a minority are much larger
+            # I-frames. This is a probabilistic mix (size_mode="table"
+            # weighted choice, see _pick_size), not a strict repeating I/P/
+            # P/P sequence -- close enough to model the RAW-scheduling-
+            # relevant property real video traffic has that periodic/CBR
+            # traffic doesn't: highly variable per-packet size at a
+            # otherwise-regular arrival cadence, which stresses whichever
+            # RAW policy is under test differently than uniform small
+            # packets do. Defaults sized for what HaLow's PHY can actually
+            # sustain (MCS0-3 = 150-600 kb/s, see phy_mode_table in
+            # config.py) -- 5 fps with a 1.2 KB/6 KB P/I mix averages
+            # ~67 kb/s, a realistic low-frame-rate monitoring camera, not
+            # an unrealistic full-motion-video target no HaLow link could
+            # sustain. I-frames (6 KB) exceed rts_threshold (2346 B by
+            # default), so they exercise the existing RTS/CTS path in
+            # dcf.py. NOTE: there is no MAC-layer fragmentation to exercise
+            # here -- dcf.py's TX_FRAG/_pending_fragments machinery exists
+            # but nothing in this codebase ever populates
+            # ctx._pending_fragments with real fragments (checked: it is
+            # only ever assigned []), so it never actually fires. An
+            # oversized frame is instead transmitted whole as a single,
+            # proportionally longer-duration frame
+            # (phy.py:compute_tx_duration scales linearly with
+            # frame.size_bytes, no size cap) -- a reasonable simplification
+            # for MAC-scheduling research, just not literal 802.11
+            # fragmentation, so don't describe it as such elsewhere.
+            fps = max(0.1, float(app_cfg.get("video_fps", 5.0)))
+            self.size_mode = "table"
+            # `or`, not .get(..., default) -- default_config() sets
+            # video_size_table=None explicitly (present, not missing), so
+            # .get()'s fallback would never trigger; `or` catches None (and
+            # an empty list/table) the same way absence would.
+            self.size_table = app_cfg.get("video_size_table") or DEFAULT_VIDEO_SIZE_TABLE
+            self.traffic_type = "video"
+            return PeriodicTraffic(
+                1.0 / fps,
+                float(app_cfg.get("video_jitter_s", 0.0)),
             )
 
         return PeriodicTraffic(
