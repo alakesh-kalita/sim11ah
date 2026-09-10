@@ -2326,6 +2326,37 @@ class Dashboard(tk.Tk):
                  text="  click a heading to sort  ·  click a row to inspect below",
                  bg=P["bg"], fg=P["muted"], font=("Arial", 9)).pack(side="left")
 
+        # ── Playback bar: step/scrub through the captured trace like a NetSim-
+        # style packet animator, replayed after the fact rather than only
+        # live -- every control here ends in a real selection_set() on the
+        # table, which _on_trace_row_select already turns into both the
+        # detail panel AND a real animated flash on the 2D/3D view, so
+        # scrubbing genuinely "plays back" the run, not just a table cursor.
+        playback = tk.Frame(parent, bg=P["side"], pady=6)
+        playback.pack(fill="x", padx=12, pady=(0, 6))
+
+        self._trace_play_btn = ttk.Button(playback, text="▶ Play", width=8,
+                                           command=self._toggle_trace_playback)
+        self._trace_play_btn.pack(side="left", padx=(4, 4))
+        ttk.Button(playback, text="⏮", width=3,
+                   command=lambda: self._trace_playback_step(-1)).pack(side="left")
+        ttk.Button(playback, text="⏭", width=3,
+                   command=lambda: self._trace_playback_step(1)).pack(side="left", padx=(2, 10))
+
+        self._trace_scrub = ttk.Scale(playback, from_=0, to=0, orient="horizontal",
+                                       command=self._on_trace_scrub)
+        self._trace_scrub.pack(side="left", fill="x", expand=True, padx=(0, 10))
+
+        self._trace_scrub_lbl = tk.Label(playback, text="row 0 / 0", bg=P["side"],
+                                          fg=P["side_fg"], font=("Courier New", 9), width=14)
+        self._trace_scrub_lbl.pack(side="left")
+
+        ttk.Button(playback, text="⏵ Live", command=self._trace_playback_jump_live
+                   ).pack(side="left", padx=(10, 4))
+
+        self._trace_playing = False
+        self._trace_scrub_updating = False
+
         cols = ("time", "node", "dst", "layer", "event", "ftype", "seq")
         headings = {"time": "Time (s)", "node": "Node", "dst": "Dst", "layer": "Layer",
                     "event": "Event", "ftype": "Frame", "seq": "Seq"}
@@ -2483,6 +2514,19 @@ class Dashboard(tk.Tk):
             self._trace_stat_ok.config(text=str(st["ok"]))
             self._trace_stat_bad.config(text=str(st["bad"]))
             self._trace_stat_retry.config(text=str(st["retry"]))
+
+            # Keep the scrub bar's range current as rows stream in, without
+            # yanking the user's own scrub position -- only follow the tail
+            # here when they haven't stepped away from it (autoscroll on).
+            final_children = tv.get_children()
+            if final_children:
+                self._trace_scrub_updating = True
+                self._trace_scrub.configure(to=max(0, len(final_children) - 1))
+                if self._vars["trace_autoscroll"].get():
+                    self._trace_scrub.set(len(final_children) - 1)
+                    self._trace_scrub_lbl.config(
+                        text=f"row {len(final_children)} / {len(final_children)}")
+                self._trace_scrub_updating = False
         except Exception:
             pass
 
@@ -2498,6 +2542,13 @@ class Dashboard(tk.Tk):
         self._trace_stat_ok.config(text="0")
         self._trace_stat_bad.config(text="0")
         self._trace_stat_retry.config(text="0")
+        self._trace_playing = False
+        self._trace_play_btn.config(text="▶ Play")
+        self._trace_scrub_updating = True
+        self._trace_scrub.configure(to=0)
+        self._trace_scrub.set(0)
+        self._trace_scrub_updating = False
+        self._trace_scrub_lbl.config(text="row 0 / 0")
 
     def _export_trace_csv(self):
         tv = getattr(self, "_trace_tv", None)
@@ -2538,9 +2589,106 @@ class Dashboard(tk.Tk):
                       f"dst={rec.get('dst')}  ftype={rec.get('ftype')}")
             body = "  ".join(f"{k}={v}" for k, v in det.items()) or "(no extra detail fields)"
             detail.insert("end", header + "\n" + body)
+            self._flash_trace_row_on_canvas(rec)
+            self._sync_trace_scrub_from_selection()
         else:
             detail.insert("end", "Select a row to see its full detail fields.")
         detail.configure(state="disabled")
+
+    def _flash_trace_row_on_canvas(self, rec) -> None:
+        """Replay the selected trace row as a real packet/pulse animation on
+        the 2D canvas (and, transitively, the 3D view -- ui/web3d/snapshot.py
+        polls the exact same canvas._packets/_pulses this appends to). Same
+        add_packet()/add_broadcast_pulse() call _animate_new_packets() makes
+        for a live TX_START, so the colour and motion are the real thing,
+        not a lookalike -- this is what actually ties "a row in a table" to
+        "a specific link lighting up" instead of just describing it in text."""
+        if str(rec.get("layer", "")).upper() != "PHY" or str(rec.get("event", "")) != "TX_START":
+            return  # only TX_START rows carry a real tx/rx pair worth animating
+        tx_id = rec.get("node_id")
+        det = rec.get("details") or {}
+        rx_id = det.get("rx_id", rec.get("dst"))
+        kind = classify_frame_kind(rec.get("ftype"))
+        for c in self._net_canvases():
+            if rx_id is None or rx_id == -1:
+                c.add_broadcast_pulse(tx_id, kind)
+            else:
+                c.add_packet(tx_id, rx_id, kind)
+
+    # ── Packet Trace: playback / scrub ──────────────────────────────────────
+    def _toggle_trace_playback(self):
+        self._trace_playing = not self._trace_playing
+        self._trace_play_btn.config(text="⏸ Pause" if self._trace_playing else "▶ Play")
+        if self._trace_playing:
+            self._vars["trace_autoscroll"].set(False)
+            self._trace_playback_tick()
+
+    def _trace_playback_tick(self):
+        if not self._trace_playing:
+            return
+        if not self._trace_playback_step(1):
+            self._trace_playing = False
+            self._trace_play_btn.config(text="▶ Play")
+            return
+        # ~5.5 rows/sec -- fast enough to feel like a replay, slow enough to
+        # actually watch the flash land on the topology view each step.
+        self.after(180, self._trace_playback_tick)
+
+    def _trace_playback_step(self, delta: int) -> bool:
+        tv = self._trace_tv
+        children = tv.get_children()
+        if not children:
+            return False
+        sel = tv.selection()
+        if sel and sel[0] in children:
+            idx = children.index(sel[0])
+        else:
+            idx = -1 if delta > 0 else len(children)
+        new_idx = idx + delta
+        if new_idx < 0 or new_idx >= len(children):
+            return False
+        self._vars["trace_autoscroll"].set(False)
+        iid = children[new_idx]
+        tv.selection_set(iid)
+        tv.see(iid)
+        return True
+
+    def _on_trace_scrub(self, value):
+        if self._trace_scrub_updating:
+            return
+        tv = self._trace_tv
+        children = tv.get_children()
+        if not children:
+            return
+        idx = max(0, min(len(children) - 1, int(round(float(value)))))
+        self._vars["trace_autoscroll"].set(False)
+        iid = children[idx]
+        tv.selection_set(iid)
+        tv.see(iid)
+
+    def _sync_trace_scrub_from_selection(self):
+        tv = self._trace_tv
+        children = tv.get_children()
+        sel = tv.selection()
+        if not children:
+            return
+        self._trace_scrub_updating = True
+        self._trace_scrub.configure(to=max(0, len(children) - 1))
+        if sel and sel[0] in children:
+            idx = children.index(sel[0])
+            self._trace_scrub.set(idx)
+            self._trace_scrub_lbl.config(text=f"row {idx + 1} / {len(children)}")
+        self._trace_scrub_updating = False
+
+    def _trace_playback_jump_live(self):
+        self._trace_playing = False
+        self._trace_play_btn.config(text="▶ Play")
+        tv = self._trace_tv
+        children = tv.get_children()
+        if children:
+            tv.selection_set(children[-1])
+            tv.see(children[-1])
+        self._vars["trace_autoscroll"].set(True)
 
     def _sort_trace_column(self, col, reverse):
         tv = self._trace_tv
