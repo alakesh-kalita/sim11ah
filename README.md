@@ -119,11 +119,16 @@ The dashboard provides:
 - **Run Controls** — Start / Pause / Resume / Stop & Reset / Step
 - **Settings panel** — all simulation parameters with live pending-changes indicator
 - **Live charts** — PDR, throughput, delay, drop rate updated in real time
-- **Topology canvas** — visual preview of star or relay topology
+- **Topology canvas** — visual preview of star or relay topology, plus an optional [3D view](#deployment-scenarios) in the browser
 - **Log viewer** — per-event log with filter and auto-scroll
-- **Export** — save logs and results to CSV
+- **Packet Trace** — a sortable/filterable table of every PHY/MAC/NET/APP event, with live success/drop/retry stats, node + free-text search, and a NetSim-style playback bar (Play/Pause/Step/scrub) that steps back through the captured run. Selecting any row replays it as a real animated packet or broadcast pulse on the topology canvas (and the 3D view), not a static description.
+- **Export** — save logs, the packet trace, and results to CSV
 
-![Dashboard screenshot](docs/dashboard_screenshot.png)
+![Dashboard Overview](docs/screenshots/dashboard_overview.png)
+
+*Packet Trace tab — live stats, filters, playback controls, and click-to-inspect:*
+
+![Dashboard Packet Trace](docs/screenshots/dashboard_packet_trace.png)
 
 ### CLI Batch Runner
 
