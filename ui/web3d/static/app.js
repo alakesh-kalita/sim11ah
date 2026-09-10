@@ -67,16 +67,40 @@ async function poll() {
 // outliers. The 80th-percentile distance keeps the dense part of the
 // network large instead; a couple of outliers just sit past the built
 // scene, same as any other map view.
-function nodeExtentRadius(nodesData) {
+function nodeExtentRadius(nodesData, originX = 0, originY = 0) {
   if (!nodesData.length) return 0;
-  const dists = nodesData.map((n) => Math.hypot(n.pos[0], n.pos[1])).sort((a, b) => a - b);
+  const dists = nodesData.map((n) => Math.hypot(n.pos[0] - originX, n.pos[1] - originY))
+    .sort((a, b) => a - b);
   const pIdx = Math.min(dists.length - 1, Math.floor(dists.length * 0.8));
   return dists[pIdx];
 }
 
 function frameCameraOnNodes(nodesData, obstacles, environment) {
   if (!nodesData.length) return;
-  let maxR = Math.max(100, nodeExtentRadius(nodesData));
+  // Multi-AP topologies (multi_ap / cars_uavs -- see sim11ah/topology.py's
+  // MultiApBuilder) place AP0 at the world origin and extend the REST of
+  // the topology forward from there in a line, unlike every other
+  // topology, which scatters its STAs symmetrically AROUND one central
+  // AP that already sits at the origin. Always targeting the fixed
+  // origin left most of a multi-AP corridor -- and most of its cars/
+  // scooters/UAVs -- sitting off to one side of the frustum by default,
+  // invisible without the user manually panning: the camera had enough
+  // DISTANCE to encompass the whole corridor (maxR below already
+  // accounts for it), just not pointed at its middle. Detected by >1
+  // AP-role node, which only single-AP topologies (mode "uav",
+  // "aerial_relay", etc.) never have -- for those this is a no-op (the
+  // scatter's own centroid already sits at/near the origin, since node 0
+  // is always there), so this can't regress the origin-centred framing
+  // every other environment's procedural terrain is itself built around.
+  const apNodes = nodesData.filter((n) => n.role === 'AP');
+  let targetX = 0, targetZ = 0;
+  if (apNodes.length > 1) {
+    let cxWorld = 0, cyWorld = 0;
+    for (const n of nodesData) { cxWorld += n.pos[0]; cyWorld += n.pos[1]; }
+    cxWorld /= nodesData.length; cyWorld /= nodesData.length;
+    targetX = cxWorld; targetZ = -cyWorld;
+  }
+  let maxR = Math.max(100, nodeExtentRadius(nodesData, targetX, -targetZ));
   // Also frame around the environment's built structures, not just node
   // positions -- a base/campus/site can extend well past a tight node
   // cluster, and the default view should show the built scene without
@@ -94,8 +118,8 @@ function frameCameraOnNodes(nodesData, obstacles, environment) {
     maxR = Math.max(maxR, siteR * 1.05);
   }
   const dist = Math.max(220, maxR * 1.15);
-  camera.position.set(dist * 0.5, dist * 0.4, dist * 0.62);
-  controls.target.set(0, 15, 0);
+  camera.position.set(targetX + dist * 0.5, dist * 0.4, targetZ + dist * 0.62);
+  controls.target.set(targetX, 15, targetZ);
   controls.update();
 }
 
