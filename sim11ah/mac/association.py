@@ -288,7 +288,18 @@ class AssocManager:
         # kind of source arrives, instead of ever falling back to the
         # other one.
         pref = getattr(self._ctx, "_assoc_preference", "auto")
-        is_from_ap = (int(beacon_frame.src) == 0)
+        # Whether the SOURCE of this beacon is an AP-role node, not
+        # specifically node 0 -- with the old hardcoded ==0 check, a beacon
+        # from any AP other than node 0 was misclassified as "not from an
+        # AP" (i.e. treated like a relay) by the "auto" preference logic
+        # below, so a STA would always hold off for node 0's beacon
+        # regardless of which AP it actually heard first or how the two
+        # APs' beacon timing was staggered -- basic multi-AP discovery was
+        # broken, not just AP-vs-AP RSSI selection (that's a separate,
+        # later concern: which AP to prefer once more than one is a valid
+        # candidate).
+        src_node = self._sim.nodes.get(int(beacon_frame.src))
+        is_from_ap = bool(getattr(src_node, "is_ap", int(beacon_frame.src) == 0))
         if pref == "ap" and not is_from_ap:
             return
         if pref == "relay" and is_from_ap:
@@ -346,6 +357,23 @@ class AssocManager:
         peer = getattr(self._ctx, "_assoc_peer_id", None)
         if peer is None or peer == 0:
             return  # unknown peer, or already associated directly with the AP
+        # `peer != 0` used to mean "must be on a relay" (only relays and
+        # node-0-AP existed), so this always continued into the relay->AP
+        # handover below. Under multi-AP, `peer != 0` can also mean "already
+        # properly associated with a different real AP" -- that STA should
+        # NOT get silently bounced onto node 0 just because node 0's beacon
+        # happens to arrive; caught empirically (RAW_CONNECTED_AIDS on the
+        # non-zero AP staying stale/nonempty for a STA whose own
+        # _assoc_peer_id had already moved to node 0). Real AP-vs-AP
+        # preference (which of several legitimate APs to prefer/roam to) is
+        # separate, future work -- this only restores "don't leave a
+        # functioning AP for another AP for no reason," the same standard
+        # already applied to two relays (this method is never called at all
+        # for a beacon from a non-AP source, so relay<->relay was never at
+        # risk here).
+        peer_node = self._sim.nodes.get(int(peer))
+        if bool(getattr(peer_node, "is_ap", False)):
+            return  # already on a legitimate AP other than node 0 -- stay put
         if getattr(self._ctx, "_assoc_preference", "auto") == "relay":
             return  # user explicitly pinned this STA to its relay
 

@@ -645,7 +645,10 @@ class NetworkLayer:
         meta = self._ensure_meta(pdu_in.packet)
         originated_by = int(meta.get("originated_by", -999))
 
-        if originated_by != 0:
+        # Was hardcoded to compare against 0 -- see recv_up_from_mac's
+        # matching fix above for why that broke for any AP other than
+        # node 0.
+        if originated_by != self.node.node_id:
             hops = self._bump_hops(pdu_in)
             if hops > self.max_hops:
                 self.sim.stats.packets_dropped += 1
@@ -687,8 +690,14 @@ class NetworkLayer:
             return
 
         if self._is_ap():
-            # AP local delivery (packets addressed to AP or broadcast)
-            if int(net_pdu.dst) == 0 or int(net_pdu.dst) == -1:
+            # AP local delivery (packets addressed to THIS AP or broadcast)
+            # -- was hardcoded to dst==0, so AP #2+ (node_id != 0) treated
+            # every packet correctly addressed to itself as needing further
+            # downlink forwarding instead of local delivery, producing a
+            # self-referential forward-to-myself loop (caught empirically:
+            # RX_LINK_MISSING frames with src==dst==next_hop all equal to
+            # the non-zero AP's own id).
+            if int(net_pdu.dst) == self.node.node_id or int(net_pdu.dst) == -1:
                 if self._is_duplicate_pdu(net_pdu):
                     self.sim.stats.net_duplicates += 1
                     self._log(
@@ -708,9 +717,11 @@ class NetworkLayer:
                 )
                 self.node.transport.recv_up_from_net(net_pdu.packet)
 
-                # Forward only if this is a broadcast that did NOT originate from AP
+                # Forward only if this is a broadcast that did NOT originate
+                # from this AP itself (avoid re-forwarding my own broadcast
+                # back out) -- was hardcoded to compare against 0.
                 meta = self._ensure_meta(net_pdu.packet)
-                if int(net_pdu.dst) == -1 and int(meta.get("originated_by", -1)) != 0:
+                if int(net_pdu.dst) == -1 and int(meta.get("originated_by", -1)) != self.node.node_id:
                     self._forward_down_from_ap(net_pdu)
                 return
 

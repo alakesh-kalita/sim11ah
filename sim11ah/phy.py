@@ -228,6 +228,19 @@ class PhyLayer:
     def _fspl_db_1m(self) -> float:
         return 32.44 + 20.0 * math.log10(max(1e-9, self.freq_mhz)) - 60.0
 
+    def nominal_range_m(self) -> float:
+        """Nominal coverage radius (m): distance at which RSSI == rx
+        sensitivity. Canonical sim11ah-side port of the same formula
+        ui/topology_canvas.py's range_m_for_node() uses for its own display
+        purposes (kept there too, for the GUI's existing call sites) -- this
+        copy has no ui/ dependency, so sim11ah/topology.py's MultiApBuilder
+        can compute overlap_width_m = 2*nominal_range_m() - ap_spacing_m
+        without importing from ui/, which this package otherwise never does."""
+        exponent = (self.eirp_dbm - self.rx_sensitivity_dbm - self._fspl_db_1m()) / (
+            10.0 * self.path_loss_exp
+        )
+        return float(self.d0_m * (10.0 ** exponent))
+
     def _shadow_key(self, tx_id: int, rx_id: int) -> Tuple[int, int]:
         if self.shadow_symmetric:
             return tuple(sorted((int(tx_id), int(rx_id))))
