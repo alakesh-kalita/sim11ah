@@ -494,6 +494,69 @@ export function updateLinks(nodesData) {
   }
 }
 
+// ---- AP<->AP backbone -- a sparse (grid-adjacent, not all-pairs) render of
+// the real backhaul every AP is actually linked to every other one for at
+// the PHY/broadcast level (sim11ah/topology.py's MultiApBuilder.build);
+// apLinks itself is computed server-side (ui/web3d/snapshot.py's
+// _ap_backbone_pairs, mirroring ui/topology_canvas.py's own copy exactly)
+// so both views draw the identical sparse backbone. APs are static (never
+// move mid-run), so this only actually changes when the AP count/layout
+// does, but it's cheap enough (a handful of lines) to just rebuild every
+// poll rather than tracking that separately. --------------------------------
+let apBackboneLines = [];
+export function updateApBackbone(nodesData, apLinks) {
+  for (const l of apBackboneLines) { linksGroup.remove(l); l.geometry.dispose(); l.material.dispose(); }
+  apBackboneLines = [];
+  if (!apLinks || !apLinks.length) return;
+  const byId = new Map(nodesData.map(n => [n.id, n]));
+  for (const pair of apLinks) {
+    const a = byId.get(pair[0]), b = byId.get(pair[1]);
+    if (!a || !b) continue;
+    const pa = toScene(a.pos[0], a.pos[1]); pa.y = linkEndpointY(a, pa.x, pa.z);
+    const pb = toScene(b.pos[0], b.pos[1]); pb.y = linkEndpointY(b, pb.x, pb.z);
+    const geo = new THREE.BufferGeometry().setFromPoints([pa, pb]);
+    const mat = new THREE.LineDashedMaterial({ color: 0x64748b, dashSize: 8, gapSize: 6, transparent: true, opacity: 0.75 });
+    const line = new THREE.Line(geo, mat);
+    line.computeLineDistances();
+    linksGroup.add(line);
+    apBackboneLines.push(line);
+  }
+}
+
+// ---- AP range rings -- the real PHY range_m_for_node() radius already
+// carried on every node as n.range_m (see ui/web3d/snapshot.py's
+// _node_dict), not a decorative accent -- lets you see at a glance whether
+// a vehicle's actual distance to its AP is inside or outside that AP's real
+// range, for every AP at once, matching the 2D canvas's own
+// _draw_ap_ranges_overlay exactly (same AP_LINK_COLORS palette, so a
+// vehicle's link colour and the ring it should sit inside of are visually
+// tied together in both views). -------------------------------------------
+let apRangeRings = [];
+export function updateApRanges(nodesData) {
+  for (const r of apRangeRings) { linksGroup.remove(r); r.geometry.dispose(); r.material.dispose(); }
+  apRangeRings = [];
+  const apNodes = nodesData.filter(n => n.role === 'AP').sort((a, b) => a.id - b.id);
+  const segs = 96;
+  apNodes.forEach((n, idx) => {
+    if (typeof n.range_m !== 'number' || n.range_m <= 0) return;
+    const center = toScene(n.pos[0], n.pos[1]);
+    const pts = [];
+    for (let i = 0; i <= segs; i++) {
+      const ang = (i / segs) * Math.PI * 2;
+      pts.push(new THREE.Vector3(center.x + Math.cos(ang) * n.range_m, 0.6, center.z + Math.sin(ang) * n.range_m));
+    }
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    const mat = new THREE.LineDashedMaterial({
+      color: AP_LINK_COLORS[idx % AP_LINK_COLORS.length], dashSize: 14, gapSize: 10,
+      transparent: true, opacity: 0.55,
+    });
+    const line = new THREE.Line(geo, mat);
+    line.computeLineDistances();
+    linksGroup.add(line);
+    apRangeRings.push(line);
+  });
+}
+
 // ---- packets / broadcast pulses --------------------------------------------
 let packetMeshes = [];
 const packetGeo = new THREE.BoxGeometry(1, 1, 1);

@@ -617,14 +617,32 @@ def _diagnose_unjoined(node, sim) -> Optional[Tuple[str, str]]:
 
 
 def dist_to_ap_m(node, sim) -> Optional[float]:
-    """Straight-line distance (metres) from `node` to the real AP's
-    current position -- the same real coordinates every range/diagnostic
-    check in this module already uses, just exposed directly as a number
-    instead of only feeding a range comparison."""
+    """Straight-line distance (metres) from `node` to the AP it's
+    actually associated with, falling back to the nearest AP if it
+    isn't associated with one yet -- NOT always node 0. Under multi-AP
+    (multi_ap, cars_uavs), a STA sitting right next to, and correctly
+    associated with, AP5 would show its distance to AP0 instead if this
+    stayed hardcoded, which could read as a misleadingly large distance
+    (hundreds of metres to kilometres) for a node whose real link is
+    short and healthy -- exactly the "why does a node 1.5km away still
+    show connected" confusion this was causing. Single-AP topologies are
+    unaffected: there's only ever one AP candidate there, so this
+    reduces to the exact same node-0 distance as before."""
     if sim is None or node is None:
         return None
-    ap = sim.nodes.get(0)
-    if ap is None or ap is node:
+    ap_ids = sim.config.get("topology", {}).get("ap_ids", [0]) if sim.config else [0]
+    peer_id = _assoc_peer(node)
+    ap = sim.nodes.get(peer_id) if peer_id is not None and peer_id in ap_ids else None
+    if ap is None:
+        # Not associated (or associated with a relay, not an AP directly)
+        # -- nearest AP is the most informative fallback: "how far is
+        # this node from ANY coverage", not an arbitrary fixed one.
+        candidates = [sim.nodes[aid] for aid in ap_ids if aid in sim.nodes and sim.nodes[aid] is not node]
+        if not candidates:
+            return None
+        ap = min(candidates,
+                 key=lambda a: math.hypot(node.pos[0] - a.pos[0], node.pos[1] - a.pos[1]))
+    if ap is node:
         return None
     return math.hypot(node.pos[0] - ap.pos[0], node.pos[1] - ap.pos[1])
 
@@ -1542,6 +1560,7 @@ class NetworkCanvas(tk.Canvas):
         nodes = self.sim.nodes
 
         self._draw_selection_overlay(nodes)
+        self._draw_ap_ranges_overlay(nodes)
         self._draw_drones_overlay(nodes)
         self._draw_uavs_overlay(nodes)
         self._draw_cars_overlay(nodes)
@@ -1599,6 +1618,34 @@ class NetworkCanvas(tk.Canvas):
             r_px = min(rng * scale, 4000.0)
             self.create_oval(px - r_px, py - r_px, px + r_px, py + r_px,
                               outline=_AMBER, dash=(4, 3), width=1.5, tags=("ovl",))
+
+    def _draw_ap_ranges_overlay(self, nodes) -> None:
+        """Persistent dashed coverage-range ring around EVERY AP -- the
+        real range_m_for_node() radius (same PHY-range formula/units the
+        "Distance to AP" readout under each STA and _draw_selection_overlay's
+        own copy of this circle already use), not the small decorative
+        accent ring _draw_ap_icon paints on the icon itself (that one's
+        explicitly NOT the real range -- see its own docstring). Answers
+        "is this vehicle's current distance actually inside its AP's
+        range" at a glance, for every AP at once, rather than only the
+        one you've clicked on. Colour-matched to that AP's own link
+        colour (_ap_link_color) so a vehicle's link colour and the ring
+        it should be sitting inside of are visually tied together."""
+        if not self._ap_ids or self.sim is None:
+            return
+        scale = self._transform()[0]
+        for aid in sorted(self._ap_ids):
+            ap = nodes.get(aid)
+            if ap is None:
+                continue
+            rng = range_m_for_node(ap)
+            if rng <= 0:
+                continue
+            apx, apy = self._world_to_px(*ap.pos)
+            r_px = min(rng * scale, 4000.0)
+            self.create_oval(apx - r_px, apy - r_px, apx + r_px, apy + r_px,
+                              outline=self._ap_link_color(aid), dash=(5, 4), width=1.2,
+                              tags=("ovl",))
 
     def _draw_drones_overlay(self, nodes) -> None:
         if not self.drone_ids:
@@ -2329,6 +2376,20 @@ class NetworkCanvas(tk.Canvas):
 
         nodes = self.sim.nodes
 
+        # AP<->AP backbone -- APs are static (never move mid-run), so
+        # this is drawn once here in the real redraw rather than every
+        # tick's cheap overlay. Real backhaul link -- MultiApBuilder.build
+        # links every AP pair for PHY/broadcast purposes -- just a sparse
+        # (grid-adjacent, not all-pairs) rendering of it; see
+        # _ap_backbone_pairs' own docstring for why.
+        for a_id, b_id in self._ap_backbone_pairs():
+            an, bn = nodes.get(a_id), nodes.get(b_id)
+            if an is None or bn is None:
+                continue
+            apx, apy = self._world_to_px(*an.pos)
+            bpx, bpy = self._world_to_px(*bn.pos)
+            self.create_line(apx, apy, bpx, bpy, fill=_STA_BODY, width=2, dash=(6, 3))
+
         # Edges (drones/UAVs excluded here -- their edges move every tick,
         # so they're drawn as part of the cheap per-tick overlay instead;
         # see _draw_drones_overlay / _draw_uavs_overlay). Drawn from each
@@ -2618,6 +2679,36 @@ class NetworkCanvas(tk.Canvas):
             _, py = self._world_to_px(0.0, y)
             self.create_line(0, py, W, py, fill=color)
             y += step_m
+
+    def _ap_backbone_pairs(self):
+        """Grid-adjacent AP id pairs -- NOT the full all-pairs mesh every
+        AP is actually linked to every other one for at the PHY/broadcast
+        level (sim11ah/topology.py's MultiApBuilder.build links all
+        pairs) -- drawing every one of a 6-AP grid's 15 pairs as crossing
+        diagonal lines would be exactly the clutter working against
+        observing vehicle movement that the decorative-traffic removal
+        was for. A grid-adjacent backbone (same row, neighbouring
+        column; same column, neighbouring row) is the standard sparse
+        way to show "these APs form one connected mesh" without drawing
+        every redundant diagonal. Same (row, col) recovery
+        _seed_default_layout's cars_uavs/multi_ap reseed branch uses:
+        sorted ap_ids in row-major order, num_ap_rows from topo_cfg
+        (absent/1 for plain multi_ap, which collapses this to just
+        consecutive pairs along the one row -- still correct)."""
+        if self.sim is None or len(self._ap_ids) < 2:
+            return []
+        topo_cfg = self.sim.config.get("topology", {})
+        ap_ids = sorted(self._ap_ids)
+        num_rows = max(1, int(topo_cfg.get("num_ap_rows", 1)))
+        num_cols = max(1, len(ap_ids) // num_rows)
+        pairs = []
+        for i, aid in enumerate(ap_ids):
+            row, col = divmod(i, num_cols)
+            if col + 1 < num_cols:
+                pairs.append((aid, ap_ids[row * num_cols + col + 1]))
+            if row + 1 < num_rows:
+                pairs.append((aid, ap_ids[(row + 1) * num_cols + col]))
+        return pairs
 
     def _ap_link_color(self, ap_id: int) -> str:
         """Stable colour for AP `ap_id`'s own peer-link edges -- see

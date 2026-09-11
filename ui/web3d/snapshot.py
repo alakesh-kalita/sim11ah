@@ -328,6 +328,29 @@ def _obstacle_dict(obs) -> Dict[str, Any]:
             "loss_db": float(obs.loss_db), "label": obs.label}
 
 
+def _ap_backbone_pairs(canvas) -> List[List[int]]:
+    """Grid-adjacent AP id pairs -- mirrors NetworkCanvas._ap_backbone_pairs
+    (ui/topology_canvas.py) exactly, so both views draw the same sparse
+    backbone rather than the full all-pairs mesh MultiApBuilder.build
+    actually links every AP with at the PHY/broadcast level (drawing all
+    15 pairs of a 6-AP grid as crossing diagonals would be clutter, not
+    a clearer picture of "these APs are connected")."""
+    ap_ids = sorted(getattr(canvas, "_ap_ids", set()))
+    if canvas.sim is None or len(ap_ids) < 2:
+        return []
+    topo_cfg = canvas.sim.config.get("topology", {})
+    num_rows = max(1, int(topo_cfg.get("num_ap_rows", 1)))
+    num_cols = max(1, len(ap_ids) // num_rows)
+    pairs: List[List[int]] = []
+    for i, aid in enumerate(ap_ids):
+        row, col = divmod(i, num_cols)
+        if col + 1 < num_cols:
+            pairs.append([aid, ap_ids[row * num_cols + col + 1]])
+        if row + 1 < num_rows:
+            pairs.append([aid, ap_ids[(row + 1) * num_cols + col]])
+    return pairs
+
+
 def build_snapshot(dashboard) -> Dict[str, Any]:
     sim = getattr(dashboard, "sim", None)
     canvas = getattr(dashboard, "_net_canvas", None)
@@ -374,5 +397,6 @@ def build_snapshot(dashboard) -> Dict[str, Any]:
         "pulses": pulses,
         "vehicles": _vehicles(canvas),
         "road_loops": _road_loops(canvas),
+        "ap_links": _ap_backbone_pairs(canvas),
         "metrics": metrics,
     }

@@ -96,12 +96,19 @@ function addTree(x, z, scaleIn) {
   trunk.scale.set(scale, scale, scale);
   trunk.castShadow = true;
   g.add(trunk);
+  // Leaf clusters don't cast shadows -- 6 extra shadow-casters PER TREE
+  // (on top of the trunk, which still does, for basic ground grounding)
+  // added up fast at Smart City's filler density (hundreds of trees
+  // across a large scattered scene), and a missing leaf-cluster shadow
+  // is not a detail anyone notices at normal viewing distance, especially
+  // under PCFSoftShadowMap's already-blurred edges. Real, broadly
+  // applicable shadow-pass cost cut (every environment using addTree
+  // benefits, not just one) for a visual cost nobody will see.
   const offsets = [[0, 0, 0], [1.6, 0.6, 0], [-1.6, 0.6, 0], [0, 0.6, 1.6], [0, 0.6, -1.6], [0, 2, 0]];
   for (const [ox, oy, oz] of offsets) {
     const leaf = new THREE.Mesh(leafGeo, leafMat);
     leaf.position.set(ox * scale, (6.5 + oy) * scale, oz * scale);
     leaf.scale.set(scale, scale, scale);
-    leaf.castShadow = true;
     g.add(leaf);
   }
   g.position.set(x, 0, z);

@@ -13,7 +13,10 @@ import {
   rebuildMilitaryPatrol, stepMilitaryPatrol,
   applyLoadedTextures, siteRadius, militaryExtent,
 } from './js/world.js';
-import { updateNodes, updateLinks, updatePackets, updateVehicles, stepNodeAnimation } from './js/entities.js';
+import {
+  updateNodes, updateLinks, updatePackets, updateVehicles, stepNodeAnimation,
+  updateApBackbone, updateApRanges,
+} from './js/entities.js';
 import { stepSmoke } from './js/smoke.js';
 import { updateHud, showStatus, hideStatus } from './js/hud.js';
 import './js/interact.js'; // wires node drag-and-drop; no exports, side-effect only
@@ -48,6 +51,8 @@ async function poll() {
     rebuildMilitaryPatrol(state.obstacles, state.environment);
     updateNodes(state.nodes);
     updateLinks(state.nodes);
+    updateApBackbone(state.nodes, state.ap_links);
+    updateApRanges(state.nodes);
     updatePackets(state.packets, state.pulses, state.nodes);
     updateVehicles(state.vehicles);
     updateHud(state);

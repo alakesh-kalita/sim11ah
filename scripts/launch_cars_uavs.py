@@ -58,6 +58,18 @@ gui = Dashboard(sim=sim, sim_builder=build_sim, initial_settings=initial)
 # from that environment's purely decorative loop traffic.
 gui._env_var.set("Smart City")
 gui._on_env_change()
+
+# Turbo (30fps/33ms ticks), not the "Normal" (7fps/145ms) default -- with
+# 24 cars + 16 scooters + 8 UAVs all moving at once, 7 position updates a
+# second reads as visibly choppy motion regardless of how cheap any single
+# redraw is (confirmed the bottleneck is tick RATE, not redraw cost -- the
+# expensive full background/building redraw only ever fires on real
+# topology-changing events, never on a plain animation tick). Every other
+# topology in this project defaults to "Normal" because a handful of nodes
+# genuinely doesn't need faster updates to look smooth; a highway full of
+# vehicles does.
+gui._vars["sim_speed"].set("Turbo (30 fps)")
+gui._on_speed_change()
 gui.update_idletasks()
 
 gui._open_3d_view()  # starts Web3DServer + opens the 3D view in your browser
