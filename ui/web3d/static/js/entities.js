@@ -532,12 +532,18 @@ export function updateApBackbone(nodesData, apLinks) {
 // vehicle's link colour and the ring it should sit inside of are visually
 // tied together in both views). -------------------------------------------
 let apRangeRings = [];
+// Dark and uniform (not per-AP coloured like AP_LINK_COLORS) -- matches
+// ui/topology_canvas.py's own _AP_RANGE_RING exactly, so the range
+// boundary reads as a fixed technical reference line in both views,
+// distinct from and legible against the coloured, moving vehicle links.
+const AP_RANGE_RING_COLOR = 0x1e293b;
+
 export function updateApRanges(nodesData) {
   for (const r of apRangeRings) { linksGroup.remove(r); r.geometry.dispose(); r.material.dispose(); }
   apRangeRings = [];
   const apNodes = nodesData.filter(n => n.role === 'AP').sort((a, b) => a.id - b.id);
   const segs = 96;
-  apNodes.forEach((n, idx) => {
+  apNodes.forEach((n) => {
     if (typeof n.range_m !== 'number' || n.range_m <= 0) return;
     const center = toScene(n.pos[0], n.pos[1]);
     const pts = [];
@@ -547,8 +553,8 @@ export function updateApRanges(nodesData) {
     }
     const geo = new THREE.BufferGeometry().setFromPoints(pts);
     const mat = new THREE.LineDashedMaterial({
-      color: AP_LINK_COLORS[idx % AP_LINK_COLORS.length], dashSize: 14, gapSize: 10,
-      transparent: true, opacity: 0.55,
+      color: AP_RANGE_RING_COLOR, dashSize: 14, gapSize: 10,
+      transparent: true, opacity: 0.75,
     });
     const line = new THREE.Line(geo, mat);
     line.computeLineDistances();

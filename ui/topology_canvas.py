@@ -58,6 +58,7 @@ _AP_LINK_COLORS = (
     "#3b82f6", "#f97316", "#a855f7", "#06b6d4",
     "#ec4899", "#84cc16", "#f43f5e", "#14b8a6",
 )
+_AP_RANGE_RING = "#1e293b"   # dark, uniform -- coverage-range rings, not per-AP coloured
 _GRAY    = "#94a3b8"
 
 # Aerial-scene palettes -------------------------------------------------------
@@ -1628,9 +1629,10 @@ class NetworkCanvas(tk.Canvas):
         explicitly NOT the real range -- see its own docstring). Answers
         "is this vehicle's current distance actually inside its AP's
         range" at a glance, for every AP at once, rather than only the
-        one you've clicked on. Colour-matched to that AP's own link
-        colour (_ap_link_color) so a vehicle's link colour and the ring
-        it should be sitting inside of are visually tied together."""
+        one you've clicked on. Dark and uniform (not per-AP coloured, the
+        way peer-links/backbone are) so the range boundary itself reads
+        as a fixed technical reference line, distinct from and legible
+        against the coloured, moving vehicle links."""
         if not self._ap_ids or self.sim is None:
             return
         scale = self._transform()[0]
@@ -1644,7 +1646,7 @@ class NetworkCanvas(tk.Canvas):
             apx, apy = self._world_to_px(*ap.pos)
             r_px = min(rng * scale, 4000.0)
             self.create_oval(apx - r_px, apy - r_px, apx + r_px, apy + r_px,
-                              outline=self._ap_link_color(aid), dash=(5, 4), width=1.2,
+                              outline=_AP_RANGE_RING, dash=(5, 4), width=1.4,
                               tags=("ovl",))
 
     def _draw_drones_overlay(self, nodes) -> None:
