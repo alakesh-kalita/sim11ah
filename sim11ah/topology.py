@@ -204,6 +204,7 @@ class MultiApBuilder:
         num_stas: int,
         link_cfg: Dict[str, Any],
         sta_positions: List[Tuple[float, float]] = None,
+        ap_positions: List[Tuple[float, float]] = None,
     ) -> List["Node"]:
         from sim11ah.node import Node  # local import to avoid circular
 
@@ -228,8 +229,15 @@ class MultiApBuilder:
         sim.topology = topo
         sim.nodes = {}
 
+        # ap_positions, when given (CarsUavsBuilder's 2D AP grid uses this
+        # to place multiple AP rows), overrides the default single-line
+        # (i * ap_spacing_m, 0) placement entirely -- every other existing
+        # caller (roam_experiment.py, main_gui.py's "multi_ap" topology)
+        # never passes it, so their AP chain is completely unaffected.
         ap_nodes = [
-            Node(node_id=i, sim=sim, role="AP", pos=(i * ap_spacing_m, 0.0))
+            Node(node_id=i, sim=sim, role="AP",
+                 pos=(ap_positions[i] if ap_positions is not None and i < len(ap_positions)
+                      else (i * ap_spacing_m, 0.0)))
             for i in range(num_aps)
         ]
 
@@ -374,12 +382,26 @@ class CarsUavsBuilder:
         # highway background's margin/depth scale, and uav_region's
         # default UAV roam envelope.
         uav_margin_m: float = 1100.0,
+        # 2 rows, not 1 -- a single AP chain sitting exactly on the
+        # centreline can't reach vehicles out on the wider avenues (up to
+        # +/-car_lane_offset_m + (num_car_avenues-1)*avenue_spacing_m off
+        # that line) without relying on an unrealistically long PHY
+        # range. Two rows straddling the centreline at +/-ap_row_offset_m
+        # put every AP's own nominal range circle across most of the
+        # avenue band instead of just the innermost one. num_aps/
+        # ap_spacing_m keep meaning "columns"/"column spacing" exactly as
+        # before -- this only adds rows, so corridor_span_m and every
+        # x-axis formula (car/UAV x-range, avenue length, ...) are
+        # unaffected by it.
+        num_ap_rows: int = 2,
+        ap_row_offset_m: float = 350.0,
     ) -> List["Node"]:
         num_aps = max(1, int(num_aps))
         num_cars = int(num_cars)
         num_uavs = int(num_uavs)
         num_scooters = int(num_scooters)
         num_car_avenues = max(1, int(num_car_avenues))
+        num_ap_rows = max(1, int(num_ap_rows))
         if num_cars < 0 or num_uavs < 0 or num_scooters < 0:
             raise ValueError(
                 f"num_cars ({num_cars}), num_scooters ({num_scooters}) and "
@@ -387,6 +409,28 @@ class CarsUavsBuilder:
             )
 
         span = max(1.0, (num_aps - 1) * float(ap_spacing_m))
+
+        # AP grid: num_aps columns (unchanged meaning/spacing) x
+        # num_ap_rows rows, rows evenly spaced and centred on the
+        # highway's own centreline (row 0 and row -1 land at exactly
+        # +/-ap_row_offset_m for the common num_ap_rows=2 case). Node ids
+        # run row-major (row 0's columns first, then row 1's, ...) purely
+        # as an ordering convention -- nothing downstream depends on
+        # which AP id is which grid cell, only on topo_cfg["ap_ids"]
+        # listing all of them.
+        total_aps = num_aps * num_ap_rows
+        if num_ap_rows > 1:
+            row_ys = [
+                (r - (num_ap_rows - 1) / 2.0) * (2.0 * ap_row_offset_m / (num_ap_rows - 1))
+                for r in range(num_ap_rows)
+            ]
+        else:
+            row_ys = [0.0]
+        ap_positions = [
+            (col * float(ap_spacing_m), row_ys[row])
+            for row in range(num_ap_rows)
+            for col in range(num_aps)
+        ]
 
         # car_avenue_offsets_m: the distance of each avenue from the
         # centreline (+/- each value gives the actual lane y once mirrored
@@ -438,14 +482,15 @@ class CarsUavsBuilder:
         num_stas = num_cars + num_scooters + num_uavs
 
         all_nodes = MultiApBuilder.build(
-            sim, num_aps=num_aps, ap_spacing_m=ap_spacing_m,
+            sim, num_aps=total_aps, ap_spacing_m=ap_spacing_m,
             num_stas=num_stas, link_cfg=link_cfg,
             sta_positions=sta_positions if sta_positions else None,
+            ap_positions=ap_positions,
         )
 
-        car_ids = [num_aps + j for j in range(num_cars)]
-        scooter_ids = [num_aps + num_cars + j for j in range(num_scooters)]
-        uav_ids = [num_aps + num_cars + num_scooters + j for j in range(num_uavs)]
+        car_ids = [total_aps + j for j in range(num_cars)]
+        scooter_ids = [total_aps + num_cars + j for j in range(num_scooters)]
+        uav_ids = [total_aps + num_cars + num_scooters + j for j in range(num_uavs)]
 
         topo_cfg = sim.config.setdefault("topology", {})
         topo_cfg["mode"] = "cars_uavs"
@@ -453,6 +498,13 @@ class CarsUavsBuilder:
         topo_cfg["scooter_ids"] = scooter_ids
         topo_cfg["uav_ids"] = uav_ids
         topo_cfg["corridor_span_m"] = span
+        # num_ap_rows/ap_row_offset_m recorded alongside ap_ids/
+        # ap_spacing_m so a reseed (ui/topology_canvas.py's
+        # _seed_default_layout) can reconstruct this exact 2D AP grid --
+        # ap_spacing_m alone only describes one row's column spacing, not
+        # the row layout on top of it.
+        topo_cfg["num_ap_rows"] = num_ap_rows
+        topo_cfg["ap_row_offset_m"] = float(ap_row_offset_m)
         # Recorded so every consumer that needs to know how far vehicles
         # actually roam (uav_region's default margin, and the 3D Smart
         # City's procedural road/building sizing in

@@ -941,10 +941,29 @@ def _seed_default_layout(sim, mode: str, relay_ids: Set[int], obstacles=None,
         topo_cfg = sim.config.get("topology", {})
         ap_ids = sorted(topo_cfg.get("ap_ids", [0]))
         ap_spacing = float(topo_cfg.get("ap_spacing_m", 0.0))
+        # cars_uavs mode lays APs out in a 2D grid (num_ap_rows rows of
+        # num_aps columns each -- see CarsUavsBuilder.build), not a
+        # single line -- num_ap_rows/ap_row_offset_m are only ever
+        # present for that mode (absent, i.e. 1 row, for plain multi_ap).
+        # ap_ids sorted ascending is exactly the row-major order
+        # CarsUavsBuilder assigned ids in (row 0's columns, then row 1's,
+        # ...), so recovering (row, col) via divmod reproduces the exact
+        # same grid.
+        num_ap_rows = max(1, int(topo_cfg.get("num_ap_rows", 1)))
+        ap_row_offset = float(topo_cfg.get("ap_row_offset_m", 0.0))
+        num_cols = max(1, len(ap_ids) // num_ap_rows)
+        if num_ap_rows > 1:
+            row_ys = [
+                (r - (num_ap_rows - 1) / 2.0) * (2.0 * ap_row_offset / (num_ap_rows - 1))
+                for r in range(num_ap_rows)
+            ]
+        else:
+            row_ys = [0.0]
         for i, aid in enumerate(ap_ids):
             if aid in nodes:
-                nodes[aid].pos = (i * ap_spacing, 0.0)
-        span = max(1.0, (len(ap_ids) - 1) * ap_spacing)
+                row, col = divmod(i, num_cols)
+                nodes[aid].pos = (col * ap_spacing, row_ys[row] if row < len(row_ys) else 0.0)
+        span = max(1.0, (num_cols - 1) * ap_spacing)
 
         if mode == "cars_uavs":
             car_ids = sorted(topo_cfg.get("car_ids", []))
