@@ -437,11 +437,18 @@ function linkEndpointY(n, sx, sz) {
   return base + mastTop;
 }
 
+// Matches ui/topology_canvas.py's own _AP_LINK_COLORS exactly, so a
+// given AP reads as the same colour in both views.
+const AP_LINK_COLORS = [0x3b82f6, 0xf97316, 0xa855f7, 0x06b6d4, 0xec4899, 0x84cc16, 0xf43f5e, 0x14b8a6];
+
 let linkLines = [];
 export function updateLinks(nodesData) {
   for (const l of linkLines) { linksGroup.remove(l); l.geometry.dispose(); l.material.dispose(); }
   linkLines = [];
   const byId = new Map(nodesData.map(n => [n.id, n]));
+  // Sorted so a given AP id's colour rank stays stable regardless of
+  // nodesData's own (poll-to-poll, not guaranteed stable) ordering.
+  const apIds = nodesData.filter(n => n.role === 'AP').map(n => n.id).sort((a, b) => a - b);
   for (const n of nodesData) {
     // Drawn from each node's actual live association peer (assoc_peer is
     // only ever set once ASSOC_RESP genuinely succeeds -- see
@@ -452,10 +459,24 @@ export function updateLinks(nodesData) {
     if ((n.role === 'RELAY' || n.role === 'STA') && n.assoc_peer !== null) {
       peerId = n.assoc_peer;
       if (n.role === 'RELAY') { color = 0x8b5cf6; opacity = 0.6; }
-      // Blue, not green -- green is reserved for the per-node status LED
-      // (see statusHex()/buildStation()'s ledMat), so an ASSOCIATED link
-      // doubling it up made a fully-connected scene read as solid green.
-      else color = n.assoc_state === ASSOC.ASSOCIATED ? 0x3b82f6 : 0xfbbf24;
+      else if (n.assoc_state === ASSOC.ASSOCIATED) {
+        // Colour-coded per AP under multi-AP (matches the 2D canvas's
+        // own _AP_LINK_COLORS exactly) when the peer actually is one --
+        // makes "this vehicle is associated with exactly one AP" a
+        // literal, unmistakable fact on screen (its link is always one
+        // solid colour, never two), and the colour visibly changes at
+        // the instant of handover. Falls back to the original flat blue
+        // for a STA associated with a RELAY instead (relay topologies
+        // aren't multi-AP, nothing to colour-code there). Not green --
+        // green is reserved for the per-node status LED (see
+        // statusHex()/buildStation()'s ledMat), so an ASSOCIATED link
+        // doubling it up made a fully-connected scene read as solid
+        // green.
+        const apIdx = apIds.indexOf(peerId);
+        color = apIdx >= 0 ? AP_LINK_COLORS[apIdx % AP_LINK_COLORS.length] : 0x3b82f6;
+      } else {
+        color = 0xfbbf24;
+      }
     }
     if (peerId === null || !byId.has(peerId)) continue;
     const peer = byId.get(peerId);

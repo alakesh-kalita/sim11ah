@@ -212,7 +212,15 @@ def _vehicles(canvas) -> List[Dict[str, Any]]:
     mathematically guaranteed to sit on the road mesh the browser draws
     from that same list, and kept in sync with the 2D view via the
     canvas's own _bounds()/_rect_loop_pos() rather than re-deriving the
-    geometry, so the two views never drift apart."""
+    geometry, so the two views never drift apart.
+
+    No-op in cars_uavs mode -- see NetworkCanvas._draw_vehicles_overlay's
+    matching guard for why: this mode exists to watch the REAL cars/
+    scooters hand over between APs, and decorative, also-moving,
+    car-shaped traffic was undermining exactly that instead of just
+    sitting quietly in the background."""
+    if canvas.sim is not None and canvas.sim.config.get("topology", {}).get("mode") == "cars_uavs":
+        return []
     loops_raw = _road_loops(canvas)
     if not loops_raw:
         return []

@@ -45,6 +45,19 @@ _AMBER   = "#f59e0b"
 _GREEN   = "#22c55e"
 _RED     = "#ef4444"
 _STA_BODY = "#64748b"   # fixed plain-STA body colour -- status shown via a small LED instead
+
+# One colour per AP for peer-link edges under multi-AP (cars_uavs,
+# multi_ap) -- makes "this STA is associated with exactly one AP" a
+# literal, unmistakable fact on screen (its link is always exactly one
+# solid colour, never two) rather than something you have to trust the
+# MAC state for, and doubles as a free "which AP" readout as vehicles
+# hand over -- the line's colour visibly changes at the moment of
+# handover. Distinct from the green/blue/purple status colours used
+# elsewhere (STA LED, relay links) so it never gets confused with those.
+_AP_LINK_COLORS = (
+    "#3b82f6", "#f97316", "#a855f7", "#06b6d4",
+    "#ec4899", "#84cc16", "#f43f5e", "#14b8a6",
+)
 _GRAY    = "#94a3b8"
 
 # Aerial-scene palettes -------------------------------------------------------
@@ -1691,7 +1704,8 @@ class NetworkCanvas(tk.Canvas):
             peer = nodes.get(peer_id) if peer_id is not None else None
             if peer is not None:
                 ppx, ppy = self._world_to_px(*peer.pos)
-                self.create_line(ppx, ppy, upx, upy, fill=_BORDER, width=1, tags=("ovl",))
+                link_color = self._ap_link_color(peer_id) if peer_id in self._ap_ids else _BORDER
+                self.create_line(ppx, ppy, upx, upy, fill=link_color, width=1, tags=("ovl",))
 
             trail = self._drone_trails.setdefault(uid, [])
             trail.append(un.pos)
@@ -1729,7 +1743,8 @@ class NetworkCanvas(tk.Canvas):
             peer = nodes.get(peer_id) if peer_id is not None else None
             if peer is not None:
                 ppx, ppy = self._world_to_px(*peer.pos)
-                self.create_line(ppx, ppy, cpx, cpy, fill=_BORDER, width=1, tags=("ovl",))
+                link_color = self._ap_link_color(peer_id) if peer_id in self._ap_ids else _BORDER
+                self.create_line(ppx, ppy, cpx, cpy, fill=link_color, width=1, tags=("ovl",))
 
             trail = self._drone_trails.setdefault(cid, [])
             trail.append(cn.pos)
@@ -1761,7 +1776,8 @@ class NetworkCanvas(tk.Canvas):
             peer = nodes.get(peer_id) if peer_id is not None else None
             if peer is not None:
                 ppx, ppy = self._world_to_px(*peer.pos)
-                self.create_line(ppx, ppy, spx, spy, fill=_BORDER, width=1, tags=("ovl",))
+                link_color = self._ap_link_color(peer_id) if peer_id in self._ap_ids else _BORDER
+                self.create_line(ppx, ppy, spx, spy, fill=link_color, width=1, tags=("ovl",))
 
             trail = self._drone_trails.setdefault(sid, [])
             trail.append(sn.pos)
@@ -1801,8 +1817,16 @@ class NetworkCanvas(tk.Canvas):
         racetrack), redrawn every tick as part of the cheap overlay pass.
         Only active for the Smart City environment; a no-op everywhere
         else, including while a real topology's own drones/UAVs are also
-        animating on the same canvas."""
+        animating on the same canvas. Also a no-op in cars_uavs mode
+        specifically -- that mode's whole point is watching the REAL
+        cars/scooters move and hand over between APs, and this purely
+        decorative traffic (car-shaped, also moving, easy to mistake for
+        a real one at a glance) was fighting that instead of just
+        sitting quietly in the background the way it does for every
+        other Smart-City-flavoured topology."""
         if self.environment != "Smart City" or self.sim is None:
+            return
+        if self.sim.config.get("topology", {}).get("mode") == "cars_uavs":
             return
         xmin, xmax, ymin, ymax = self._bounds()
         cx_w, cy_w = (xmin + xmax) / 2.0, (ymin + ymax) / 2.0
@@ -2329,10 +2353,12 @@ class NetworkCanvas(tk.Canvas):
             if nid in self._relay_ids:
                 self.create_line(pxp, pyp, px1, py1, fill=_PURPLE, width=2, dash=(5, 3))
             elif peer in self._ap_ids:
-                # Blue, not green -- green is reserved for the STA-body
-                # status LED (ASSOCIATED), so an AP-link edge doubling it
-                # up made every fully-connected scene read as solid green.
-                self.create_line(pxp, pyp, px1, py1, fill=_BLUE, dash=(2, 3))
+                # Colour-coded per AP (not a flat blue) under multi-AP --
+                # see _AP_LINK_COLORS. Also not green: green is reserved
+                # for the STA-body status LED (ASSOCIATED), so an
+                # AP-link edge doubling it up made every fully-connected
+                # scene read as solid green.
+                self.create_line(pxp, pyp, px1, py1, fill=self._ap_link_color(peer), dash=(2, 3))
             else:
                 self.create_line(pxp, pyp, px1, py1, fill=_BORDER, width=1)
 
@@ -2592,6 +2618,16 @@ class NetworkCanvas(tk.Canvas):
             _, py = self._world_to_px(0.0, y)
             self.create_line(0, py, W, py, fill=color)
             y += step_m
+
+    def _ap_link_color(self, ap_id: int) -> str:
+        """Stable colour for AP `ap_id`'s own peer-link edges -- see
+        _AP_LINK_COLORS' own comment. Keyed by ap_id's rank among every
+        known AP id (sorted, not the raw id itself, which needn't be
+        small or contiguous), so a given AP gets the same colour on
+        every redraw regardless of dict iteration order."""
+        ap_order = sorted(self._ap_ids)
+        idx = ap_order.index(ap_id) if ap_id in ap_order else 0
+        return _AP_LINK_COLORS[idx % len(_AP_LINK_COLORS)]
 
     # ── Environment backgrounds ───────────────────────────────────────────
     @staticmethod
