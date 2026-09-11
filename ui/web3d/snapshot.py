@@ -128,7 +128,7 @@ def _road_loops(canvas) -> List[Dict[str, float]]:
     cx_w, cy_w = (xmin + xmax) / 2.0, (ymin + ymax) / 2.0
     wxs, wys = xmax - xmin, ymax - ymin
 
-    # "cars_uavs" mode gets its own dedicated pair of loops, ignoring
+    # "cars_uavs" mode gets its own dedicated loops, ignoring
     # layout_variant entirely -- the generic downtown-grid/nested-loop
     # shapes above are all fractions (13-40%) of the padded stable_bounds
     # box, tuned for a roughly SQUARE scatter radiating out from one
@@ -140,31 +140,39 @@ def _road_loops(canvas) -> List[Dict[str, float]]:
     # time, just driving/flying straight past the point where the visible
     # city stopped, which is exactly what reads as "outside the area".
     #
-    # Inner loop = the actual highway: hh is set to car_lane_offset_m
-    # itself (not a fraction of anything), so ringMesh's paved band --
-    # centred at y = cy_w +/- hh, width (ROAD_HALF_W+SIDEWALK_W)*2 either
-    # side of that -- lands exactly straddling the real car lanes
-    # highway_bounce_step drives (see CarsUavsBuilder's _lane_positions,
-    # cars at +/-car_lane_offset_m, scooters at the smaller
-    # +/-scooter_lane_offset_m, inside the same band nearer its inner
-    # edge). hw reaches a little past each end AP so the highway visibly
-    # continues beyond the cluster instead of stopping dead at it.
+    # One "avenue" loop per entry in car_avenue_offsets_m: hh is that
+    # avenue's own offset (not a fraction of anything), so ringMesh's
+    # paved band -- centred at y = cy_w +/- hh, width
+    # (ROAD_HALF_W+SIDEWALK_W)*2 either side of that -- lands exactly
+    # straddling the real car lanes highway_bounce_step drives on that
+    # avenue (see CarsUavsBuilder's car_avenue_offsets_m; scooters ride
+    # the smaller scooter_avenue_offsets_m, inside the same bands nearer
+    # each one's inner edge). hw reaches a little past each end AP so
+    # every avenue visibly continues beyond the cluster instead of
+    # stopping dead at it -- this is what used to be a single "the
+    # highway" loop before there was more than one avenue to draw.
     #
-    # Outer loop = the city limits: exactly the _stable_bounds box itself
-    # (the same region CarsUavsBuilder.uav_region constrains UAVs to), not
-    # a fraction of it -- a UAV can never actually fly past this ring, so
-    # it can never again read as having wandered outside the city, and
-    # addCityFillerBuildings fills the band between the two loops with
-    # buildings lining both sides of the highway all the way to that
-    # ring, rather than stopping at the old, much smaller fraction.
+    # Outermost loop = the city limits: exactly the _stable_bounds box
+    # itself (the same region CarsUavsBuilder.uav_region constrains UAVs
+    # to), not a fraction of it -- a UAV can never actually fly past this
+    # ring. addCityFillerBuildings picks the smallest-area loop as its
+    # "no buildings here" plaza clearance and the largest as its outer
+    # placement bound (via reduce(), independent of array order), while
+    # clearOfRoads checks candidate positions against EVERY loop in the
+    # list -- so adding more avenues in between automatically keeps
+    # buildings off all of them, not just the inner/outermost.
     topo_cfg = canvas.sim.config.get("topology", {})
     if topo_cfg.get("mode") == "cars_uavs":
         span = float(topo_cfg.get("corridor_span_m", wxs))
         car_off = float(topo_cfg.get("car_lane_offset_m", 25.0))
-        return [
-            {"cx": cx_w, "cy": cy_w, "hw": span / 2.0 + 150.0, "hh": car_off, "period_s": 22.0},
-            {"cx": cx_w, "cy": cy_w, "hw": wxs / 2.0, "hh": wys / 2.0, "period_s": 34.0},
+        avenues = sorted(float(o) for o in (topo_cfg.get("car_avenue_offsets_m") or [car_off]))
+        hw_avenue = span / 2.0 + 150.0
+        loops = [
+            {"cx": cx_w, "cy": cy_w, "hw": hw_avenue, "hh": off, "period_s": 20.0 + 3.0 * i}
+            for i, off in enumerate(avenues)
         ]
+        loops.append({"cx": cx_w, "cy": cy_w, "hw": wxs / 2.0, "hh": wys / 2.0, "period_s": 40.0})
+        return loops
 
     variant = int(getattr(canvas, "layout_variant", 1) or 1)
     if variant == 3:

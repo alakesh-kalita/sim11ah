@@ -5,17 +5,19 @@ shell) so the process isn't tied to that session's lifetime:
 
     python3 scripts/launch_cars_uavs.py
 
-3 APs in a line, 10 cars + 6 scooters driving a highway back and forth
-through all of them (on their own separate lanes), 5 UAVs flying
-random-waypoint across the whole corridor -- watch the node colors/edges
-change as vehicles hand over between APs. Runs in the Smart City
-environment for a fuller scene (roads, buildings, its own decorative
-background traffic) -- the real simulator vehicles are visually distinct
-from that decoration: their own vivid non-green colour palette, a live
-peer-link line, a motion trail, and a small status LED, none of which the
-background traffic has. Opens both the 2D dashboard and the live 3D view
-(a browser tab) -- same layout, same live sim state, two ways to watch it.
-Ctrl+C or close the Dashboard window to stop it.
+3 APs in a line, 24 cars + 16 scooters driving back and forth across a
+4-avenue road network (8 distinct car lanes, 8 distinct scooter lanes --
+see CarsUavsBuilder's car_avenue_offsets_m/scooter_avenue_offsets_m) that
+spans a city footprint 5x the size of this layout's original single-
+highway version, 8 UAVs flying random-waypoint across the whole thing --
+watch the node colors/edges change as vehicles hand over between APs.
+Runs in the Smart City environment for a fuller scene (roads, buildings,
+its own decorative background traffic) -- the real simulator vehicles are
+visually distinct from that decoration: their own vivid non-green colour
+palette, a live peer-link line, a motion trail, and a small status LED,
+none of which the background traffic has. Opens both the 2D dashboard and
+the live 3D view (a browser tab) -- same layout, same live sim state, two
+ways to watch it. Ctrl+C or close the Dashboard window to stop it.
 
 No dropdown exposes this topology yet -- the interactive Network Topology
 control only composes star/relay x ground/UAV STA x grounded/aerial relay,
@@ -38,7 +40,7 @@ initial = {
     "raw_policy": "static",
     "packet_size": 128, "packet_interval": 2.0, "freq_mhz": 915.0,
     "topology": "cars_uavs", "num_aps": 3, "ap_spacing_m": 900.0,
-    "num_cars": 10, "num_uavs": 5, "num_scooters": 6,
+    "num_cars": 24, "num_uavs": 8, "num_scooters": 16,
 }
 sim = build_sim(
     num_stas=initial["num_stas"], seed=initial["seed"], traffic=initial["traffic"],

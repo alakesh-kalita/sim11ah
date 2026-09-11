@@ -950,20 +950,32 @@ def _seed_default_layout(sim, mode: str, relay_ids: Set[int], obstacles=None,
             car_ids = sorted(topo_cfg.get("car_ids", []))
             scooter_ids = sorted(topo_cfg.get("scooter_ids", []))
             uav_ids = sorted(topo_cfg.get("uav_ids", []))
-            car_off = float(topo_cfg.get("car_lane_offset_m", 25.0))
-            scoot_off = float(topo_cfg.get("scooter_lane_offset_m", 15.0))
+            # Multiple avenues, not one -- must match
+            # CarsUavsBuilder.build's own round-robin-across-avenues
+            # placement exactly, or a reseed would visibly shuffle every
+            # vehicle onto different lanes than it started on.
+            car_avenues = topo_cfg.get("car_avenue_offsets_m") or [
+                float(topo_cfg.get("car_lane_offset_m", 25.0))
+            ]
+            scooter_avenues = topo_cfg.get("scooter_avenue_offsets_m") or [
+                float(topo_cfg.get("scooter_lane_offset_m", 15.0))
+            ]
 
-            def _lane_seed(ids, offset: float) -> None:
+            def _lane_seed(ids, offsets) -> None:
+                lanes = []
+                for off in offsets:
+                    lanes.append(float(off))
+                    lanes.append(-float(off))
                 n = len(ids)
                 for j, nid in enumerate(ids):
                     if nid not in nodes:
                         continue
                     frac = (j + 0.5) / max(1, n)
-                    lane = offset if j % 2 == 0 else -offset
+                    lane = lanes[j % len(lanes)]
                     nodes[nid].pos = (frac * span, lane)
 
-            _lane_seed(car_ids, car_off)
-            _lane_seed(scooter_ids, scoot_off)
+            _lane_seed(car_ids, car_avenues)
+            _lane_seed(scooter_ids, scooter_avenues)
             n_uav = len(uav_ids)
             for j, nid in enumerate(uav_ids):
                 if nid in nodes:
@@ -3629,40 +3641,44 @@ class NetworkCanvas(tk.Canvas):
                               fill=roof, outline=_TOWER_EDGE, width=1)
 
     def _bg_city_highway(self, W: int, H: int) -> None:
-        """cars_uavs mode's dedicated Smart City background: a real
-        highway, not the generic 3x3 downtown grid v1/v2/v3 draw. Its two
-        paved lanes sit at world y = +/-car_lane_offset_m -- the exact
-        same y real cars/scooters drive at (see CarsUavsBuilder's
-        car_lane_offset_m / sim11ah/mobility.py's highway_bounce_step) --
-        rather than at some arbitrary fraction of the live view's
-        bounding box, so a car always renders sitting on this road, not
-        floating beside it. Cars/scooters only ever move along x at that
-        fixed lane y (highway_bounce_step never touches y), so this is a
-        standing guarantee, not something that can drift out of sync.
+        """cars_uavs mode's dedicated Smart City background: a real road
+        network, not the generic 3x3 downtown grid v1/v2/v3 draw. One
+        paved avenue per entry in car_avenue_offsets_m (both +/- each
+        value), at the exact same y real cars/scooters drive at (see
+        CarsUavsBuilder's car_avenue_offsets_m / sim11ah/mobility.py's
+        highway_bounce_step) -- rather than at some arbitrary fraction of
+        the live view's bounding box, so a vehicle always renders sitting
+        on the road it's actually assigned to, on whichever avenue that
+        is, not just the one nearest the centreline. Cars/scooters only
+        ever move along x at their fixed lane y (highway_bounce_step
+        never touches y), so this is a standing guarantee, not something
+        that can drift out of sync.
 
-        Three depth rows of low-rise-to-mid-rise buildings line both
-        shoulders the length of the corridor -- denser/shorter near the
-        road, sparser/taller further back, the usual "skyline recedes
-        from the highway" read -- instead of the single roadside row this
-        used to draw, so the city reads as an actual district flanking
-        the highway rather than a thin ribbon glued to its shoulder.
+        Buildings fill the gaps BETWEEN consecutive avenues (denser/
+        shorter near the centre, sparser/taller further out, with one
+        final sparse "outskirts" gap beyond the last avenue out to the
+        city limit) -- so the built-up area reads as an actual city
+        block-by-block, with real streets running through it, rather
+        than a single road with a building fringe glued to its shoulder.
         Mirrors the 3D view's own dedicated cars_uavs road loops
-        (ui/web3d/snapshot.py's _road_loops)."""
+        (ui/web3d/snapshot.py's _road_loops), which draws one ring per
+        avenue the exact same way."""
         self.create_rectangle(0, 0, W, H, fill=_CITY_PARK_LT, outline="")
         scale = self._transform()[0]
 
         topo_cfg = self.sim.config.get("topology", {})
         car_off = float(topo_cfg.get("car_lane_offset_m", 25.0))
         span = float(topo_cfg.get("corridor_span_m", 0.0))
-
-        # The built-up zone extends well past each end AP and runs deep
-        # back from the road on each side -- fixed world coordinates, not
-        # the live auto-fit bounds (which shrink/grow as UAVs wander), so
-        # the city always reads as a real district continuing past the
-        # visible cluster rather than one that resizes under it.
-        margin = 150.0
-        x0, x1 = -margin, span + margin
-        depth = 260.0
+        avenues = sorted(float(o) for o in (topo_cfg.get("car_avenue_offsets_m") or [car_off]))
+        # uav_margin_m doubles as "how far the whole built-up city/UAV
+        # envelope reaches" (see CarsUavsBuilder's own docstring on that
+        # param) -- reused directly here so the city's footprint and the
+        # 3D city-limits ring/UAV flight envelope always scale together
+        # from the one knob, rather than two independently-tuned sizes
+        # that could drift apart.
+        city_extent = float(topo_cfg.get("uav_margin_m", 220.0))
+        x0, x1 = -city_extent, span + city_extent
+        depth = city_extent
 
         # Paved urban ground (concrete checkerboard) under the whole
         # built-up zone, so buildings sit on pavement instead of floating
@@ -3673,33 +3689,48 @@ class NetworkCanvas(tk.Canvas):
         for bi in range(n_bands):
             gx0, gx1 = x0 + bi * band_w, x0 + (bi + 1) * band_w
             tone = _CITY_BASE if bi % 2 == 0 else _CITY_BASE_ALT
-            px0, py0 = self._world_to_px(gx0, car_off + depth)
-            px1, py1 = self._world_to_px(gx1, -(car_off + depth))
+            px0, py0 = self._world_to_px(gx0, depth)
+            px1, py1 = self._world_to_px(gx1, -depth)
             self.create_rectangle(min(px0, px1), min(py0, py1), max(px0, px1), max(py0, py1),
                                    fill=tone, outline="")
 
         road_px = max(10, min(26, int(7.0 * scale)))
         sidewalk_px = max(3, int(road_px * 0.28))
-        for lane_y in (car_off, -car_off):
-            p0 = self._world_to_px(x0, lane_y)
-            p1 = self._world_to_px(x1, lane_y)
-            self.create_line(p0[0], p0[1], p1[0], p1[1], fill=_CITY_SIDEWALK,
-                              width=road_px + sidewalk_px * 2)
-            self.create_line(p0[0], p0[1], p1[0], p1[1], fill=_CITY_ROAD, width=road_px)
-            self.create_line(p0[0], p0[1], p1[0], p1[1], fill=_CITY_ROAD_MARK,
-                              width=1, dash=(8, 7))
+        for off in avenues:
+            for lane_y in (off, -off):
+                p0 = self._world_to_px(x0, lane_y)
+                p1 = self._world_to_px(x1, lane_y)
+                self.create_line(p0[0], p0[1], p1[0], p1[1], fill=_CITY_SIDEWALK,
+                                  width=road_px + sidewalk_px * 2)
+                self.create_line(p0[0], p0[1], p1[0], p1[1], fill=_CITY_ROAD, width=road_px)
+                self.create_line(p0[0], p0[1], p1[0], p1[1], fill=_CITY_ROAD_MARK,
+                                  width=1, dash=(8, 7))
 
-        # Three depth rows per side: (offset from the road's outer edge,
-        # along-corridor spacing, (P(tier==1), P(tier<=2))) -- row 0 is
-        # dense/low-rise right off the shoulder, row 2 is sparse/tall
-        # farthest back.
+        # One building row per gap between consecutive avenues (plus a
+        # final sparse "outskirts" gap beyond the last avenue out to
+        # depth) -- (row depth, along-corridor spacing, (P(tier==1),
+        # P(tier<=2))), earlier/inner gaps denser and shorter, later/
+        # outer gaps sparser and taller-mixed, the outskirts gap sparsest
+        # of all. Scales automatically with however many avenues
+        # CarsUavsBuilder actually laid out, not a fixed row count.
+        # 9.5 + 4.5 -- matches world.js's ROAD_HALF_W + SIDEWALK_W (the 3D
+        # view's own paved-band half-width), so the first building gap
+        # starts right at the innermost avenue's real kerb, not before it.
+        pave_half = 9.5 + 4.5
+        gap_bounds = [avenues[0] + pave_half] + list(avenues[1:]) + [depth]
         losses = {1: 30.0, 2: 22.0, 3: 15.0}
         tower_wh = {1: (34.0, 30.0), 2: (27.0, 23.0), 3: (20.0, 18.0)}
-        rows = (
-            (car_off + 26.0, 70.0, (0.05, 0.45)),
-            (car_off + 26.0 + 90.0, 85.0, (0.20, 0.65)),
-            (car_off + 26.0 + 180.0, 100.0, (0.40, 0.85)),
-        )
+        n_gaps = len(gap_bounds) - 1
+        rows = []
+        for gi in range(n_gaps):
+            lo, hi = gap_bounds[gi], gap_bounds[gi + 1]
+            is_outskirts = gi == n_gaps - 1
+            mid = (lo + hi) / 2.0
+            spacing = 160.0 if is_outskirts else 70.0 + gi * 15.0
+            p_t1 = 0.03 if is_outskirts else min(0.55, 0.05 + gi * 0.12)
+            p_t12 = 0.30 if is_outskirts else min(0.90, 0.45 + gi * 0.15)
+            rows.append((mid, spacing, (p_t1, p_t12)))
+
         for row_sign in (1.0, -1.0):
             # _city_tower must be drawn back-to-front (ascending screen-y,
             # i.e. north/farthest first) for its extrusion to occlude

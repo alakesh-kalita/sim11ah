@@ -358,17 +358,28 @@ class CarsUavsBuilder:
         # 4m rather than sitting right on its edge, so scooters render on
         # pavement, not straddling the kerb.
         scooter_lane_offset_m: float = 15.0,
-        # 220.0, not 150.0 -- this doubles as the 3D city-limits ring's
-        # half-extent (ui/web3d/snapshot.py's _road_loops outer loop) and
-        # the 2D highway background's margin/depth scale, so bumping it
-        # gives the whole "cars_uavs" scene a visibly bigger city
-        # footprint on both views, not just a wider UAV flight envelope.
-        uav_margin_m: float = 220.0,
+        # 4 avenues (not just the one original highway) -- "why do cars
+        # only ever use two roads" was a fair complaint: everything used
+        # to ride the same +/-car_lane_offset_m pair no matter how many
+        # cars there were. Extra avenues at increasing distance from the
+        # centreline give real road variety across a much bigger city
+        # footprint instead of packing every vehicle onto one strip.
+        num_car_avenues: int = 4,
+        avenue_spacing_m: float = 220.0,
+        # 1100.0, not 220.0 -- 5x the previous city footprint (per
+        # explicit request), and this single number still drives
+        # everything that needs to know how far the built-up
+        # area/UAV envelope reaches: the 3D city-limits ring
+        # (ui/web3d/snapshot.py's _road_loops outer loop), the 2D
+        # highway background's margin/depth scale, and uav_region's
+        # default UAV roam envelope.
+        uav_margin_m: float = 1100.0,
     ) -> List["Node"]:
         num_aps = max(1, int(num_aps))
         num_cars = int(num_cars)
         num_uavs = int(num_uavs)
         num_scooters = int(num_scooters)
+        num_car_avenues = max(1, int(num_car_avenues))
         if num_cars < 0 or num_uavs < 0 or num_scooters < 0:
             raise ValueError(
                 f"num_cars ({num_cars}), num_scooters ({num_scooters}) and "
@@ -377,24 +388,42 @@ class CarsUavsBuilder:
 
         span = max(1.0, (num_aps - 1) * float(ap_spacing_m))
 
-        # Cars and scooters both start on the highway itself (a fixed-
-        # offset lane parallel to the AP axis, alternating sides so
-        # opposite-direction traffic doesn't visually overlap -- purely
-        # cosmetic, doesn't affect RSSI/PHY, which only cares about the
-        # resulting (x, y)). Scooters get a SMALLER offset than cars --
-        # riding closer to the centreline -- so the two vehicle kinds
-        # occupy visually distinct lanes rather than overlapping.
-        # highway_bounce_step then drives both back and forth for real.
-        def _lane_positions(count: int, offset_m: float) -> List[Tuple[float, float]]:
+        # car_avenue_offsets_m: the distance of each avenue from the
+        # centreline (+/- each value gives the actual lane y once mirrored
+        # below) -- avenue 0 is the original highway at car_lane_offset_m,
+        # each further one avenue_spacing_m farther out. Scooters ride the
+        # same avenues, just inset toward the centreline by the same
+        # car_lane_offset_m - scooter_lane_offset_m gap the original
+        # single-avenue design used, so they stay inside each avenue's own
+        # paved band (see ui/web3d/snapshot.py's _road_loops) rather than
+        # needing separate roads of their own.
+        car_avenue_offsets = [
+            car_lane_offset_m + i * avenue_spacing_m for i in range(num_car_avenues)
+        ]
+        scooter_inset = max(0.0, car_lane_offset_m - scooter_lane_offset_m)
+        scooter_avenue_offsets = [off - scooter_inset for off in car_avenue_offsets]
+
+        # Cars/scooters both start on one of these avenues (round-robin
+        # across every avenue x both sides, so vehicles actually spread
+        # across the whole road network instead of clustering on avenue
+        # 0), spaced along x the same way as before. Purely cosmetic --
+        # doesn't affect RSSI/PHY, which only cares about the resulting
+        # (x, y). highway_bounce_step then drives each one back and forth
+        # for real, forever staying on whichever lane_y it started at.
+        def _lane_positions(count: int, offsets: List[float]) -> List[Tuple[float, float]]:
+            lanes = []
+            for off in offsets:
+                lanes.append(off)
+                lanes.append(-off)
             out = []
             for j in range(count):
                 frac = (j + 0.5) / max(1, count)
-                lane = offset_m if j % 2 == 0 else -offset_m
+                lane = lanes[j % len(lanes)]
                 out.append((frac * span, lane))
             return out
 
-        car_positions = _lane_positions(num_cars, car_lane_offset_m)
-        scooter_positions = _lane_positions(num_scooters, scooter_lane_offset_m)
+        car_positions = _lane_positions(num_cars, car_avenue_offsets)
+        scooter_positions = _lane_positions(num_scooters, scooter_avenue_offsets)
 
         # UAVs start scattered near the corridor; uav_waypoint_step then
         # flies them on a random-waypoint pattern across the whole
@@ -434,6 +463,8 @@ class CarsUavsBuilder:
         # cars/UAVs actually drive/fly across.
         topo_cfg["car_lane_offset_m"] = float(car_lane_offset_m)
         topo_cfg["scooter_lane_offset_m"] = float(scooter_lane_offset_m)
+        topo_cfg["car_avenue_offsets_m"] = [float(o) for o in car_avenue_offsets]
+        topo_cfg["scooter_avenue_offsets_m"] = [float(o) for o in scooter_avenue_offsets]
         topo_cfg["uav_margin_m"] = float(uav_margin_m)
 
         return all_nodes
