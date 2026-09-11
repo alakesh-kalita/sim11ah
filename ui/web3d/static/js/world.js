@@ -5717,7 +5717,18 @@ export function rebuildBuildings(obstacles, environment, variant, roadLoops) {
 // ---- roads -- built directly from road_loops, the exact same rectangles
 // vehicles drive (see ui/web3d/snapshot.py::_road_loops), so a car can
 // never visually stray off the pavement: the road IS the path -----------
-const ROAD_HALF_W = 9.5, SIDEWALK_W = 4.5;
+// 1.5x wider than the original 9.5/4.5 (per explicit request, to match
+// the vehicles' own 200% size bump) -- capped at 1.5x, not more: the
+// paved band for a lane at car_lane_offset_m=25 spans lane_y +/- (
+// ROAD_HALF_W+SIDEWALK_W)=21 either side, i.e. [4,46], leaving an 8m
+// unpaved median before the opposite-direction lane's own [-46,-4] band
+// starts -- any wider and the two lanes' pavement would start
+// overlapping right at the centreline. cityLoopSig's avenue hw stagger
+// (ui/web3d/snapshot.py's _road_loops) was bumped from 40 to 50 to
+// stay clear of this band's new total width (2 x 21 = 42), so avenue
+// rings still can't z-fight at their end-caps the way fixing that
+// depended on.
+const ROAD_HALF_W = 14.0, SIDEWALK_W = 7.0;
 function ringShape(cx, cy, hw, hh, halfWidth) {
   const shape = new THREE.Shape();
   shape.moveTo(cx - hw - halfWidth, cy - hh - halfWidth);

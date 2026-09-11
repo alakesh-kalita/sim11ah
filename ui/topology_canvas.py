@@ -3892,8 +3892,14 @@ class NetworkCanvas(tk.Canvas):
             self.create_rectangle(min(px0, px1), min(py0, py1), max(px0, px1), max(py0, py1),
                                    fill=tone, outline="")
 
-        road_px = max(10, min(26, int(7.0 * scale)))
-        sidewalk_px = max(3, int(road_px * 0.28))
+        # 1.5x wider than the original 10-26px/7.0 (per explicit request,
+        # matching the vehicles' own 200% size bump and world.js's own
+        # ROAD_HALF_W/SIDEWALK_W increase) -- both the base multiplier
+        # and the clamp range scaled together so the road actually reads
+        # wider at typical zoom, not just clamped back to the same pixel
+        # range.
+        road_px = max(15, min(39, int(10.5 * scale)))
+        sidewalk_px = max(4, int(road_px * 0.28))
         for off in avenues:
             for lane_y in (off, -off):
                 p0 = self._world_to_px(x0, lane_y)
@@ -3911,10 +3917,10 @@ class NetworkCanvas(tk.Canvas):
         # outer gaps sparser and taller-mixed, the outskirts gap sparsest
         # of all. Scales automatically with however many avenues
         # CarsUavsBuilder actually laid out, not a fixed row count.
-        # 9.5 + 4.5 -- matches world.js's ROAD_HALF_W + SIDEWALK_W (the 3D
+        # 14.0 + 7.0 -- matches world.js's ROAD_HALF_W + SIDEWALK_W (the 3D
         # view's own paved-band half-width), so the first building gap
         # starts right at the innermost avenue's real kerb, not before it.
-        pave_half = 9.5 + 4.5
+        pave_half = 14.0 + 7.0
         gap_bounds = [avenues[0] + pave_half] + list(avenues[1:]) + [depth]
         losses = {1: 30.0, 2: 22.0, 3: 15.0}
         tower_wh = {1: (34.0, 30.0), 2: (27.0, 23.0), 3: (20.0, 18.0)}

@@ -179,22 +179,24 @@ def _road_loops(canvas) -> List[Dict[str, float]]:
         span = float(topo_cfg.get("corridor_span_m", wxs))
         car_off = float(topo_cfg.get("car_lane_offset_m", 25.0))
         avenues = sorted(float(o) for o in (topo_cfg.get("car_avenue_offsets_m") or [car_off]))
-        # hw staggered per avenue (+40m each), NOT the same fixed value
+        # hw staggered per avenue (+50m each), NOT the same fixed value
         # for every one of them -- world.js's rebuildRoads draws each
         # loop as a closed RING (ringMesh), which has short vertical
         # end-cap edges at x = cx +/- hw spanning that ring's own FULL
         # height (cy -/+ hh). With every avenue sharing one hw, those
         # end-caps landed at the exact same x for every avenue, at the
-        # exact same world y (the pavement layers' fixed 0.03/0.06/0.09
-        # height stack) -- four coincident, fully overlapping quads is
-        # about as bad a z-fighting setup as a scene can have, and reads
-        # as constant flicker that gets visibly worse zoomed further out
-        # (depth-buffer precision degrades with camera distance). 40m is
-        # comfortably more than the ~28m paved band width
-        # (ROAD_HALF_W+SIDEWALK_W)*2, so consecutive avenues' end-caps
+        # exact same world y (the pavement layers' fixed height stack) --
+        # four coincident, fully overlapping quads is about as bad a
+        # z-fighting setup as a scene can have, and reads as constant
+        # flicker that gets visibly worse zoomed further out (depth-
+        # buffer precision degrades with camera distance). 50m is
+        # comfortably more than the 42m paved band width
+        # (ROAD_HALF_W+SIDEWALK_W)*2 -- widened from 28m alongside the
+        # vehicles' own 200% size bump, which is exactly why this
+        # stagger had to grow too -- so consecutive avenues' end-caps
         # never touch.
         loops = [
-            {"cx": cx_w, "cy": cy_w, "hw": span / 2.0 + 150.0 + i * 40.0, "hh": off,
+            {"cx": cx_w, "cy": cy_w, "hw": span / 2.0 + 150.0 + i * 50.0, "hh": off,
              "period_s": 20.0 + 3.0 * i}
             for i, off in enumerate(avenues)
         ]
