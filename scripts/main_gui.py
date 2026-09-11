@@ -154,6 +154,20 @@ def build_sim(
         # eventual association) -- this layout exists to visualize
         # handover, not silently produce a broken demo.
         cfg["mac"]["raw_enable"] = False
+        # 0.15s/STA, not the 0.05s default -- that default was tuned for
+        # the handful-of-STAs case; at this layout's default 40+ real
+        # vehicles all starting unassociated at t=0, the default's
+        # resulting ~2s stagger window packed nearly all of them into
+        # contending for AUTH/ASSOC_REQ within the same first couple of
+        # beacon intervals, which is exactly the multi-second "everything
+        # is janky at startup" burst measured while chasing the frame-
+        # rate report. Tripling the per-STA gap roughly triples the
+        # spread window too (see association.py's _get_assoc_ready_t),
+        # cutting how many STAs are simultaneously contending for
+        # first-time channel access at any one instant without changing
+        # anything about steady-state behaviour once everyone's
+        # associated.
+        cfg["mac"]["assoc_start_gap_s"] = 0.15
         CarsUavsBuilder.build(
             sim, num_aps=max(1, int(num_aps)), ap_spacing_m=float(ap_spacing_m),
             num_cars=max(0, int(num_cars)), num_uavs=max(0, int(num_uavs)),

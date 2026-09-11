@@ -240,7 +240,17 @@ class AssocManager:
             return self._assoc_ready_t
 
         mac_cfg = self._ctx.cfg.get("mac", {})
-        sta_ids = sorted(i for i in self._sim.nodes.keys() if i != 0)
+        # Exclude every AP (topo_cfg["ap_ids"], falling back to {0} for
+        # every single-AP topology, same convention as everywhere else
+        # multi-AP-aware code in this codebase), not just node 0 --
+        # under multi-AP (multi_ap, cars_uavs) the other APs (node ids
+        # 1..K-1) never call this themselves, but leaving them in
+        # sta_ids inflated n_stas (and therefore the stagger window) and
+        # shifted every real STA's idx/slot by however many other APs
+        # sorted below it, both by however many APs exist -- harmless at
+        # 1 extra id, not at 5.
+        ap_ids = set(self._sim.config.get("topology", {}).get("ap_ids", [0]))
+        sta_ids = sorted(i for i in self._sim.nodes.keys() if i not in ap_ids)
         n_stas = max(1, len(sta_ids))
 
         per_sta_gap_s = float(mac_cfg.get("assoc_start_gap_s", 0.05))

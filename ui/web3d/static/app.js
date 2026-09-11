@@ -106,6 +106,19 @@ function frameCameraOnNodes(nodesData, obstacles, environment) {
     targetX = cxWorld; targetZ = -cyWorld;
   }
   let maxR = Math.max(100, nodeExtentRadius(nodesData, targetX, -targetZ));
+  // Also make sure every AP's own coverage-range ring (updateApRanges,
+  // a fixed circle around that AP's position, independent of where
+  // vehicles currently happen to be) fits inside the initial view --
+  // nodeExtentRadius alone only guarantees the live vehicle SCATTER is
+  // framed, and a range ring can extend past that scatter's own 80th-
+  // percentile radius (especially early on, or wherever traffic happens
+  // to be light), which would otherwise leave part of the ring outside
+  // the frustum by default.
+  for (const n of apNodes) {
+    if (typeof n.range_m !== 'number' || n.range_m <= 0) continue;
+    const apDist = Math.hypot(n.pos[0] - targetX, n.pos[1] + targetZ);
+    maxR = Math.max(maxR, apDist + n.range_m);
+  }
   // Also frame around the environment's built structures, not just node
   // positions -- a base/campus/site can extend well past a tight node
   // cluster, and the default view should show the built scene without
