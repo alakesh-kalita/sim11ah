@@ -24,6 +24,7 @@ from ui.topology_canvas import (
     rssi_dbm_for_node,
     _ap_range_m,
     _UAV_ROAM_MAX_FRAC,
+    vehicle_heading,
 )
 
 
@@ -231,27 +232,23 @@ def _cross_streets(canvas) -> List[Dict[str, float]]:
     narrow across and tall along y, where the same ring-with-a-hole
     construction would need a hole nearly as wide as the road itself,
     i.e. no road at all) -- drawn client-side as solid strips instead
-    (world.js's rebuildCrossStreets), not rings."""
+    (world.js's rebuildCrossStreets), not rings.
+
+    Positions/reach come straight from topo_cfg (CarsUavsBuilder.build
+    computed and stored cross_street_xs/cross_street_y_reach), not
+    recomputed here -- real cars/scooters are assigned to these exact
+    streets now (see cross_street_loop_step), so the drawn geometry and
+    where vehicles actually drive have to be the SAME numbers, not two
+    independently-tuned copies of the same spacing formula that could
+    silently drift apart."""
     if canvas.environment != "Smart City" or canvas.sim is None:
         return []
     topo_cfg = canvas.sim.config.get("topology", {})
     if topo_cfg.get("mode") != "cars_uavs":
         return []
-    span = float(topo_cfg.get("corridor_span_m", 0.0))
-    car_off = float(topo_cfg.get("car_lane_offset_m", 25.0))
-    avenues = topo_cfg.get("car_avenue_offsets_m") or [car_off]
-    outer_avenue = max(float(o) for o in avenues) if avenues else car_off
-    # A little past the outermost avenue's own kerb (ROAD_HALF_W+
-    # SIDEWALK_W=21m in world.js), not all the way out to the city
-    # limit -- a cross street exists to connect the avenues to each
-    # other, not to wander off into the sparse outskirts alongside them.
-    y_reach = outer_avenue + 21.0 + 10.0
-    spacing = 220.0
-    n = max(1, int(span / spacing))
-    return [
-        {"x": (i + 0.5) * (span / n), "y_min": -y_reach, "y_max": y_reach}
-        for i in range(n)
-    ]
+    xs = topo_cfg.get("cross_street_xs") or []
+    y_reach = float(topo_cfg.get("cross_street_y_reach", 0.0))
+    return [{"x": float(x), "y_min": -y_reach, "y_max": y_reach} for x in xs]
 
 
 def _vehicles(canvas) -> List[Dict[str, Any]]:
@@ -308,22 +305,20 @@ def _node_dict(canvas, nid: int, n, sim) -> Dict[str, Any]:
         range_m = None
     is_drone = nid in canvas.drone_ids
     is_uav = nid in canvas.uav_ids
-    # Real network node on a highway_loop_step crossing (see
-    # sim11ah/topology.py's CarsUavsBuilder / sim11ah/mobility.py) --
-    # distinct from is_drone/is_uav, entities.js dispatches it to its own
-    # car/scooter mesh the same way. Heading is derived straight from the
-    # node's own current lane y sign (the same rule highway_loop_step
-    # itself drives by -- positive lane moves toward +x, negative toward
-    # -x, see its own docstring), not from diffing consecutive positions
-    # like the decorative Smart City vehicles below do -- cheaper and
-    # exact rather than a one-poll-lagged estimate, and unlike the
-    # direction-reversing bounce this replaced, needs no separate stored
-    # per-vehicle direction state at all.
+    # Real network node on a highway_loop_step/cross_street_loop_step
+    # crossing (see sim11ah/topology.py's CarsUavsBuilder /
+    # sim11ah/mobility.py) -- distinct from is_drone/is_uav, entities.js
+    # dispatches it to its own car/scooter mesh the same way. Heading
+    # uses the shared vehicle_heading rule (topology_canvas.py) both
+    # views read from -- not from diffing consecutive positions like the
+    # decorative Smart City vehicles below do -- cheaper and exact
+    # rather than a one-poll-lagged estimate, and needs no separate
+    # stored per-vehicle direction state at all.
     is_car = nid in canvas.car_ids
     is_scooter = nid in canvas.scooter_ids
     heading = None
     if is_car or is_scooter:
-        heading = 0.0 if n.pos[1] >= 0 else math.pi
+        heading = vehicle_heading(nid, n, sim.config.get("topology", {}))
     altitude_m = None
     if is_drone or is_uav:
         try:

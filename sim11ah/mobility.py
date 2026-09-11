@@ -101,6 +101,50 @@ def highway_loop_step(
     node.pos = (new_x, float(lane_y))
 
 
+def cross_street_loop_step(
+    sim,
+    sta_id: int,
+    dt: float,
+    speed_mps: float,
+    lane_offset: float,
+    y_min: float,
+    y_max: float,
+) -> None:
+    """
+    Drive a road vehicle one-way along a cross street (perpendicular to
+    the highway avenues) at constant speed, continuously looping back to
+    the start the instant it reaches the far end -- the y-axis
+    counterpart of highway_loop_step (see its own docstring for the full
+    "loop, don't bounce" rationale); together the two let a fleet
+    actually move in every direction the road network offers, not just
+    along the highway. Which way is "forward" is derived from
+    lane_offset's own sign (positive drives toward y_max and resets to
+    y_min, negative the opposite) -- the same "the lane's own sign
+    determines direction" rule highway_loop_step uses, just relative to
+    THIS street's own centre rather than the world's y=0 centreline,
+    since cross streets don't all share one common x the way every
+    avenue shares the same y=0 centreline (see topology.py's
+    CarsUavsBuilder, which is where cross_street_xs/cross_lane_offset_m
+    come from).
+
+    x is held fixed throughout, reconstructed from the node's own
+    current x minus lane_offset (its street's centre, which never
+    changes) rather than passed in separately -- one less parameter the
+    caller has to keep in sync with where the vehicle actually is."""
+    node = sim.nodes[sta_id]
+    x, y = node.pos
+    street_x = x - float(lane_offset)
+    if float(lane_offset) >= 0.0:
+        new_y = y + max(0.0, float(speed_mps)) * float(dt)
+        if new_y >= y_max:
+            new_y = y_min
+    else:
+        new_y = y - max(0.0, float(speed_mps)) * float(dt)
+        if new_y <= y_min:
+            new_y = y_max
+    node.pos = (street_x + float(lane_offset), new_y)
+
+
 def uav_waypoint_step(
     sim,
     sta_id: int,

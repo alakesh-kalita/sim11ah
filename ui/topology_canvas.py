@@ -503,6 +503,28 @@ def _assoc_peer(node) -> Optional[int]:
     return int(peer) if peer is not None else None
 
 
+def vehicle_heading(nid: int, n, topo_cfg: dict) -> float:
+    """Heading (radians) for a real cars_uavs vehicle -- 0.0/pi for one
+    on an avenue (see sim11ah/mobility.py's highway_loop_step: direction
+    comes from its own fixed lane_y's sign), +/-pi/2 for one on a cross
+    street (see cross_street_loop_step: direction comes from its lane
+    offset's sign relative to that street's own centre x, not the
+    vehicle's raw x, since cross streets don't all share one common x
+    the way every avenue shares the same y=0 centreline). Shared by both
+    views (ui/web3d/snapshot.py imports this) and both vehicle kinds, so
+    the heading rule only needs stating once."""
+    car_cross_ids = topo_cfg.get("car_cross_ids", ())
+    scooter_cross_ids = topo_cfg.get("scooter_cross_ids", ())
+    if nid in car_cross_ids or nid in scooter_cross_ids:
+        cross_street_xs = topo_cfg.get("cross_street_xs") or []
+        if not cross_street_xs:
+            return math.pi / 2.0
+        nearest = min(cross_street_xs, key=lambda cx: abs(cx - n.pos[0]))
+        offset = n.pos[0] - nearest
+        return math.pi / 2.0 if offset >= 0.0 else -math.pi / 2.0
+    return 0.0 if n.pos[1] >= 0.0 else math.pi
+
+
 def _assoc_color(node) -> str:
     """Same three-colour MAC-association read as the other two views
     (entities.js's statusHex in the 3D scene, assocStateToLabel in the
@@ -1014,6 +1036,20 @@ def _seed_default_layout(sim, mode: str, relay_ids: Set[int], obstacles=None,
             car_ids = sorted(topo_cfg.get("car_ids", []))
             scooter_ids = sorted(topo_cfg.get("scooter_ids", []))
             uav_ids = sorted(topo_cfg.get("uav_ids", []))
+            # A quarter of each fleet is on a cross street instead of an
+            # avenue (see CarsUavsBuilder.build) -- car_cross_ids/
+            # scooter_cross_ids is the authoritative record of which
+            # ones, a SUFFIX of car_ids/scooter_ids in build's own
+            # id-assignment order (sorting car_ids/scooter_ids here,
+            # already ascending by construction, preserves that same
+            # order, so filtering by cross-membership below can't
+            # silently reshuffle who's where).
+            car_cross_ids = set(topo_cfg.get("car_cross_ids", []))
+            scooter_cross_ids = set(topo_cfg.get("scooter_cross_ids", []))
+            car_avenue_ids = [nid for nid in car_ids if nid not in car_cross_ids]
+            scooter_avenue_ids = [nid for nid in scooter_ids if nid not in scooter_cross_ids]
+            car_cross_ids_ord = [nid for nid in car_ids if nid in car_cross_ids]
+            scooter_cross_ids_ord = [nid for nid in scooter_ids if nid in scooter_cross_ids]
             # Multiple avenues, not one -- must match
             # CarsUavsBuilder.build's own round-robin-across-avenues
             # placement exactly, or a reseed would visibly shuffle every
@@ -1024,6 +1060,10 @@ def _seed_default_layout(sim, mode: str, relay_ids: Set[int], obstacles=None,
             scooter_avenues = topo_cfg.get("scooter_avenue_offsets_m") or [
                 float(topo_cfg.get("scooter_lane_offset_m", 15.0))
             ]
+            cross_xs = topo_cfg.get("cross_street_xs") or []
+            cross_y_reach = float(topo_cfg.get("cross_street_y_reach", 0.0))
+            car_cross_off = float(topo_cfg.get("cross_lane_offset_m", 10.0))
+            scooter_cross_off = float(topo_cfg.get("scooter_cross_lane_offset_m", 7.0))
 
             def _lane_seed(ids, offsets) -> None:
                 lanes = []
@@ -1038,8 +1078,24 @@ def _seed_default_layout(sim, mode: str, relay_ids: Set[int], obstacles=None,
                     lane = lanes[j % len(lanes)]
                     nodes[nid].pos = (frac * span, lane)
 
-            _lane_seed(car_ids, car_avenues)
-            _lane_seed(scooter_ids, scooter_avenues)
+            def _cross_lane_seed(ids, lane_offset_m: float) -> None:
+                if not cross_xs:
+                    return
+                lanes = (lane_offset_m, -lane_offset_m)
+                n = len(ids)
+                for j, nid in enumerate(ids):
+                    if nid not in nodes:
+                        continue
+                    cx = cross_xs[j % len(cross_xs)]
+                    frac = (j + 0.5) / max(1, n)
+                    lane = lanes[j % len(lanes)]
+                    y = frac * (2.0 * cross_y_reach) - cross_y_reach
+                    nodes[nid].pos = (cx + lane, y)
+
+            _lane_seed(car_avenue_ids, car_avenues)
+            _lane_seed(scooter_avenue_ids, scooter_avenues)
+            _cross_lane_seed(car_cross_ids_ord, car_cross_off)
+            _cross_lane_seed(scooter_cross_ids_ord, scooter_cross_off)
             n_uav = len(uav_ids)
             for j, nid in enumerate(uav_ids):
                 if nid in nodes:
@@ -1786,13 +1842,14 @@ class NetworkCanvas(tk.Canvas):
         its position came from a decorative time formula or a real node's
         actual (x, y), just heading and pixel position.
 
-        Heading is derived straight from the car's own lane_y sign (the
-        same rule highway_loop_step itself drives by -- positive lane
-        drives toward +x, negative toward -x, see its own docstring), not
-        from consecutive positions like the Smart City loop does --
+        Heading is derived straight from the car's own lane sign (the
+        same rule highway_loop_step/cross_street_loop_step themselves
+        drive by -- see vehicle_heading's own docstring for both rules),
+        not from consecutive positions like the Smart City loop does --
         cheaper, and exact rather than a one-tick-lagged estimate."""
         if not self.car_ids or self.sim is None:
             return
+        topo_cfg = self.sim.config.get("topology", {})
         n = len(_REAL_CAR_COLORS)
         for i, cid in enumerate(sorted(self.car_ids)):
             cn = nodes.get(cid)
@@ -1810,7 +1867,7 @@ class NetworkCanvas(tk.Canvas):
             self._append_trail_pos(cid, cn.pos)
             self._draw_fading_trail(self._drone_trails[cid])
 
-            heading = 0.0 if cn.pos[1] >= 0 else math.pi
+            heading = vehicle_heading(cid, cn, topo_cfg)
             self._draw_car_icon(cpx, cpy, heading, _REAL_CAR_COLORS[i % n])
 
     def _draw_scooters_overlay(self, nodes) -> None:
@@ -1822,6 +1879,7 @@ class NetworkCanvas(tk.Canvas):
         so the two vehicle kinds stay visually distinct at a glance."""
         if not self.scooter_ids or self.sim is None:
             return
+        topo_cfg = self.sim.config.get("topology", {})
         n = len(_REAL_SCOOTER_COLORS)
         for i, sid in enumerate(sorted(self.scooter_ids)):
             sn = nodes.get(sid)
@@ -1839,7 +1897,7 @@ class NetworkCanvas(tk.Canvas):
             self._append_trail_pos(sid, sn.pos)
             self._draw_fading_trail(self._drone_trails[sid])
 
-            heading = 0.0 if sn.pos[1] >= 0 else math.pi
+            heading = vehicle_heading(sid, sn, topo_cfg)
             self._draw_scooter_icon(spx, spy, heading, _REAL_SCOOTER_COLORS[i % n])
 
     # ── Smart City traffic (pure scenery -- not simulator nodes) ─────────
@@ -3916,13 +3974,16 @@ class NetworkCanvas(tk.Canvas):
         # highway lanes that never cross anything. Drawn after the
         # avenues (so their asphalt sits visibly on top at each
         # intersection) with the exact same styling, just rotated 90
-        # degrees. Mirrors the 3D view's own cross streets (ui/web3d/
-        # snapshot.py's _cross_streets, drawn there by world.js's
-        # rebuildCrossStreets) -- same spacing/reach formula in both.
-        cross_reach = avenues[-1] + 21.0 + 10.0
-        cross_spacing = 220.0
-        n_cross = max(1, int(span / cross_spacing))
-        cross_xs = [(i + 0.5) * (span / n_cross) for i in range(n_cross)]
+        # degrees. Positions/reach come straight from topo_cfg
+        # (CarsUavsBuilder.build computed and stored cross_street_xs/
+        # cross_street_y_reach) -- real cars/scooters are assigned to
+        # these exact streets now (see cross_street_loop_step), so this
+        # can't recompute its own copy of the spacing formula independently
+        # without risking it drifting from where vehicles actually are;
+        # mirrors ui/web3d/snapshot.py's own _cross_streets, which reads
+        # the same stored values.
+        cross_xs = topo_cfg.get("cross_street_xs") or []
+        cross_reach = float(topo_cfg.get("cross_street_y_reach", 0.0))
         for cx_pos in cross_xs:
             p0 = self._world_to_px(cx_pos, cross_reach)
             p1 = self._world_to_px(cx_pos, -cross_reach)

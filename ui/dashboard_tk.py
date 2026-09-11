@@ -53,7 +53,7 @@ except ImportError:
         _ap_range_m, resolve_ap_peer,
     )
 
-from sim11ah.mobility import highway_loop_step, uav_waypoint_step
+from sim11ah.mobility import highway_loop_step, cross_street_loop_step, uav_waypoint_step
 from sim11ah.topology import CarsUavsBuilder
 
 from sim11ah.sensor_profiles import list_profiles as _sensor_list_profiles, get_profile as _sensor_get_profile
@@ -2260,26 +2260,65 @@ class Dashboard(tk.Tk):
                 car_ids = topo_cfg.get("car_ids", [])
                 uav_ids2 = topo_cfg.get("uav_ids", [])
                 dt = float(self.step_dt)
+                span = float(topo_cfg.get("corridor_span_m", 0.0))
+                # A quarter of each fleet drives cross streets (see
+                # CarsUavsBuilder.build) instead of avenues -- north-
+                # south instead of east-west -- so vehicles actually move
+                # in every direction the road network offers. cross_ids
+                # is a SUFFIX of car_ids/scooter_ids (build() appends
+                # them last), so set-membership below is exactly "is this
+                # one of the last n_cross ids", nothing fuzzier.
+                car_cross_ids = set(topo_cfg.get("car_cross_ids", []))
+                cross_y_reach = float(topo_cfg.get("cross_street_y_reach", 0.0))
+                cross_off = float(topo_cfg.get("cross_lane_offset_m", 10.0))
                 if car_ids:
-                    span = float(topo_cfg.get("corridor_span_m", 0.0))
                     car_speed_mps = 15.0  # ~54 km/h
+                    cross_j = 0
                     for cid in car_ids:
-                        if cid in self.sim.nodes:
+                        if cid not in self.sim.nodes:
+                            continue
+                        if cid in car_cross_ids:
+                            # Same "even index = positive lane, odd =
+                            # negative" pairing CarsUavsBuilder.build's
+                            # own _cross_lane_positions used to place
+                            # these to begin with -- has to match exactly,
+                            # or this would drive a vehicle the wrong way
+                            # relative to which lane it actually started
+                            # on.
+                            lane_offset = cross_off if cross_j % 2 == 0 else -cross_off
+                            cross_j += 1
+                            cross_street_loop_step(
+                                self.sim, cid, dt, car_speed_mps,
+                                lane_offset=lane_offset, y_min=-cross_y_reach, y_max=cross_y_reach,
+                            )
+                        else:
                             lane_y = self.sim.nodes[cid].pos[1]
                             highway_loop_step(
                                 self.sim, cid, dt, car_speed_mps,
                                 lane_y=lane_y, x_min=0.0, x_max=span,
                             )
-                # Scooters share the exact same highway_loop_step
-                # primitive as cars (see sim11ah/mobility.py's docstring),
-                # just slower and on their own inner lane -- no separate
-                # mobility function needed, only a different fixed speed.
+                # Scooters share the exact same highway_loop_step/
+                # cross_street_loop_step primitives as cars (see
+                # sim11ah/mobility.py's docstrings), just slower and on
+                # their own inner lane/offset -- no separate mobility
+                # function needed, only different fixed speeds/offsets.
                 scooter_ids = topo_cfg.get("scooter_ids", [])
+                scooter_cross_ids = set(topo_cfg.get("scooter_cross_ids", []))
+                scooter_cross_off = float(topo_cfg.get("scooter_cross_lane_offset_m", 7.0))
                 if scooter_ids:
-                    span = float(topo_cfg.get("corridor_span_m", 0.0))
                     scooter_speed_mps = 8.0  # ~29 km/h
+                    cross_j = 0
                     for sid in scooter_ids:
-                        if sid in self.sim.nodes:
+                        if sid not in self.sim.nodes:
+                            continue
+                        if sid in scooter_cross_ids:
+                            lane_offset = scooter_cross_off if cross_j % 2 == 0 else -scooter_cross_off
+                            cross_j += 1
+                            cross_street_loop_step(
+                                self.sim, sid, dt, scooter_speed_mps,
+                                lane_offset=lane_offset, y_min=-cross_y_reach, y_max=cross_y_reach,
+                            )
+                        else:
                             lane_y = self.sim.nodes[sid].pos[1]
                             highway_loop_step(
                                 self.sim, sid, dt, scooter_speed_mps,

@@ -395,6 +395,14 @@ class CarsUavsBuilder:
         # unaffected by it.
         num_ap_rows: int = 2,
         ap_row_offset_m: float = 350.0,
+        # Matches ui/web3d/snapshot.py's own _cross_streets spacing
+        # (they used to each hardcode 220.0 independently -- see the
+        # cross_street_xs comment below for why that stopped once real
+        # vehicles needed to agree with drawn geometry, not just two
+        # views agreeing with each other).
+        cross_street_spacing_m: float = 220.0,
+        cross_lane_offset_m: float = 10.0,
+        scooter_cross_lane_offset_m: float = 7.0,
     ) -> List["Node"]:
         num_aps = max(1, int(num_aps))
         num_cars = int(num_cars)
@@ -447,15 +455,42 @@ class CarsUavsBuilder:
         scooter_inset = max(0.0, car_lane_offset_m - scooter_lane_offset_m)
         scooter_avenue_offsets = [off - scooter_inset for off in car_avenue_offsets]
 
-        # Cars/scooters both start on one of these avenues (round-robin
-        # across every avenue x both sides, so vehicles actually spread
-        # across the whole road network instead of clustering on avenue
-        # 0), spaced along x the same way as before. Purely cosmetic --
-        # doesn't affect RSSI/PHY, which only cares about the resulting
-        # (x, y). highway_loop_step then drives each one continuously
-        # forward for real, forever staying on whichever lane_y it
-        # started at (that lane's sign is what highway_loop_step reads
-        # to decide which way "forward" is).
+        # Cross streets: perpendicular to the avenues, at regular x
+        # intervals, each spanning every avenue's y-extent -- the single
+        # source of truth for their layout (ui/web3d/snapshot.py's
+        # _cross_streets and ui/topology_canvas.py's _bg_city_highway
+        # both read cross_street_xs/cross_street_y_reach back out of
+        # topo_cfg below instead of recomputing this same formula
+        # independently a second and third time, which is exactly the
+        # kind of drift that let two separate copies of the "distance to
+        # AP" computation quietly disagree earlier -- not repeating that
+        # here now that REAL vehicles, not just drawn geometry, depend
+        # on this matching exactly). 21.0+10.0 mirrors world.js's
+        # ROAD_HALF_W+SIDEWALK_W (a cross street's own paved half-width)
+        # plus a clearance margin -- a cross street reaches a little past
+        # the outermost avenue's real kerb, not out to the city limit;
+        # it exists to connect the avenues to each other, not to wander
+        # into the sparse outskirts alongside them.
+        outer_avenue = car_avenue_offsets[-1] if car_avenue_offsets else car_lane_offset_m
+        cross_street_y_reach = outer_avenue + 21.0 + 10.0
+        n_cross_streets = max(1, int(span / cross_street_spacing_m))
+        cross_street_xs = [
+            (i + 0.5) * (span / n_cross_streets) for i in range(n_cross_streets)
+        ]
+
+        # Cars/scooters mostly start on an avenue (round-robin across
+        # every avenue x both sides, so vehicles actually spread across
+        # the whole road network instead of clustering on avenue 0),
+        # spaced along x the same way as before -- but a quarter of each
+        # start on a cross street instead, driving north-south rather
+        # than east-west, so the fleet actually moves in every
+        # direction the road network offers instead of only ever along
+        # the highway. Purely cosmetic either way -- doesn't affect
+        # RSSI/PHY, which only cares about the resulting (x, y).
+        # highway_loop_step/cross_street_loop_step then drive each one
+        # continuously forward for real, forever staying on whichever
+        # lane it started on (that lane's own sign is what both
+        # functions read to decide which way "forward" is).
         def _lane_positions(count: int, offsets: List[float]) -> List[Tuple[float, float]]:
             lanes = []
             for off in offsets:
@@ -468,8 +503,26 @@ class CarsUavsBuilder:
                 out.append((frac * span, lane))
             return out
 
-        car_positions = _lane_positions(num_cars, car_avenue_offsets)
-        scooter_positions = _lane_positions(num_scooters, scooter_avenue_offsets)
+        def _cross_lane_positions(count: int, lane_offset_m: float) -> List[Tuple[float, float]]:
+            lanes = (lane_offset_m, -lane_offset_m)
+            out = []
+            for j in range(count):
+                cx = cross_street_xs[j % len(cross_street_xs)]
+                frac = (j + 0.5) / max(1, count)
+                lane = lanes[j % len(lanes)]
+                y = frac * (2.0 * cross_street_y_reach) - cross_street_y_reach
+                out.append((cx + lane, y))
+            return out
+
+        n_car_cross = num_cars // 4
+        n_car_ave = num_cars - n_car_cross
+        car_positions = (_lane_positions(n_car_ave, car_avenue_offsets)
+                         + _cross_lane_positions(n_car_cross, cross_lane_offset_m))
+
+        n_scooter_cross = num_scooters // 4
+        n_scooter_ave = num_scooters - n_scooter_cross
+        scooter_positions = (_lane_positions(n_scooter_ave, scooter_avenue_offsets)
+                             + _cross_lane_positions(n_scooter_cross, scooter_cross_lane_offset_m))
 
         # UAVs start scattered near the corridor; uav_waypoint_step then
         # flies them on a random-waypoint pattern across the whole
@@ -493,12 +546,29 @@ class CarsUavsBuilder:
         car_ids = [total_aps + j for j in range(num_cars)]
         scooter_ids = [total_aps + num_cars + j for j in range(num_scooters)]
         uav_ids = [total_aps + num_cars + num_scooters + j for j in range(num_uavs)]
+        # car_positions/scooter_positions each put their avenue vehicles
+        # first, cross-street ones last (see the concatenation above) --
+        # car_ids/scooter_ids are assigned in that exact same order, so
+        # the LAST n_car_cross/n_scooter_cross ids are the cross-street
+        # ones. Recorded explicitly (not re-derived from position) so
+        # the mobility driver (ui/dashboard_tk.py) and reseed
+        # (ui/topology_canvas.py's _seed_default_layout) know which
+        # function/heading rule applies to which vehicle without having
+        # to guess from where it currently happens to be.
+        car_cross_ids = car_ids[n_car_ave:]
+        scooter_cross_ids = scooter_ids[n_scooter_ave:]
 
         topo_cfg = sim.config.setdefault("topology", {})
         topo_cfg["mode"] = "cars_uavs"
         topo_cfg["car_ids"] = car_ids
         topo_cfg["scooter_ids"] = scooter_ids
         topo_cfg["uav_ids"] = uav_ids
+        topo_cfg["car_cross_ids"] = car_cross_ids
+        topo_cfg["scooter_cross_ids"] = scooter_cross_ids
+        topo_cfg["cross_street_xs"] = [float(x) for x in cross_street_xs]
+        topo_cfg["cross_street_y_reach"] = float(cross_street_y_reach)
+        topo_cfg["cross_lane_offset_m"] = float(cross_lane_offset_m)
+        topo_cfg["scooter_cross_lane_offset_m"] = float(scooter_cross_lane_offset_m)
         topo_cfg["corridor_span_m"] = span
         # num_ap_rows/ap_row_offset_m recorded alongside ap_ids/
         # ap_spacing_m so a reseed (ui/topology_canvas.py's
