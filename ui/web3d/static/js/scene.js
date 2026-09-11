@@ -51,7 +51,16 @@ export function setFogRange(near, far) {
   scene.fog.far = far ?? DEFAULT_FOG_FAR;
 }
 
-export const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 1, 8000);
+// near=4, not 1 -- a standard (non-logarithmic) WebGL depth buffer's
+// precision is dominated by the near:far ratio, and controls.minDistance
+// (below) already keeps the camera's orbit at least 20 units from its
+// target, so nothing the user can actually navigate to sits anywhere
+// near a 1-unit near plane. Quadrupling it noticeably tightens that
+// ratio (8000:1 -> 2000:1) with no practical clipping risk, which
+// directly helps the flat, large, nearly-coplanar ground layers
+// (road/sidewalk/centreline, building bases) that flicker worst at the
+// larger camera distances this scene's 1100m+ cars_uavs city now needs.
+export const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 4, 8000);
 camera.position.set(320, 260, 420);
 
 export const controls = new OrbitControls(camera, renderer.domElement);

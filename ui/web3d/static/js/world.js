@@ -5761,11 +5761,20 @@ export function rebuildRoads(loops) {
   for (const l of loops) {
     const perim = 2 * (2 * l.hw + 2 * l.hh);
     const rep = Math.max(1, perim / 24);
+    // Layer heights spread 0.4 apart, not the original 0.03 -- still
+    // visually flush (ground=0, sidewalk=0.4, asphalt=0.8, centreline
+    // 1.2 all read as flat pavement at any normal viewing distance), but
+    // a standard depth buffer's precision drops fast with camera
+    // distance, and three near-coplanar layers only 0.03 apart could
+    // fall into the same depth-buffer bucket once zoomed out over this
+    // scene's now much bigger (1100m+) footprint -- exactly what reads
+    // as flicker ("z-fighting") while zooming. A wider real gap between
+    // layers is robust to that regardless of how far the camera is.
     const sidewalkMat = new THREE.MeshLambertMaterial({ map: tiledClone(TEX.sidewalk, rep, rep) });
-    roadGroup.add(ringMesh(l.cx, l.cy, l.hw, l.hh, ROAD_HALF_W + SIDEWALK_W, sidewalkMat, 0.03));
+    roadGroup.add(ringMesh(l.cx, l.cy, l.hw, l.hh, ROAD_HALF_W + SIDEWALK_W, sidewalkMat, 0.4));
     const asphaltMat = new THREE.MeshLambertMaterial({ map: tiledClone(TEX.road, rep, rep) });
-    roadGroup.add(ringMesh(l.cx, l.cy, l.hw, l.hh, ROAD_HALF_W, asphaltMat, 0.06));
-    roadGroup.add(centerlineLoop(l.cx, l.cy, l.hw, l.hh, 0.09));
+    roadGroup.add(ringMesh(l.cx, l.cy, l.hw, l.hh, ROAD_HALF_W, asphaltMat, 0.8));
+    roadGroup.add(centerlineLoop(l.cx, l.cy, l.hw, l.hh, 1.2));
   }
 }
 
