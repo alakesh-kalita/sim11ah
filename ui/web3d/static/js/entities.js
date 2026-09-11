@@ -551,6 +551,12 @@ function buildCarBody(bodyColor) {
     tl.position.set(-2.3, 1.0, sz * 0.72);
     group.add(tl);
   }
+  // Uniform group scale, not larger box dimensions throughout -- a
+  // single multiplier keeps every part (body/cabin/wheels/lights)
+  // proportioned exactly as authored above while making the whole car
+  // noticeably bigger/easier to spot at this scene's scale. Matches the
+  // ~1.6x bump topology_canvas.py's own 2D car icon got.
+  group.scale.setScalar(1.6);
   return { group, bodyMat };
 }
 
@@ -608,6 +614,8 @@ function buildScooter() {
   const led = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.9, 0.9), ledMat);
   led.position.set(0, 2.0, 0);
   group.add(led);
+  // Same uniform-scale approach as buildCarBody -- see its comment.
+  group.scale.setScalar(1.6);
   return { group, ledMat, rotors: null };
 }
 

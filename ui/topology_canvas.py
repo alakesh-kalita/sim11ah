@@ -1834,7 +1834,7 @@ class NetworkCanvas(tk.Canvas):
         the tower/drone glyphs' fuller shadow+shading treatment (a car
         population stays small, so there's room for it, but this is still
         meant to read at a glance, not as a model kit)."""
-        length, width = 9.0, 4.6
+        length, width = 15.0, 7.6
         ch, sh = math.cos(heading), math.sin(heading)
         perp = heading + math.pi / 2.0
         cp, sp = math.cos(perp), math.sin(perp)
@@ -1842,8 +1842,8 @@ class NetworkCanvas(tk.Canvas):
         def _pt(dl, dw):
             return px + dl * ch + dw * cp, py + dl * sh + dw * sp
 
-        self.create_oval(px - length * 0.6 + 2, py - width * 0.6 + 2,
-                          px + length * 0.6 + 2, py + width * 0.6 + 2,
+        self.create_oval(px - length * 0.6 + 3, py - width * 0.6 + 3,
+                          px + length * 0.6 + 3, py + width * 0.6 + 3,
                           fill=_SHADOW, outline="", stipple="gray50", tags=("ovl",))
 
         corners = []
@@ -1866,7 +1866,7 @@ class NetworkCanvas(tk.Canvas):
         # lights already establish for the other moving glyph on this canvas.
         for dl, lcolor in ((length * 0.52, "#fff4d6"), (-length * 0.52, "#ff5c5c")):
             lx, ly = _pt(dl, 0.0)
-            self.create_oval(lx - 1.1, ly - 1.1, lx + 1.1, ly + 1.1,
+            self.create_oval(lx - 1.7, ly - 1.7, lx + 1.7, ly + 1.7,
                               fill=lcolor, outline="", tags=("ovl",))
 
     def _draw_scooter_icon(self, px: float, py: float, heading: float, color: str) -> None:
@@ -1875,7 +1875,7 @@ class NetworkCanvas(tk.Canvas):
         wheel dots fore/aft instead of a cabin inset) so it reads as a
         distinct, lighter vehicle at a glance rather than just a smaller
         car."""
-        length, width = 5.2, 2.2
+        length, width = 8.8, 3.7
         ch, sh = math.cos(heading), math.sin(heading)
         perp = heading + math.pi / 2.0
         cp, sp = math.cos(perp), math.sin(perp)
@@ -1883,8 +1883,8 @@ class NetworkCanvas(tk.Canvas):
         def _pt(dl, dw):
             return px + dl * ch + dw * cp, py + dl * sh + dw * sp
 
-        self.create_oval(px - length * 0.6 + 1.5, py - width * 0.6 + 1.5,
-                          px + length * 0.6 + 1.5, py + width * 0.6 + 1.5,
+        self.create_oval(px - length * 0.6 + 2.5, py - width * 0.6 + 2.5,
+                          px + length * 0.6 + 2.5, py + width * 0.6 + 2.5,
                           fill=_SHADOW, outline="", stipple="gray50", tags=("ovl",))
 
         # Narrow deck body -- an elongated rounded rectangle rather than
@@ -1900,10 +1900,10 @@ class NetworkCanvas(tk.Canvas):
         # scooters don't get a cabin inset (nothing to put one on).
         for dl, wcolor in ((length * 0.48, "#1f2937"), (-length * 0.48, "#1f2937")):
             wx, wy = _pt(dl, 0.0)
-            self.create_oval(wx - 0.9, wy - 0.9, wx + 0.9, wy + 0.9,
+            self.create_oval(wx - 1.4, wy - 1.4, wx + 1.4, wy + 1.4,
                               fill=wcolor, outline="", tags=("ovl",))
         hx, hy = _pt(length * 0.52, 0.0)
-        self.create_oval(hx - 0.9, hy - 0.9, hx + 0.9, hy + 0.9,
+        self.create_oval(hx - 1.4, hy - 1.4, hx + 1.4, hy + 1.4,
                           fill="#fff4d6", outline="", tags=("ovl",))
 
     def _draw_tower_icon(self, px: float, py: float, R: float, arm_count: int,
