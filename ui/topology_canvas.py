@@ -922,6 +922,62 @@ def _seed_default_layout(sim, mode: str, relay_ids: Set[int], obstacles=None,
             if nid == 0:
                 continue
             nodes[nid].pos = _scatter(rng, 0.0, 0.0, min_m, max_m)
+    elif mode in ("multi_ap", "cars_uavs"):
+        # Both built by MultiApBuilder/CarsUavsBuilder (sim11ah/topology.py):
+        # >1 AP node in a straight line, with everything else laid out
+        # relative to that chain. NONE of this is a random deployment the
+        # way every other mode's scatter above is -- falling through to
+        # the generic `else` below (as this used to, since it has no idea
+        # AP1..AP{K-1} -- node ids topo_cfg["ap_ids"][1:] -- are APs at
+        # all) would scatter them exactly like plain STAs of a single AP
+        # at the origin, destroying the whole corridor. This silently
+        # fired every time a reseed happened to run for these modes --
+        # e.g. Dashboard._on_env_change's reset_layout() call, which is
+        # exactly what scripts/launch_cars_uavs.py's startup sequence
+        # triggers (set the Smart City environment before the first
+        # Start) -- so re-derive the exact same deterministic layout
+        # CarsUavsBuilder.build/MultiApBuilder.build computed originally,
+        # instead of scattering.
+        topo_cfg = sim.config.get("topology", {})
+        ap_ids = sorted(topo_cfg.get("ap_ids", [0]))
+        ap_spacing = float(topo_cfg.get("ap_spacing_m", 0.0))
+        for i, aid in enumerate(ap_ids):
+            if aid in nodes:
+                nodes[aid].pos = (i * ap_spacing, 0.0)
+        span = max(1.0, (len(ap_ids) - 1) * ap_spacing)
+
+        if mode == "cars_uavs":
+            car_ids = sorted(topo_cfg.get("car_ids", []))
+            scooter_ids = sorted(topo_cfg.get("scooter_ids", []))
+            uav_ids = sorted(topo_cfg.get("uav_ids", []))
+            car_off = float(topo_cfg.get("car_lane_offset_m", 25.0))
+            scoot_off = float(topo_cfg.get("scooter_lane_offset_m", 15.0))
+
+            def _lane_seed(ids, offset: float) -> None:
+                n = len(ids)
+                for j, nid in enumerate(ids):
+                    if nid not in nodes:
+                        continue
+                    frac = (j + 0.5) / max(1, n)
+                    lane = offset if j % 2 == 0 else -offset
+                    nodes[nid].pos = (frac * span, lane)
+
+            _lane_seed(car_ids, car_off)
+            _lane_seed(scooter_ids, scoot_off)
+            n_uav = len(uav_ids)
+            for j, nid in enumerate(uav_ids):
+                if nid in nodes:
+                    nodes[nid].pos = ((j + 0.5) / max(1, n_uav) * span, 0.0)
+        else:
+            # multi_ap: plain STAs (every node id not in ap_ids), evenly
+            # spread along the corridor at y=0 -- MultiApBuilder.build's
+            # own default scatter when no custom sta_positions are given
+            # (the only way this project's GUI/scripts ever call it).
+            ap_id_set = set(ap_ids)
+            sta_ids = sorted(nid for nid in nodes if nid not in ap_id_set)
+            n_sta = len(sta_ids)
+            for j, nid in enumerate(sta_ids):
+                nodes[nid].pos = ((j + 0.5) / max(1, n_sta) * span, 0.0)
     else:
         min_gap = max(30.0, 0.03 * r_ap)
         placed: list = []
