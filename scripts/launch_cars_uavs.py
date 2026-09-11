@@ -15,9 +15,11 @@ Runs in the Smart City environment for a fuller scene (roads, buildings,
 its own decorative background traffic) -- the real simulator vehicles are
 visually distinct from that decoration: their own vivid non-green colour
 palette, a live peer-link line, a motion trail, and a small status LED,
-none of which the background traffic has. Opens both the 2D dashboard and
-the live 3D view (a browser tab) -- same layout, same live sim state, two
-ways to watch it. Ctrl+C or close the Dashboard window to stop it.
+none of which the background traffic has. Opens the 2D dashboard, the
+procedural 3D view, AND a real-map view (MapLibre, real street/satellite
+tiles under live AP/vehicle markers -- ui/web3d/static/cars-uavs-map.html)
+-- three ways to watch the same live sim state. Ctrl+C or close the
+Dashboard window to stop it.
 
 No dropdown exposes this topology yet -- the interactive Network Topology
 control only composes star/relay x ground/UAV STA x grounded/aerial relay,
@@ -72,7 +74,8 @@ gui._vars["sim_speed"].set("Turbo (30 fps)")
 gui._on_speed_change()
 gui.update_idletasks()
 
-gui._open_3d_view()  # starts Web3DServer + opens the 3D view in your browser
+gui._open_3d_view()  # starts Web3DServer + opens the procedural 3D view in your browser
+gui._open_cars_uavs_map_view()  # + a second tab: the real-map twin (ui/web3d/static/cars-uavs-map.html)
 
 
 def _on_close():

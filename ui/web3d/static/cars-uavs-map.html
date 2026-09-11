@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cars + UAVs — Real Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css">
+  <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f1f5f9;
+      --muted: #94a3b8;
+      --panel: rgba(15, 23, 42, 0.88);
+      --line: rgba(255, 255, 255, 0.12);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0f16; }
+    body {
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      color: var(--ink);
+    }
+    #map { position: absolute; inset: 0; }
+    .panel {
+      position: absolute; top: 14px; left: 14px; z-index: 5;
+      background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+      padding: 12px 16px; backdrop-filter: blur(6px);
+      min-width: 220px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+    .panel h1 { font-size: 14px; margin: 0 0 8px; font-weight: 600; letter-spacing: .2px; }
+    .row { display: flex; justify-content: space-between; gap: 14px; font-size: 12.5px; color: var(--muted); padding: 2px 0; }
+    .row b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+    .legend { position: absolute; bottom: 14px; left: 14px; z-index: 5;
+      background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+      padding: 10px 14px; backdrop-filter: blur(6px); font-size: 12px; color: var(--muted);
+    }
+    .legend .item { display: flex; align-items: center; gap: 7px; padding: 2px 0; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid #0f172a; flex: none; }
+    .status { position: absolute; top: 14px; right: 14px; z-index: 5;
+      background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+      padding: 8px 14px; font-size: 12.5px; color: var(--muted); backdrop-filter: blur(6px);
+    }
+    .status.live b { color: #4ade80; }
+    .status.stale b { color: #fbbf24; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="panel">
+    <h1>Cars + UAVs — Real Map</h1>
+    <div class="row"><span>Sim time</span><b id="hud-time">—</b></div>
+    <div class="row"><span>Vehicles</span><b id="hud-vehicles">—</b></div>
+    <div class="row"><span>Associated</span><b id="hud-assoc">—</b></div>
+    <div class="row"><span>APs</span><b id="hud-aps">—</b></div>
+  </div>
+  <div class="legend">
+    <div class="item"><span class="dot" style="background:#ef4444"></span>Car</div>
+    <div class="item"><span class="dot" style="background:#fb923c"></span>Scooter</div>
+    <div class="item"><span class="dot" style="background:#22d3ee"></span>UAV</div>
+    <div class="item"><span class="dot" style="background:#3b82f6"></span>AP (colour = which one)</div>
+  </div>
+  <div class="status stale" id="status">connecting…</div>
+
+  <script>
+    // Where the simulator's own (0, 0) lands on the real map -- every
+    // other node's (x, y) in metres is offset from here via a flat
+    // equirectangular approximation (fine at this scale, same
+    // convention ui/web3d/static/smart-city-simulation.html's own
+    // metersToLatLon already uses). Reuses that page's own real,
+    // already-verified campus coordinates as a real-world anchor for
+    // this otherwise location-less highway-corridor scenario -- the
+    // corridor itself isn't a real road, but everything drawn on top of
+    // it (real streets, real buildings, real satellite/vector imagery)
+    // is genuine map data, not a hand-drawn procedural city.
+    const ORIGIN_LAT = 23.8136, ORIGIN_LON = 86.4423;
+    const M_PER_DEG_LAT = 111320;
+    const M_PER_DEG_LON = 111320 * Math.cos(ORIGIN_LAT * Math.PI / 180);
+
+    function metersToLonLat(x, y) {
+      return [ORIGIN_LON + x / M_PER_DEG_LON, ORIGIN_LAT + y / M_PER_DEG_LAT];
+    }
+    function circlePolygon(lon, lat, radiusM, steps) {
+      steps = steps || 64;
+      const mPerDegLon = 111320 * Math.cos(lat * Math.PI / 180);
+      const coords = [];
+      for (let i = 0; i <= steps; i++) {
+        const a = (i / steps) * Math.PI * 2;
+        coords.push([lon + (radiusM * Math.cos(a)) / mPerDegLon, lat + (radiusM * Math.sin(a)) / M_PER_DEG_LAT]);
+      }
+      return { type: 'Polygon', coordinates: [coords] };
+    }
+
+    // Same 8-colour palette ui/topology_canvas.py's _AP_LINK_COLORS and
+    // entities.js's AP_LINK_COLORS already use, so a given AP reads as
+    // the same colour across all three views.
+    const AP_LINK_COLORS = ['#3b82f6', '#f97316', '#a855f7', '#06b6d4', '#ec4899', '#84cc16', '#f43f5e', '#14b8a6'];
+    const emptyFC = () => ({ type: 'FeatureCollection', features: [] });
+
+    let map, fitted = false;
+
+    function initMap() {
+      map = new maplibregl.Map({
+        container: 'map',
+        style: 'https://tiles.openfreemap.org/styles/liberty',
+        center: [ORIGIN_LON, ORIGIN_LAT],
+        zoom: 13,
+        pitch: 0,
+        attributionControl: false,
+      });
+      map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+
+      map.on('load', () => {
+        map.addSource('ap-range', { type: 'geojson', data: emptyFC() });
+        map.addLayer({ id: 'ap-range-fill', type: 'fill', source: 'ap-range',
+          paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.06 } });
+        map.addLayer({ id: 'ap-range-line', type: 'line', source: 'ap-range',
+          paint: { 'line-color': ['get', 'color'], 'line-width': 1.4, 'line-opacity': 0.55, 'line-dasharray': [2, 2] } });
+
+        map.addSource('links', { type: 'geojson', data: emptyFC() });
+        map.addLayer({ id: 'links-line', type: 'line', source: 'links',
+          paint: { 'line-color': ['get', 'color'], 'line-width': 2, 'line-opacity': 0.85 } });
+
+        map.addSource('vehicles', { type: 'geojson', data: emptyFC() });
+        map.addLayer({ id: 'vehicle-circle', type: 'circle', source: 'vehicles',
+          paint: {
+            'circle-radius': ['match', ['get', 'kind'], 'uav', 6.5, 'car', 7, 5.5],
+            'circle-color': ['get', 'color'],
+            'circle-stroke-width': 1.5,
+            'circle-stroke-color': '#0f172a',
+            'circle-opacity': ['match', ['get', 'kind'], 'uav', 0.85, 1.0],
+          } });
+
+        map.addSource('aps', { type: 'geojson', data: emptyFC() });
+        map.addLayer({ id: 'ap-circle', type: 'circle', source: 'aps',
+          paint: { 'circle-radius': 10, 'circle-color': ['get', 'color'],
+                   'circle-stroke-width': 2.5, 'circle-stroke-color': '#0f172a' } });
+        map.addLayer({ id: 'ap-label', type: 'symbol', source: 'aps',
+          layout: { 'text-field': ['get', 'label'], 'text-size': 11, 'text-offset': [0, -1.7], 'text-font': ['Noto Sans Bold'] },
+          paint: { 'text-color': '#0f172a', 'text-halo-color': '#ffffff', 'text-halo-width': 1.4 } });
+
+        poll();
+      });
+      map.on('error', (e) => { if (e && e.error) console.warn('map:', e.error.message || e.error); });
+    }
+
+    function setStatus(ok, text) {
+      const el = document.getElementById('status');
+      el.className = 'status ' + (ok ? 'live' : 'stale');
+      el.innerHTML = ok ? ('<b>●</b> ' + text) : text;
+    }
+
+    async function poll() {
+      try {
+        const res = await fetch('/api/state', { cache: 'no-store' });
+        const state = await res.json();
+        if (state.ready) {
+          render(state);
+          setStatus(true, 'live');
+        } else {
+          setStatus(false, state.error ? ('error: ' + state.error) : 'waiting for simulation…');
+        }
+      } catch (err) {
+        setStatus(false, 'connection lost, retrying…');
+      } finally {
+        setTimeout(poll, 400);
+      }
+    }
+
+    function render(state) {
+      const nodes = state.nodes || [];
+      const byId = new Map(nodes.map((n) => [n.id, n]));
+      const apIds = nodes.filter((n) => n.role === 'AP').map((n) => n.id).sort((a, b) => a - b);
+      const apColor = (id) => AP_LINK_COLORS[Math.max(0, apIds.indexOf(id)) % AP_LINK_COLORS.length];
+
+      const apFeatures = [], rangeFeatures = [], vehicleFeatures = [], linkFeatures = [];
+      let vehicleCount = 0, assocCount = 0;
+
+      for (const n of nodes) {
+        const [lon, lat] = metersToLonLat(n.pos[0], n.pos[1]);
+        if (n.role === 'AP') {
+          const color = apColor(n.id);
+          apFeatures.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [lon, lat] },
+            properties: { color, label: 'AP' + n.id } });
+          if (typeof n.range_m === 'number' && n.range_m > 0) {
+            rangeFeatures.push({ type: 'Feature', geometry: circlePolygon(lon, lat, n.range_m), properties: { color } });
+          }
+          continue;
+        }
+        if (!(n.is_car || n.is_scooter || n.is_uav || n.is_drone)) continue;
+        vehicleCount++;
+        let color = '#64748b', kind = 'sta';
+        if (n.is_car) { color = '#ef4444'; kind = 'car'; }
+        else if (n.is_scooter) { color = '#fb923c'; kind = 'scooter'; }
+        else if (n.is_uav || n.is_drone) { color = '#22d3ee'; kind = 'uav'; }
+        vehicleFeatures.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [lon, lat] },
+          properties: { color, kind } });
+        if (n.assoc_peer !== null && apIds.includes(n.assoc_peer)) {
+          assocCount++;
+          const peer = byId.get(n.assoc_peer);
+          if (peer) {
+            const [plon, plat] = metersToLonLat(peer.pos[0], peer.pos[1]);
+            linkFeatures.push({ type: 'Feature',
+              geometry: { type: 'LineString', coordinates: [[lon, lat], [plon, plat]] },
+              properties: { color: apColor(n.assoc_peer) } });
+          }
+        }
+      }
+
+      map.getSource('aps').setData({ type: 'FeatureCollection', features: apFeatures });
+      map.getSource('ap-range').setData({ type: 'FeatureCollection', features: rangeFeatures });
+      map.getSource('vehicles').setData({ type: 'FeatureCollection', features: vehicleFeatures });
+      map.getSource('links').setData({ type: 'FeatureCollection', features: linkFeatures });
+
+      document.getElementById('hud-time').textContent = (state.time || 0).toFixed(1) + 's';
+      document.getElementById('hud-vehicles').textContent = String(vehicleCount);
+      document.getElementById('hud-assoc').textContent = assocCount + ' / ' + vehicleCount;
+      document.getElementById('hud-aps').textContent = String(apFeatures.length);
+
+      // Frame the whole corridor once, the first time real AP positions
+      // arrive -- after that the user's own pan/zoom is left alone
+      // (this scene doesn't need to keep re-centring itself the way the
+      // decorative campus twin's follow-cam does; the corridor doesn't
+      // move).
+      if (!fitted && apFeatures.length) {
+        fitted = true;
+        const lons = apFeatures.map((f) => f.geometry.coordinates[0]);
+        const lats = apFeatures.map((f) => f.geometry.coordinates[1]);
+        map.fitBounds(
+          [[Math.min(...lons) - 0.012, Math.min(...lats) - 0.012],
+           [Math.max(...lons) + 0.012, Math.max(...lats) + 0.012]],
+          { padding: 50, duration: 0 },
+        );
+      }
+    }
+
+    initMap();
+  </script>
+</body>
+</html>

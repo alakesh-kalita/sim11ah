@@ -1482,6 +1482,29 @@ class Dashboard(tk.Tk):
         except Exception as e:
             messagebox.showerror("Real Map View", f"Could not open the real-map view: {e}")
 
+    def _open_cars_uavs_map_view(self):
+        """Open the cars_uavs-specific real-map twin (MapLibre real
+        street/satellite tiles under live AP/car/scooter/UAV markers) --
+        a leaner, purpose-built sibling of smart-city-simulation.html for
+        this topology specifically: that page assumes exactly one AP at
+        a hand-authored real campus location plus a load of Dhanbad-
+        campus-specific decoration (landmarks, hand-drawn routes); this
+        scenario has 6 APs and no real location of its own, and doesn't
+        need any of that -- see ui/web3d/static/cars-uavs-map.html, which
+        anchors the whole corridor on that same already-verified campus
+        origin purely as a real-world coordinate to draw genuine map
+        tiles under, not because the corridor represents an actual road
+        there. Same /api/state polling, same Web3DServer, as every other
+        web view."""
+        try:
+            if self._web3d_server is None:
+                from ui.web3d.server import Web3DServer
+                self._web3d_server = Web3DServer(self)
+                self._web3d_server.start()
+            webbrowser.open(f"{self._web3d_server.url}cars-uavs-map.html")
+        except Exception as e:
+            messagebox.showerror("Real Map View", f"Could not open the real-map view: {e}")
+
     def _on_topology_controls_change(self, *_):
         mode = _compose_topology_mode(
             self._net_topo_var.get(),
