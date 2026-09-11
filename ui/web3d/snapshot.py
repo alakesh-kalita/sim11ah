@@ -64,19 +64,32 @@ def _stable_bounds(canvas):
     # axis, so the generic bounding-box-of-static-nodes path below would
     # measure a sliver a few metres wide/tall around the AP line -- far
     # narrower than the corridor cars/scooters drive and UAVs fly across
-    # (car/scooter lanes offset ±12-25m off that line, UAVs roaming a
+    # (car/scooter lanes offset up to car/scooter_lane_offset_m +
+    # (num_car_avenues-1)*avenue_spacing_m off that line, UAVs roaming a
     # margin_m=150m-wide band by default) -- which is exactly why the
     # Smart City's roads/buildings used to render as a thin strip with
     # every real vehicle visibly driving/flying right off the pavement
-    # and past the buildings. uav_margin_m already dominates the lane
-    # offsets by design, but max() here keeps this correct even if a
-    # future build() call ever configured it the other way around.
+    # and past the buildings. uav_margin_m dominates every lane's offset
+    # under CarsUavsBuilder's own defaults, but takes the actual widest
+    # avenue (not just avenue 0's car_lane_offset_m/scooter_lane_offset_m)
+    # into the max() so this stays correct even for a future build() call
+    # whose avenues end up wider than its own uav_margin_m, not just by
+    # happy coincidence of today's defaults.
     topo_cfg = canvas.sim.config.get("topology", {}) if canvas.sim is not None else {}
     if topo_cfg.get("mode") == "cars_uavs":
         span = float(topo_cfg.get("corridor_span_m", 0.0))
         margin = float(topo_cfg.get("uav_margin_m", 150.0))
-        half_y = max(margin, float(topo_cfg.get("car_lane_offset_m", 25.0)),
-                     float(topo_cfg.get("scooter_lane_offset_m", 12.0)))
+        car_avenues = topo_cfg.get("car_avenue_offsets_m") or [
+            float(topo_cfg.get("car_lane_offset_m", 25.0))
+        ]
+        scooter_avenues = topo_cfg.get("scooter_avenue_offsets_m") or [
+            float(topo_cfg.get("scooter_lane_offset_m", 12.0))
+        ]
+        widest_avenue = max(
+            [float(o) for o in car_avenues] + [float(o) for o in scooter_avenues],
+            default=25.0,
+        )
+        half_y = max(margin, widest_avenue)
         return (-margin, span + margin, -half_y, half_y)
 
     moving = canvas.drone_ids | canvas.uav_ids | canvas.car_ids | canvas.scooter_ids

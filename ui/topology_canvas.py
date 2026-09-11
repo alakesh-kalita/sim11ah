@@ -3830,13 +3830,24 @@ class NetworkCanvas(tk.Canvas):
         car_off = float(topo_cfg.get("car_lane_offset_m", 25.0))
         span = float(topo_cfg.get("corridor_span_m", 0.0))
         avenues = sorted(float(o) for o in (topo_cfg.get("car_avenue_offsets_m") or [car_off]))
+        scooter_avenues = topo_cfg.get("scooter_avenue_offsets_m") or [
+            float(topo_cfg.get("scooter_lane_offset_m", 15.0))
+        ]
         # uav_margin_m doubles as "how far the whole built-up city/UAV
         # envelope reaches" (see CarsUavsBuilder's own docstring on that
         # param) -- reused directly here so the city's footprint and the
         # 3D city-limits ring/UAV flight envelope always scale together
         # from the one knob, rather than two independently-tuned sizes
-        # that could drift apart.
-        city_extent = float(topo_cfg.get("uav_margin_m", 220.0))
+        # that could drift apart. max() against the actual widest avenue
+        # (not just assumed dominant) so this stays correct even for a
+        # future build() call whose avenues end up wider than its own
+        # uav_margin_m, matching the same fix in ui/web3d/snapshot.py's
+        # _stable_bounds.
+        city_extent = max(
+            float(topo_cfg.get("uav_margin_m", 220.0)),
+            avenues[-1] if avenues else 0.0,
+            max((float(o) for o in scooter_avenues), default=0.0),
+        )
         x0, x1 = -city_extent, span + city_extent
         depth = city_extent
 

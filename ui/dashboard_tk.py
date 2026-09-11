@@ -2281,8 +2281,23 @@ class Dashboard(tk.Tk):
                                 lane_y=lane_y, x_min=0.0, x_max=span,
                             )
                 if uav_ids2:
-                    num_aps = len(topo_cfg.get("ap_ids", [0]))
-                    ap_spacing_m = float(topo_cfg.get("corridor_span_m", 0.0)) / max(1, num_aps - 1) if num_aps > 1 else 0.0
+                    # ap_ids now holds every AP in the 2D grid (columns x
+                    # num_ap_rows -- see CarsUavsBuilder.build), not just
+                    # the columns -- len(ap_ids) alone overcounts by
+                    # num_ap_rows. Read the real per-column ap_spacing_m
+                    # topo_cfg already stores (MultiApBuilder.build sets
+                    # it directly) and divide the AP count back down to
+                    # columns, rather than re-deriving ap_spacing_m from
+                    # corridor_span_m/(len(ap_ids)-1) -- that used to
+                    # numerically cancel back out to the right answer only
+                    # by algebraic coincidence (dividing by the wrong
+                    # count then multiplying by wrong_count-1), which is
+                    # exactly the kind of fragile derivation not worth
+                    # relying on now that it's just as easy to read the
+                    # real numbers directly.
+                    num_ap_rows = max(1, int(topo_cfg.get("num_ap_rows", 1)))
+                    num_aps = max(1, len(topo_cfg.get("ap_ids", [0])) // num_ap_rows)
+                    ap_spacing_m = float(topo_cfg.get("ap_spacing_m", 0.0))
                     region = CarsUavsBuilder.uav_region(self.sim, ap_spacing_m=ap_spacing_m, num_aps=num_aps)
                     uav_speed_mps = float(self._uav_speed_var.get())
                     for uid in uav_ids2:
