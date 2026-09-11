@@ -1766,21 +1766,20 @@ class NetworkCanvas(tk.Canvas):
 
     def _draw_cars_overlay(self, nodes) -> None:
         """Cars in "cars_uavs" mode (see sim11ah/topology.py's
-        CarsUavsBuilder): real simulator nodes on a live highway_bounce_step
+        CarsUavsBuilder): real simulator nodes on a live highway_loop_step
         crossing, unlike _draw_vehicles_overlay's Smart-City traffic (pure
         decoration, no association/physics) -- reuses that method's own
         _draw_car_icon glyph, since the icon itself doesn't care whether
         its position came from a decorative time formula or a real node's
         actual (x, y), just heading and pixel position.
 
-        Heading comes from sim._highway_dirs (the direction flag
-        highway_bounce_step maintains, +1/-1 along the corridor's x-axis,
-        shared with scooters -- see _draw_scooters_overlay) rather than
+        Heading is derived straight from the car's own lane_y sign (the
+        same rule highway_loop_step itself drives by -- positive lane
+        drives toward +x, negative toward -x, see its own docstring), not
         from consecutive positions like the Smart City loop does --
         cheaper, and exact rather than a one-tick-lagged estimate."""
         if not self.car_ids or self.sim is None:
             return
-        highway_dirs = getattr(self.sim, "_highway_dirs", {})
         n = len(_REAL_CAR_COLORS)
         for i, cid in enumerate(sorted(self.car_ids)):
             cn = nodes.get(cid)
@@ -1795,25 +1794,21 @@ class NetworkCanvas(tk.Canvas):
                 link_color = self._ap_link_color(peer_id) if peer_id in self._ap_ids else _BORDER
                 self.create_line(ppx, ppy, cpx, cpy, fill=link_color, width=1, tags=("ovl",))
 
-            trail = self._drone_trails.setdefault(cid, [])
-            trail.append(cn.pos)
-            if len(trail) > 16:
-                del trail[0]
-            self._draw_fading_trail(trail)
+            self._append_trail_pos(cid, cn.pos)
+            self._draw_fading_trail(self._drone_trails[cid])
 
-            heading = 0.0 if highway_dirs.get(cid, 1) >= 0 else math.pi
+            heading = 0.0 if cn.pos[1] >= 0 else math.pi
             self._draw_car_icon(cpx, cpy, heading, _REAL_CAR_COLORS[i % n])
 
     def _draw_scooters_overlay(self, nodes) -> None:
         """Scooters in "cars_uavs" mode: same real-node treatment as
-        _draw_cars_overlay (live highway_bounce_step crossing, not
+        _draw_cars_overlay (live highway_loop_step crossing, not
         decoration), just riding the inner lane (closer to the corridor
         centreline -- see CarsUavsBuilder's scooter_lane_offset_m) with
         their own smaller glyph (_draw_scooter_icon) and colour palette
         so the two vehicle kinds stay visually distinct at a glance."""
         if not self.scooter_ids or self.sim is None:
             return
-        highway_dirs = getattr(self.sim, "_highway_dirs", {})
         n = len(_REAL_SCOOTER_COLORS)
         for i, sid in enumerate(sorted(self.scooter_ids)):
             sn = nodes.get(sid)
@@ -1828,13 +1823,10 @@ class NetworkCanvas(tk.Canvas):
                 link_color = self._ap_link_color(peer_id) if peer_id in self._ap_ids else _BORDER
                 self.create_line(ppx, ppy, spx, spy, fill=link_color, width=1, tags=("ovl",))
 
-            trail = self._drone_trails.setdefault(sid, [])
-            trail.append(sn.pos)
-            if len(trail) > 16:
-                del trail[0]
-            self._draw_fading_trail(trail)
+            self._append_trail_pos(sid, sn.pos)
+            self._draw_fading_trail(self._drone_trails[sid])
 
-            heading = 0.0 if highway_dirs.get(sid, 1) >= 0 else math.pi
+            heading = 0.0 if sn.pos[1] >= 0 else math.pi
             self._draw_scooter_icon(spx, spy, heading, _REAL_SCOOTER_COLORS[i % n])
 
     # ── Smart City traffic (pure scenery -- not simulator nodes) ─────────
@@ -2050,6 +2042,26 @@ class NetworkCanvas(tk.Canvas):
                                dk_color=_PURPLE_DK, lt_color=_PURPLE, hub_fill=_assoc_color(node))
         self.create_text(px, py + R * 0.95 + 11, text=f"R{nid}",
                           font=("Arial", 8, "bold"), fill=_PURPLE_DK)
+
+    def _append_trail_pos(self, key: int, pos, jump_threshold: float = 60.0) -> None:
+        """Append pos to node `key`'s fading trail, clearing the trail
+        first if pos is a big jump from its last recorded point. Real
+        vehicle motion (cars/scooters at up to ~15 m/s, UAVs similarly
+        slow) never covers anywhere near jump_threshold metres in one
+        tick, so a jump that large can only be highway_loop_step's
+        wrap-around (reaches the end of its lane, resets straight back
+        to the start) -- without this, the very next trail segment would
+        span the jump too, drawing a spurious line clear across the
+        whole highway every single lap instead of the vehicle's actual
+        recent path."""
+        trail = self._drone_trails.setdefault(key, [])
+        if trail:
+            lx, ly = trail[-1]
+            if math.hypot(pos[0] - lx, pos[1] - ly) > jump_threshold:
+                trail.clear()
+        trail.append(pos)
+        if len(trail) > 16:
+            del trail[0]
 
     def _draw_fading_trail(self, trail: list) -> None:
         """Contrail-style flight trail: drawn segment-by-segment so it
@@ -3794,11 +3806,11 @@ class NetworkCanvas(tk.Canvas):
         paved avenue per entry in car_avenue_offsets_m (both +/- each
         value), at the exact same y real cars/scooters drive at (see
         CarsUavsBuilder's car_avenue_offsets_m / sim11ah/mobility.py's
-        highway_bounce_step) -- rather than at some arbitrary fraction of
+        highway_loop_step) -- rather than at some arbitrary fraction of
         the live view's bounding box, so a vehicle always renders sitting
         on the road it's actually assigned to, on whichever avenue that
         is, not just the one nearest the centreline. Cars/scooters only
-        ever move along x at their fixed lane y (highway_bounce_step
+        ever move along x at their fixed lane y (highway_loop_step
         never touches y), so this is a standing guarantee, not something
         that can drift out of sync.
 

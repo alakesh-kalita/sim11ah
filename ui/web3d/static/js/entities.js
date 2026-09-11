@@ -318,10 +318,12 @@ export function updateNodes(nodesData) {
     if (entry.info) {
       updateInfoSprite(entry.info, nodeInfoText(n), nodeInfoColor(n));
     }
-    // A car/scooter's heading only ever flips instantly at each end of its
-    // highway (see sim11ah/mobility.py's highway_bounce_step, shared by
-    // both) -- no mid-drive turning to animate, so this is a direct set,
-    // not lerped like position below. Same world-heading -> rotation.y
+    // A car/scooter's heading is fixed for its whole lifetime (derived
+    // from its own lane's sign -- see sim11ah/mobility.py's
+    // highway_loop_step, shared by both -- it loops continuously forward
+    // rather than reversing at each end, so there's no direction flip to
+    // animate at all). Direct set either way, not lerped like position
+    // below. Same world-heading -> rotation.y
     // convention updateVehicles already uses for the decorative Smart City
     // traffic (local model forward is +X; three.js's rotation.y maps that
     // to exactly the world heading, no sign flip needed).
@@ -342,9 +344,23 @@ export function updateNodes(nodesData) {
       entry.toPos = target.clone();
       entry.t = 1;
     } else if (!target.equals(entry.toPos)) {
-      entry.fromPos = entry.group.position.clone();
-      entry.toPos = target;
-      entry.t = 0;
+      // A jump this large (real vehicle motion never covers anywhere
+      // near this much ground between polls) can only be
+      // highway_loop_step's wrap-around -- reaches the end of its lane,
+      // resets straight back to the start -- not real travel. Snap
+      // straight to it instead of lerping, or the car/scooter mesh
+      // would visibly fly across the entire highway over the next
+      // stepNodeAnimation cycle rather than reappearing at the start.
+      if (entry.group.position.distanceTo(target) > 60) {
+        entry.group.position.copy(target);
+        entry.fromPos = target.clone();
+        entry.toPos = target.clone();
+        entry.t = 1;
+      } else {
+        entry.fromPos = entry.group.position.clone();
+        entry.toPos = target;
+        entry.t = 0;
+      }
     }
   }
   for (const [id, entry] of [...nodeMeshes.entries()]) {

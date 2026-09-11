@@ -315,7 +315,7 @@ class CarsUavsBuilder:
     all-pairs linking), not a fork of it -- this class only adds role
     tagging and initial positions for the three mobility kinds; actually
     driving them each tick is sim11ah/mobility.py's job
-    (highway_bounce_step for cars/scooters, uav_waypoint_step for UAVs),
+    (highway_loop_step for cars/scooters, uav_waypoint_step for UAVs),
     called from wherever runs the simulation (a GUI tick loop, or a
     headless script).
 
@@ -452,8 +452,10 @@ class CarsUavsBuilder:
         # across the whole road network instead of clustering on avenue
         # 0), spaced along x the same way as before. Purely cosmetic --
         # doesn't affect RSSI/PHY, which only cares about the resulting
-        # (x, y). highway_bounce_step then drives each one back and forth
-        # for real, forever staying on whichever lane_y it started at.
+        # (x, y). highway_loop_step then drives each one continuously
+        # forward for real, forever staying on whichever lane_y it
+        # started at (that lane's sign is what highway_loop_step reads
+        # to decide which way "forward" is).
         def _lane_positions(count: int, offsets: List[float]) -> List[Tuple[float, float]]:
             lanes = []
             for off in offsets:

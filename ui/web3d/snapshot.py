@@ -144,7 +144,7 @@ def _road_loops(canvas) -> List[Dict[str, float]]:
     # avenue's own offset (not a fraction of anything), so ringMesh's
     # paved band -- centred at y = cy_w +/- hh, width
     # (ROAD_HALF_W+SIDEWALK_W)*2 either side of that -- lands exactly
-    # straddling the real car lanes highway_bounce_step drives on that
+    # straddling the real car lanes highway_loop_step drives on that
     # avenue (see CarsUavsBuilder's car_avenue_offsets_m; scooters ride
     # the smaller scooter_avenue_offsets_m, inside the same bands nearer
     # each one's inner edge). hw reaches a little past each end AP so
@@ -259,20 +259,22 @@ def _node_dict(canvas, nid: int, n, sim) -> Dict[str, Any]:
         range_m = None
     is_drone = nid in canvas.drone_ids
     is_uav = nid in canvas.uav_ids
-    # Real network node on a highway_bounce_step crossing (see
+    # Real network node on a highway_loop_step crossing (see
     # sim11ah/topology.py's CarsUavsBuilder / sim11ah/mobility.py) --
     # distinct from is_drone/is_uav, entities.js dispatches it to its own
-    # car/scooter mesh the same way. Heading comes straight from
-    # sim._highway_dirs (the ±1 flag highway_bounce_step maintains, shared
-    # by both cars and scooters), not from diffing consecutive positions
+    # car/scooter mesh the same way. Heading is derived straight from the
+    # node's own current lane y sign (the same rule highway_loop_step
+    # itself drives by -- positive lane moves toward +x, negative toward
+    # -x, see its own docstring), not from diffing consecutive positions
     # like the decorative Smart City vehicles below do -- cheaper and
-    # exact rather than a one-poll-lagged estimate.
+    # exact rather than a one-poll-lagged estimate, and unlike the
+    # direction-reversing bounce this replaced, needs no separate stored
+    # per-vehicle direction state at all.
     is_car = nid in canvas.car_ids
     is_scooter = nid in canvas.scooter_ids
     heading = None
     if is_car or is_scooter:
-        highway_dirs = getattr(sim, "_highway_dirs", {})
-        heading = 0.0 if highway_dirs.get(nid, 1) >= 0 else math.pi
+        heading = 0.0 if n.pos[1] >= 0 else math.pi
     altitude_m = None
     if is_drone or is_uav:
         try:

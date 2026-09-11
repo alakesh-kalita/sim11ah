@@ -53,7 +53,7 @@ except ImportError:
         _ap_range_m,
     )
 
-from sim11ah.mobility import highway_bounce_step, uav_waypoint_step
+from sim11ah.mobility import highway_loop_step, uav_waypoint_step
 from sim11ah.topology import CarsUavsBuilder
 
 from sim11ah.sensor_profiles import list_profiles as _sensor_list_profiles, get_profile as _sensor_get_profile
@@ -2244,7 +2244,7 @@ class Dashboard(tk.Tk):
             # Cars + UAVs multi-AP layout (see sim11ah/topology.py's
             # CarsUavsBuilder): a distinct mode from plain "uav" above --
             # multiple real APs (topo_cfg["ap_ids"]), cars driving a
-            # highway (sim11ah/mobility.py's highway_bounce_step) rather
+            # highway (sim11ah/mobility.py's highway_loop_step) rather
             # than wandering, and UAVs flying across the WHOLE corridor
             # (uav_waypoint_step) rather than circling a single AP, so
             # this can't reuse advance_uav_positions above (anchored on
@@ -2261,11 +2261,11 @@ class Dashboard(tk.Tk):
                     for cid in car_ids:
                         if cid in self.sim.nodes:
                             lane_y = self.sim.nodes[cid].pos[1]
-                            highway_bounce_step(
+                            highway_loop_step(
                                 self.sim, cid, dt, car_speed_mps,
                                 lane_y=lane_y, x_min=0.0, x_max=span,
                             )
-                # Scooters share the exact same highway_bounce_step
+                # Scooters share the exact same highway_loop_step
                 # primitive as cars (see sim11ah/mobility.py's docstring),
                 # just slower and on their own inner lane -- no separate
                 # mobility function needed, only a different fixed speed.
@@ -2276,7 +2276,7 @@ class Dashboard(tk.Tk):
                     for sid in scooter_ids:
                         if sid in self.sim.nodes:
                             lane_y = self.sim.nodes[sid].pos[1]
-                            highway_bounce_step(
+                            highway_loop_step(
                                 self.sim, sid, dt, scooter_speed_mps,
                                 lane_y=lane_y, x_min=0.0, x_max=span,
                             )
