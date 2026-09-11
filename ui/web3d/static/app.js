@@ -8,7 +8,7 @@ import { POLL_MS } from './js/core.js';
 import { loadAllTextures } from './js/textures.js';
 import { camera, composer, controls, resize, applyEnvironment } from './js/scene.js';
 import {
-  rebuildProps, rebuildBuildings, rebuildRoads,
+  rebuildProps, rebuildBuildings, rebuildRoads, rebuildCrossStreets,
   industrialRoadLoops, rebuildIndustrialTraffic, stepIndustrialTraffic,
   rebuildMilitaryPatrol, stepMilitaryPatrol,
   applyLoadedTextures, siteRadius, militaryExtent,
@@ -47,6 +47,9 @@ async function poll() {
     rebuildProps(state.environment, state.obstacles, roadLoops, nodeExtentRadius(state.nodes), state.variant);
     rebuildBuildings(state.obstacles, state.environment, state.variant, roadLoops);
     rebuildRoads(roadLoops);
+    // cars_uavs mode only -- state.cross_streets is empty everywhere else
+    // (ui/web3d/snapshot.py's _cross_streets), so this is a no-op there.
+    rebuildCrossStreets(state.cross_streets ?? []);
     rebuildIndustrialTraffic(state.obstacles, state.environment, state.variant);
     rebuildMilitaryPatrol(state.obstacles, state.environment);
     updateNodes(state.nodes);

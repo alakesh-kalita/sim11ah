@@ -220,6 +220,40 @@ def _road_loops(canvas) -> List[Dict[str, float]]:
     ]
 
 
+def _cross_streets(canvas) -> List[Dict[str, float]]:
+    """cars_uavs mode only: perpendicular cross streets at regular
+    intervals along the corridor, each spanning every avenue's y-extent
+    -- real "+" intersections where a cross street meets each avenue,
+    not just parallel highway lanes that never cross anything. A
+    genuinely separate shape from _road_loops' avenue rings (which are
+    long, THIN rectangles by design -- fine for a ring whose hollow
+    centre is most of its own area, but a cross street is the opposite,
+    narrow across and tall along y, where the same ring-with-a-hole
+    construction would need a hole nearly as wide as the road itself,
+    i.e. no road at all) -- drawn client-side as solid strips instead
+    (world.js's rebuildCrossStreets), not rings."""
+    if canvas.environment != "Smart City" or canvas.sim is None:
+        return []
+    topo_cfg = canvas.sim.config.get("topology", {})
+    if topo_cfg.get("mode") != "cars_uavs":
+        return []
+    span = float(topo_cfg.get("corridor_span_m", 0.0))
+    car_off = float(topo_cfg.get("car_lane_offset_m", 25.0))
+    avenues = topo_cfg.get("car_avenue_offsets_m") or [car_off]
+    outer_avenue = max(float(o) for o in avenues) if avenues else car_off
+    # A little past the outermost avenue's own kerb (ROAD_HALF_W+
+    # SIDEWALK_W=21m in world.js), not all the way out to the city
+    # limit -- a cross street exists to connect the avenues to each
+    # other, not to wander off into the sparse outskirts alongside them.
+    y_reach = outer_avenue + 21.0 + 10.0
+    spacing = 220.0
+    n = max(1, int(span / spacing))
+    return [
+        {"x": (i + 0.5) * (span / n), "y_min": -y_reach, "y_max": y_reach}
+        for i in range(n)
+    ]
+
+
 def _vehicles(canvas) -> List[Dict[str, Any]]:
     """Same rectangular-racetrack math as NetworkCanvas._draw_vehicles_overlay
     (pure function of sim time), re-run here to compute world positions
@@ -414,6 +448,7 @@ def build_snapshot(dashboard) -> Dict[str, Any]:
         "pulses": pulses,
         "vehicles": _vehicles(canvas),
         "road_loops": _road_loops(canvas),
+        "cross_streets": _cross_streets(canvas),
         "ap_links": _ap_backbone_pairs(canvas),
         "metrics": metrics,
     }

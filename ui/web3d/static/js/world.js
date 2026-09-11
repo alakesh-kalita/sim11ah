@@ -5765,17 +5765,24 @@ function centerlineLoop(cx, cy, hw, hh, y) {
   line.computeLineDistances();
   return line;
 }
+// Tracks only the meshes THIS function itself added, not roadGroup's
+// full child list -- rebuildCrossStreets shares the same roadGroup (so
+// avenues and cross streets composite into one road surface), and a
+// blind "clear every child of roadGroup" here would wipe those out too
+// whenever this runs after that, and vice versa.
+let roadMeshes = [];
 let lastRoadKey = '';
 export function rebuildRoads(loops) {
   const key = JSON.stringify(loops);
   if (key === lastRoadKey) return;
   lastRoadKey = key;
-  for (const child of [...roadGroup.children]) {
+  for (const child of roadMeshes) {
     roadGroup.remove(child);
     child.geometry?.dispose();
     if (child.material?.map) child.material.map.dispose();
     child.material?.dispose?.();
   }
+  roadMeshes = [];
   for (const l of loops) {
     const perim = 2 * (2 * l.hw + 2 * l.hh);
     const rep = Math.max(1, perim / 24);
@@ -5789,10 +5796,76 @@ export function rebuildRoads(loops) {
     // as flicker ("z-fighting") while zooming. A wider real gap between
     // layers is robust to that regardless of how far the camera is.
     const sidewalkMat = new THREE.MeshLambertMaterial({ map: tiledClone(TEX.sidewalk, rep, rep) });
-    roadGroup.add(ringMesh(l.cx, l.cy, l.hw, l.hh, ROAD_HALF_W + SIDEWALK_W, sidewalkMat, 0.4));
+    const sw = ringMesh(l.cx, l.cy, l.hw, l.hh, ROAD_HALF_W + SIDEWALK_W, sidewalkMat, 0.4);
+    roadGroup.add(sw); roadMeshes.push(sw);
     const asphaltMat = new THREE.MeshLambertMaterial({ map: tiledClone(TEX.road, rep, rep) });
-    roadGroup.add(ringMesh(l.cx, l.cy, l.hw, l.hh, ROAD_HALF_W, asphaltMat, 0.8));
-    roadGroup.add(centerlineLoop(l.cx, l.cy, l.hw, l.hh, 1.2));
+    const rd = ringMesh(l.cx, l.cy, l.hw, l.hh, ROAD_HALF_W, asphaltMat, 0.8);
+    roadGroup.add(rd); roadMeshes.push(rd);
+    const cl = centerlineLoop(l.cx, l.cy, l.hw, l.hh, 1.2);
+    roadGroup.add(cl); roadMeshes.push(cl);
+  }
+}
+
+// ---- perpendicular cross streets (cars_uavs mode only -- see
+// ui/web3d/snapshot.py's _cross_streets) -- solid rectangular strips,
+// not rings: a cross street is narrow across and tall along y, where
+// ringShape's hole-in-a-rectangle construction would need a hole nearly
+// as wide as the road itself (no road left at all) to make sense the
+// way it does for the avenues' own long, thin rings. Composites into
+// the exact same roadGroup as rebuildRoads (see roadMeshes' own comment
+// for why each tracks only its own children), so avenues and cross
+// streets read as one continuous paved network with real "+"
+// intersections where they cross, not two independent road systems
+// layered on top of each other. -------------------------------------------
+function stripShape(cx, cyMin, cyMax, halfWidth) {
+  const shape = new THREE.Shape();
+  shape.moveTo(cx - halfWidth, cyMin);
+  shape.lineTo(cx + halfWidth, cyMin);
+  shape.lineTo(cx + halfWidth, cyMax);
+  shape.lineTo(cx - halfWidth, cyMax);
+  shape.closePath();
+  return shape;
+}
+function stripMesh(cx, cyMin, cyMax, halfWidth, material, y) {
+  const geo = new THREE.ShapeGeometry(stripShape(cx, cyMin, cyMax, halfWidth), 1);
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.y = y;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+function centerlineStrip(cx, cyMin, cyMax, y) {
+  const pts = [toScene(cx, cyMin), toScene(cx, cyMax)].map(p => { p.y = y; return p; });
+  const geo = new THREE.BufferGeometry().setFromPoints(pts);
+  const mat = new THREE.LineDashedMaterial({ color: 0xe8c547, dashSize: 6, gapSize: 5 });
+  const line = new THREE.Line(geo, mat);
+  line.computeLineDistances();
+  return line;
+}
+let crossStreetMeshes = [];
+let lastCrossKey = '';
+export function rebuildCrossStreets(crossStreets) {
+  const key = JSON.stringify(crossStreets);
+  if (key === lastCrossKey) return;
+  lastCrossKey = key;
+  for (const child of crossStreetMeshes) {
+    roadGroup.remove(child);
+    child.geometry?.dispose();
+    if (child.material?.map) child.material.map.dispose();
+    child.material?.dispose?.();
+  }
+  crossStreetMeshes = [];
+  for (const cs of crossStreets || []) {
+    const span = Math.max(1, cs.y_max - cs.y_min);
+    const rep = Math.max(1, span / 24);
+    const sidewalkMat = new THREE.MeshLambertMaterial({ map: tiledClone(TEX.sidewalk, rep, rep) });
+    const sw = stripMesh(cs.x, cs.y_min, cs.y_max, ROAD_HALF_W + SIDEWALK_W, sidewalkMat, 0.4);
+    roadGroup.add(sw); crossStreetMeshes.push(sw);
+    const asphaltMat = new THREE.MeshLambertMaterial({ map: tiledClone(TEX.road, rep, rep) });
+    const rd = stripMesh(cs.x, cs.y_min, cs.y_max, ROAD_HALF_W, asphaltMat, 0.8);
+    roadGroup.add(rd); crossStreetMeshes.push(rd);
+    const cl = centerlineStrip(cs.x, cs.y_min, cs.y_max, 1.2);
+    roadGroup.add(cl); crossStreetMeshes.push(cl);
   }
 }
 

@@ -3910,6 +3910,28 @@ class NetworkCanvas(tk.Canvas):
                 self.create_line(p0[0], p0[1], p1[0], p1[1], fill=_CITY_ROAD_MARK,
                                   width=1, dash=(8, 7))
 
+        # Perpendicular cross streets, evenly spaced along the corridor,
+        # each spanning every avenue's y-extent -- real "+" intersections
+        # where a cross street crosses each avenue, not just parallel
+        # highway lanes that never cross anything. Drawn after the
+        # avenues (so their asphalt sits visibly on top at each
+        # intersection) with the exact same styling, just rotated 90
+        # degrees. Mirrors the 3D view's own cross streets (ui/web3d/
+        # snapshot.py's _cross_streets, drawn there by world.js's
+        # rebuildCrossStreets) -- same spacing/reach formula in both.
+        cross_reach = avenues[-1] + 21.0 + 10.0
+        cross_spacing = 220.0
+        n_cross = max(1, int(span / cross_spacing))
+        cross_xs = [(i + 0.5) * (span / n_cross) for i in range(n_cross)]
+        for cx_pos in cross_xs:
+            p0 = self._world_to_px(cx_pos, cross_reach)
+            p1 = self._world_to_px(cx_pos, -cross_reach)
+            self.create_line(p0[0], p0[1], p1[0], p1[1], fill=_CITY_SIDEWALK,
+                              width=road_px + sidewalk_px * 2)
+            self.create_line(p0[0], p0[1], p1[0], p1[1], fill=_CITY_ROAD, width=road_px)
+            self.create_line(p0[0], p0[1], p1[0], p1[1], fill=_CITY_ROAD_MARK,
+                              width=1, dash=(8, 7))
+
         # One building row per gap between consecutive avenues (plus a
         # final sparse "outskirts" gap beyond the last avenue out to
         # depth) -- (row depth, along-corridor spacing, (P(tier==1),
@@ -3949,6 +3971,8 @@ class NetworkCanvas(tk.Canvas):
                 n_slots = max(1, int((x1 - x0) / spacing))
                 for i in range(n_slots + 1):
                     wx = x0 + i * spacing
+                    if any(abs(wx - cxp) < 32.0 for cxp in cross_xs):
+                        continue  # keep clear of the cross streets' own paved width
                     if self._hash01(int(wx), row_idx, int(row_sign), 41) < 0.28:
                         continue  # the occasional gap, not solid wall-to-wall
                     r01 = self._hash01(int(wx), row_idx, int(row_sign), 42)
