@@ -617,18 +617,20 @@ def _diagnose_unjoined(node, sim) -> Optional[Tuple[str, str]]:
     return _ERR_CONNECTING
 
 
-def dist_to_ap_m(node, sim) -> Optional[float]:
-    """Straight-line distance (metres) from `node` to the AP it's
-    actually associated with, falling back to the nearest AP if it
-    isn't associated with one yet -- NOT always node 0. Under multi-AP
-    (multi_ap, cars_uavs), a STA sitting right next to, and correctly
-    associated with, AP5 would show its distance to AP0 instead if this
-    stayed hardcoded, which could read as a misleadingly large distance
-    (hundreds of metres to kilometres) for a node whose real link is
-    short and healthy -- exactly the "why does a node 1.5km away still
-    show connected" confusion this was causing. Single-AP topologies are
+def resolve_ap_peer(node, sim):
+    """The AP `node` is actually associated with, falling back to the
+    nearest AP if it isn't associated with one yet -- NOT always node 0.
+    Under multi-AP (multi_ap, cars_uavs), a STA sitting right next to,
+    and correctly associated with, AP5 needs distance/RSSI computed
+    against AP5, not against AP0 -- every "how far/how strong is this
+    link" readout in this codebase (the canvas's own distance label,
+    the Node Settings panel's distance+RSSI readout in dashboard_tk.py)
+    shares this one resolution instead of each hardcoding sim.nodes[0]
+    independently, which is exactly how that assumption survived in two
+    separate places the first time. Single-AP topologies are
     unaffected: there's only ever one AP candidate there, so this
-    reduces to the exact same node-0 distance as before."""
+    reduces to the exact same node-0 resolution as before. Returns None
+    if there's no AP to resolve to (e.g. `node` itself is the only AP)."""
     if sim is None or node is None:
         return None
     ap_ids = sim.config.get("topology", {}).get("ap_ids", [0]) if sim.config else [0]
@@ -643,7 +645,18 @@ def dist_to_ap_m(node, sim) -> Optional[float]:
             return None
         ap = min(candidates,
                  key=lambda a: math.hypot(node.pos[0] - a.pos[0], node.pos[1] - a.pos[1]))
-    if ap is node:
+    return None if ap is node else ap
+
+
+def dist_to_ap_m(node, sim) -> Optional[float]:
+    """Straight-line distance (metres) from `node` to the AP it's
+    actually associated with (see resolve_ap_peer) -- NOT always node 0.
+    Under multi-AP, that used to read as a misleadingly large distance
+    (hundreds of metres to kilometres) for a node whose real link is
+    short and healthy -- exactly the "why does a node 1.5km away still
+    show connected" confusion this was causing."""
+    ap = resolve_ap_peer(node, sim)
+    if ap is None:
         return None
     return math.hypot(node.pos[0] - ap.pos[0], node.pos[1] - ap.pos[1])
 

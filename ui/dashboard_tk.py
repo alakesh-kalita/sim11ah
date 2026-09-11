@@ -43,14 +43,14 @@ try:
         NetworkCanvas, range_m_for_node, set_range_m_for_node, classify_frame_kind,
         advance_drone_positions, advance_uav_positions, _apply_environment_path_loss,
         _declutter_obstructed_nodes, save_topology, load_topology, apply_topology,
-        _ap_range_m,
+        _ap_range_m, resolve_ap_peer,
     )
 except ImportError:
     from topology_canvas import (
         NetworkCanvas, range_m_for_node, set_range_m_for_node, classify_frame_kind,
         advance_drone_positions, advance_uav_positions, _apply_environment_path_loss,
         _declutter_obstructed_nodes, save_topology, load_topology, apply_topology,
-        _ap_range_m,
+        _ap_range_m, resolve_ap_peer,
     )
 
 from sim11ah.mobility import highway_loop_step, uav_waypoint_step
@@ -1392,8 +1392,13 @@ class Dashboard(tk.Tk):
             self._np_assoc_frame.pack_forget()
 
     def _update_node_dist_label(self, node):
-        ap = self.sim.nodes.get(0)
-        if ap is None or node.node_id == 0 or ap.phy is None or node.phy is None:
+        # The AP `node` is actually associated with (falling back to the
+        # nearest one if unassociated), not always node 0 -- see
+        # resolve_ap_peer's own docstring. Under multi-AP a STA right next
+        # to, and correctly associated with, AP5 needs its distance/RSSI
+        # measured against AP5, not AP0.
+        ap = resolve_ap_peer(node, self.sim)
+        if ap is None or ap.phy is None or node.phy is None:
             self._np_dist_lbl.config(text="")
             return
         dist = math.hypot(node.pos[0] - ap.pos[0], node.pos[1] - ap.pos[1])
