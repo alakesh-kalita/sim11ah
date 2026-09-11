@@ -1912,7 +1912,10 @@ class NetworkCanvas(tk.Canvas):
         the tower/drone glyphs' fuller shadow+shading treatment (a car
         population stays small, so there's room for it, but this is still
         meant to read at a glance, not as a model kit)."""
-        length, width = 15.0, 7.6
+        # 3x on top of the already-1.6x-enlarged 9.0x4.6 original -- a
+        # 200% increase (per explicit request) applied to the CURRENT
+        # size, not the original baseline.
+        length, width = 45.0, 22.8
         ch, sh = math.cos(heading), math.sin(heading)
         perp = heading + math.pi / 2.0
         cp, sp = math.cos(perp), math.sin(perp)
@@ -1920,8 +1923,8 @@ class NetworkCanvas(tk.Canvas):
         def _pt(dl, dw):
             return px + dl * ch + dw * cp, py + dl * sh + dw * sp
 
-        self.create_oval(px - length * 0.6 + 3, py - width * 0.6 + 3,
-                          px + length * 0.6 + 3, py + width * 0.6 + 3,
+        self.create_oval(px - length * 0.6 + 9, py - width * 0.6 + 9,
+                          px + length * 0.6 + 9, py + width * 0.6 + 9,
                           fill=_SHADOW, outline="", stipple="gray50", tags=("ovl",))
 
         corners = []
@@ -1944,7 +1947,7 @@ class NetworkCanvas(tk.Canvas):
         # lights already establish for the other moving glyph on this canvas.
         for dl, lcolor in ((length * 0.52, "#fff4d6"), (-length * 0.52, "#ff5c5c")):
             lx, ly = _pt(dl, 0.0)
-            self.create_oval(lx - 1.7, ly - 1.7, lx + 1.7, ly + 1.7,
+            self.create_oval(lx - 5.1, ly - 5.1, lx + 5.1, ly + 5.1,
                               fill=lcolor, outline="", tags=("ovl",))
 
     def _draw_scooter_icon(self, px: float, py: float, heading: float, color: str) -> None:
@@ -1953,7 +1956,10 @@ class NetworkCanvas(tk.Canvas):
         wheel dots fore/aft instead of a cabin inset) so it reads as a
         distinct, lighter vehicle at a glance rather than just a smaller
         car."""
-        length, width = 8.8, 3.7
+        # 3x on top of the already-1.6x-enlarged 5.2x2.2 original -- a
+        # 200% increase (per explicit request) applied to the CURRENT
+        # size, not the original baseline.
+        length, width = 26.4, 11.1
         ch, sh = math.cos(heading), math.sin(heading)
         perp = heading + math.pi / 2.0
         cp, sp = math.cos(perp), math.sin(perp)
@@ -1961,8 +1967,8 @@ class NetworkCanvas(tk.Canvas):
         def _pt(dl, dw):
             return px + dl * ch + dw * cp, py + dl * sh + dw * sp
 
-        self.create_oval(px - length * 0.6 + 2.5, py - width * 0.6 + 2.5,
-                          px + length * 0.6 + 2.5, py + width * 0.6 + 2.5,
+        self.create_oval(px - length * 0.6 + 7.5, py - width * 0.6 + 7.5,
+                          px + length * 0.6 + 7.5, py + width * 0.6 + 7.5,
                           fill=_SHADOW, outline="", stipple="gray50", tags=("ovl",))
 
         # Narrow deck body -- an elongated rounded rectangle rather than
@@ -1978,10 +1984,10 @@ class NetworkCanvas(tk.Canvas):
         # scooters don't get a cabin inset (nothing to put one on).
         for dl, wcolor in ((length * 0.48, "#1f2937"), (-length * 0.48, "#1f2937")):
             wx, wy = _pt(dl, 0.0)
-            self.create_oval(wx - 1.4, wy - 1.4, wx + 1.4, wy + 1.4,
+            self.create_oval(wx - 4.2, wy - 4.2, wx + 4.2, wy + 4.2,
                               fill=wcolor, outline="", tags=("ovl",))
         hx, hy = _pt(length * 0.52, 0.0)
-        self.create_oval(hx - 1.4, hy - 1.4, hx + 1.4, hy + 1.4,
+        self.create_oval(hx - 4.2, hy - 4.2, hx + 4.2, hy + 4.2,
                           fill="#fff4d6", outline="", tags=("ovl",))
 
     def _draw_tower_icon(self, px: float, py: float, R: float, arm_count: int,
@@ -2124,12 +2130,20 @@ class NetworkCanvas(tk.Canvas):
         filled with _assoc_color(). The id label below the glyph is
         colour-matched to that same green/amber/red read instead."""
         heading = self._drone_heading_px(did)
-        r = 10.0
+        # 3.0 = a 200% increase (per explicit request), applied to every
+        # spatial dimension below (radii/offsets/shape sizes) -- not to
+        # outline stroke widths or font sizes, which stay a fixed, crisp
+        # thickness/size regardless of how big the glyph itself gets, so
+        # the drone reads as "bigger", not "the same icon with thicker
+        # lines". Label y-offsets (py + r + ...) automatically move
+        # further out as r grows, so labels never overlap the bigger body.
+        scale = 3.0
+        r = 10.0 * scale
         arm_ang = heading + math.pi / 4.0
 
         status_color = _assoc_color(node) if node is not None else _MUTED
 
-        sh = 4.0
+        sh = 4.0 * scale
         self.create_oval(px - r * 0.95 + sh, py - r * 0.68 + sh,
                           px + r * 0.95 + sh, py + r * 0.68 + sh,
                           fill=_SHADOW, outline="", stipple="gray50", tags=("ovl",))
@@ -2143,10 +2157,10 @@ class NetworkCanvas(tk.Canvas):
                               capstyle="round", tags=("ovl",))
 
         for k, (ax, ay, ang) in enumerate(arm_tips):
-            mr = 2.6
+            mr = 2.6 * scale
             self.create_oval(ax - mr, ay - mr, ax + mr, ay + mr,
                               fill=_DRONE_MOTOR, outline=_DRONE_ARM, width=1, tags=("ovl",))
-            pr = 5.2
+            pr = 5.2 * scale
             self.create_oval(ax - pr, ay - pr, ax + pr, ay + pr,
                               fill=_DRONE_ROTOR, outline="", stipple="gray25", tags=("ovl",))
             self.create_oval(ax - pr, ay - pr, ax + pr, ay + pr,
@@ -2159,31 +2173,31 @@ class NetworkCanvas(tk.Canvas):
                 self.create_line(sx, sy, ox, oy, fill=_DRONE_ARM, width=1,
                                   stipple="gray50", tags=("ovl",))
             if k == 0:
-                self.create_oval(ax - 1.5, ay - 1.5, ax + 1.5, ay + 1.5,
+                self.create_oval(ax - 1.5 * scale, ay - 1.5 * scale, ax + 1.5 * scale, ay + 1.5 * scale,
                                   fill=_DRONE_LED_L, outline="", tags=("ovl",))
             elif k == 3:
-                self.create_oval(ax - 1.5, ay - 1.5, ax + 1.5, ay + 1.5,
+                self.create_oval(ax - 1.5 * scale, ay - 1.5 * scale, ax + 1.5 * scale, ay + 1.5 * scale,
                                   fill=_DRONE_LED_R, outline="", tags=("ovl",))
 
         nx, ny = px + r * 0.55 * math.cos(heading), py + r * 0.55 * math.sin(heading)
         tx, ty = px - r * 0.55 * math.cos(heading), py - r * 0.55 * math.sin(heading)
         perp = heading + math.pi / 2.0
-        wx, wy = 3.2 * math.cos(perp), 3.2 * math.sin(perp)
+        wx, wy = 3.2 * scale * math.cos(perp), 3.2 * scale * math.sin(perp)
         self.create_polygon(nx, ny, px + wx, py + wy, tx, ty, px - wx, py - wy,
                              fill=_DRONE_BODY, outline=_DRONE_ARM, width=1, tags=("ovl",))
         self.create_polygon(px, py, px + wx * 0.6, py + wy * 0.6,
                              nx, ny, px - wx * 0.6, py - wy * 0.6,
                              fill=_DRONE_BODY_LT, outline="", tags=("ovl",))
 
-        self.create_oval(nx - 2.3, ny - 2.3, nx + 2.3, ny + 2.3,
+        self.create_oval(nx - 2.3 * scale, ny - 2.3 * scale, nx + 2.3 * scale, ny + 2.3 * scale,
                           fill=_DRONE_ARM, outline=_DRONE_ARM, width=1, tags=("ovl",))
         glint_ang = heading - 0.6
-        gx = nx + 0.9 * math.cos(glint_ang)
-        gy = ny + 0.9 * math.sin(glint_ang)
-        self.create_oval(gx - 0.8, gy - 0.8, gx + 0.8, gy + 0.8,
+        gx = nx + 0.9 * scale * math.cos(glint_ang)
+        gy = ny + 0.9 * scale * math.sin(glint_ang)
+        self.create_oval(gx - 0.8 * scale, gy - 0.8 * scale, gx + 0.8 * scale, gy + 0.8 * scale,
                           fill=_DRONE_LENS, outline="", tags=("ovl",))
 
-        self.create_oval(tx - 1.3, ty - 1.3, tx + 1.3, ty + 1.3,
+        self.create_oval(tx - 1.3 * scale, ty - 1.3 * scale, tx + 1.3 * scale, ty + 1.3 * scale,
                           fill=_DRONE_LED_AFT, outline=_DRONE_ARM, width=1, tags=("ovl",))
 
         if did == self.selected_id or did in self._selected_ids:

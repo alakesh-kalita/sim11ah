@@ -255,6 +255,12 @@ function buildDrone(isRelay) {
   const led = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.6, 1.6), ledMat);
   led.position.set(0, 1.8, 3.2);
   g.add(led);
+  // Uniform group scale (same approach as buildCarBody/buildScooter) --
+  // 3.0 = a 200% increase (per explicit request) so UAVs/relay drones
+  // are as easy to spot as the now much bigger cars/scooters, with
+  // every part (hull/arms/rotors/LED) staying proportioned exactly as
+  // authored above.
+  g.scale.setScalar(3.0);
   return { group: g, ledMat, rotors };
 }
 
@@ -660,9 +666,11 @@ function buildCarBody(bodyColor) {
   // Uniform group scale, not larger box dimensions throughout -- a
   // single multiplier keeps every part (body/cabin/wheels/lights)
   // proportioned exactly as authored above while making the whole car
-  // noticeably bigger/easier to spot at this scene's scale. Matches the
-  // ~1.6x bump topology_canvas.py's own 2D car icon got.
-  group.scale.setScalar(1.6);
+  // noticeably bigger/easier to spot at this scene's scale. 4.8 = 1.6 x
+  // 3.0, a 200% increase (per explicit request) on top of the earlier
+  // 1.6x bump -- matches the same on-top-of-current-size scaling
+  // topology_canvas.py's own 2D car icon just got.
+  group.scale.setScalar(4.8);
   return { group, bodyMat };
 }
 
@@ -721,7 +729,7 @@ function buildScooter() {
   led.position.set(0, 2.0, 0);
   group.add(led);
   // Same uniform-scale approach as buildCarBody -- see its comment.
-  group.scale.setScalar(1.6);
+  group.scale.setScalar(4.8);
   return { group, ledMat, rotors: null };
 }
 
