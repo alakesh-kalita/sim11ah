@@ -9,6 +9,7 @@ import { loadAllTextures } from './js/textures.js';
 import { camera, composer, controls, resize, applyEnvironment, updateSunSprite } from './js/scene.js';
 import {
   rebuildProps, rebuildBuildings, rebuildRoads, rebuildCrossStreets, rebuildOverbridge,
+  setActiveCrossStreets,
   industrialRoadLoops, rebuildIndustrialTraffic, stepIndustrialTraffic,
   rebuildMilitaryPatrol, stepMilitaryPatrol,
   applyLoadedTextures, siteRadius, militaryExtent,
@@ -45,6 +46,13 @@ async function poll() {
     const roadLoops = state.environment === 'Smart City' ? (state.road_loops ?? [])
       : state.environment === 'Industrial Site' ? industrialRoadLoops(state.obstacles, state.variant)
       : [];
+    // Before rebuildProps/rebuildBuildings run, not after -- both call
+    // clearOfRoads/scatterPos internally (tree/building placement), and
+    // cars_uavs's cross streets are straight perpendicular segments, not
+    // loops, so they were never being avoided at all (reported: "you put
+    // trees and buildings on the road"). No-op (empty array) for every
+    // other environment.
+    setActiveCrossStreets(state.cross_streets ?? []);
     rebuildProps(state.environment, state.obstacles, roadLoops, nodeExtentRadius(state.nodes), state.variant);
     rebuildBuildings(state.obstacles, state.environment, state.variant, roadLoops);
     rebuildRoads(roadLoops);

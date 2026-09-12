@@ -962,9 +962,33 @@ function loopDist(l, x, z) {
   const qx = Math.abs(x - (l.cx || 0)) - l.hw, qz = Math.abs(z + (l.cy || 0)) - l.hh;
   return Math.abs(Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qz), 0));
 }
+// cars_uavs mode's cross streets (rebuildCrossStreets) aren't "loops" --
+// straight perpendicular segments at a fixed x, not rectangles -- so
+// every one of clearOfRoads/scatterPos's ~25 call sites across every
+// environment's prop scatter had NO WAY to avoid them at all: reported
+// back as buildings and trees landing directly on the road. Rather than
+// thread a new parameter through all ~25 (most of which are Industrial
+// Site/Suburban Corridor/generic Smart City call sites that will never
+// see a cross street), setActiveCrossStreets below sets a shared module
+// value once per rebuild cycle (app.js's poll loop, right before
+// rebuildProps/rebuildBuildings run) that clearOfRoads just also checks
+// -- every existing caller gets cross-street avoidance for free, and
+// stays a no-op (empty array) for every environment that has none.
+let activeCrossStreets = [];
+export function setActiveCrossStreets(crossStreets) {
+  activeCrossStreets = crossStreets || [];
+}
 function clearOfRoads(x, z, loops, margin) {
   for (const l of loops) {
     if (loopDist(l, x, z) < ROAD_HALF_W + SIDEWALK_W + margin) return false;
+  }
+  // Same "scene z = -world y" convention loopDist's own comment already
+  // documents -- cross streets are stored in world (x, y), from
+  // ui/web3d/snapshot.py's _cross_streets.
+  const worldY = -z;
+  for (const cs of activeCrossStreets) {
+    if (worldY < cs.y_min - margin || worldY > cs.y_max + margin) continue;
+    if (Math.abs(x - cs.x) < ROAD_HALF_W + SIDEWALK_W + margin) return false;
   }
   return true;
 }
