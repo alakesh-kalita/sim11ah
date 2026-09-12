@@ -1435,6 +1435,16 @@ class NetworkCanvas(tk.Canvas):
         self._manual_scale: Optional[float] = None
         self._view_center: Optional[tuple] = None
 
+        # _transform()/_bounds() used to be recomputed from scratch on
+        # *every* single _world_to_px() call -- with ~50 nodes and a
+        # fading-trail redraw touching hundreds of points a tick, that was
+        # tens of thousands of redundant O(nodes) bounds scans per tick (the
+        # dominant cost of a tick once profiled: _bounds() alone was >40% of
+        # total tick time). Node positions are fixed for the duration of one
+        # redraw pass, so cache the transform and invalidate it only at the
+        # top of each pass (_redraw/_redraw_overlay) rather than per point.
+        self._transform_cache: Optional[tuple] = None
+
         # Live packet-transmission animation state. Unicast frames fly from
         # tx to rx as a short comet-trail dot; broadcasts (beacons etc, no
         # single rx) pulse as an expanding ring from the sender instead.
@@ -1624,6 +1634,7 @@ class NetworkCanvas(tk.Canvas):
         self._redraw_overlay()
 
     def _redraw_overlay(self) -> None:
+        self._invalidate_transform_cache()
         self.delete("ovl")
         if self.sim is None:
             return
@@ -1970,10 +1981,11 @@ class NetworkCanvas(tk.Canvas):
         the tower/drone glyphs' fuller shadow+shading treatment (a car
         population stays small, so there's room for it, but this is still
         meant to read at a glance, not as a model kit)."""
-        # 3x on top of the already-1.6x-enlarged 9.0x4.6 original -- a
-        # 200% increase (per explicit request) applied to the CURRENT
-        # size, not the original baseline.
-        length, width = 45.0, 22.8
+        # Small (per explicit request) -- smaller than even the original
+        # 9.0x4.6 this grew from across two earlier size-increase
+        # requests, so it reads as an unambiguous reduction rather than
+        # just "back to normal".
+        length, width = 7.0, 3.6
         ch, sh = math.cos(heading), math.sin(heading)
         perp = heading + math.pi / 2.0
         cp, sp = math.cos(perp), math.sin(perp)
@@ -1981,8 +1993,8 @@ class NetworkCanvas(tk.Canvas):
         def _pt(dl, dw):
             return px + dl * ch + dw * cp, py + dl * sh + dw * sp
 
-        self.create_oval(px - length * 0.6 + 9, py - width * 0.6 + 9,
-                          px + length * 0.6 + 9, py + width * 0.6 + 9,
+        self.create_oval(px - length * 0.6 + 1.5, py - width * 0.6 + 1.5,
+                          px + length * 0.6 + 1.5, py + width * 0.6 + 1.5,
                           fill=_SHADOW, outline="", stipple="gray50", tags=("ovl",))
 
         corners = []
@@ -2005,7 +2017,7 @@ class NetworkCanvas(tk.Canvas):
         # lights already establish for the other moving glyph on this canvas.
         for dl, lcolor in ((length * 0.52, "#fff4d6"), (-length * 0.52, "#ff5c5c")):
             lx, ly = _pt(dl, 0.0)
-            self.create_oval(lx - 5.1, ly - 5.1, lx + 5.1, ly + 5.1,
+            self.create_oval(lx - 0.9, ly - 0.9, lx + 0.9, ly + 0.9,
                               fill=lcolor, outline="", tags=("ovl",))
 
     def _draw_scooter_icon(self, px: float, py: float, heading: float, color: str) -> None:
@@ -2014,10 +2026,10 @@ class NetworkCanvas(tk.Canvas):
         wheel dots fore/aft instead of a cabin inset) so it reads as a
         distinct, lighter vehicle at a glance rather than just a smaller
         car."""
-        # 3x on top of the already-1.6x-enlarged 5.2x2.2 original -- a
-        # 200% increase (per explicit request) applied to the CURRENT
-        # size, not the original baseline.
-        length, width = 26.4, 11.1
+        # Small (per explicit request) -- smaller than even the original
+        # 5.2x2.2 this grew from across two earlier size-increase
+        # requests.
+        length, width = 4.0, 1.7
         ch, sh = math.cos(heading), math.sin(heading)
         perp = heading + math.pi / 2.0
         cp, sp = math.cos(perp), math.sin(perp)
@@ -2025,8 +2037,8 @@ class NetworkCanvas(tk.Canvas):
         def _pt(dl, dw):
             return px + dl * ch + dw * cp, py + dl * sh + dw * sp
 
-        self.create_oval(px - length * 0.6 + 7.5, py - width * 0.6 + 7.5,
-                          px + length * 0.6 + 7.5, py + width * 0.6 + 7.5,
+        self.create_oval(px - length * 0.6 + 1.0, py - width * 0.6 + 1.0,
+                          px + length * 0.6 + 1.0, py + width * 0.6 + 1.0,
                           fill=_SHADOW, outline="", stipple="gray50", tags=("ovl",))
 
         # Narrow deck body -- an elongated rounded rectangle rather than
@@ -2042,10 +2054,10 @@ class NetworkCanvas(tk.Canvas):
         # scooters don't get a cabin inset (nothing to put one on).
         for dl, wcolor in ((length * 0.48, "#1f2937"), (-length * 0.48, "#1f2937")):
             wx, wy = _pt(dl, 0.0)
-            self.create_oval(wx - 4.2, wy - 4.2, wx + 4.2, wy + 4.2,
+            self.create_oval(wx - 0.6, wy - 0.6, wx + 0.6, wy + 0.6,
                               fill=wcolor, outline="", tags=("ovl",))
         hx, hy = _pt(length * 0.52, 0.0)
-        self.create_oval(hx - 4.2, hy - 4.2, hx + 4.2, hy + 4.2,
+        self.create_oval(hx - 0.6, hy - 0.6, hx + 0.6, hy + 0.6,
                           fill="#fff4d6", outline="", tags=("ovl",))
 
     def _draw_tower_icon(self, px: float, py: float, R: float, arm_count: int,
@@ -2137,7 +2149,7 @@ class NetworkCanvas(tk.Canvas):
             if math.hypot(pos[0] - lx, pos[1] - ly) > jump_threshold:
                 trail.clear()
         trail.append(pos)
-        if len(trail) > 16:
+        if len(trail) > 8:
             del trail[0]
 
     def _draw_fading_trail(self, trail: list) -> None:
@@ -2188,14 +2200,15 @@ class NetworkCanvas(tk.Canvas):
         filled with _assoc_color(). The id label below the glyph is
         colour-matched to that same green/amber/red read instead."""
         heading = self._drone_heading_px(did)
-        # 3.0 = a 200% increase (per explicit request), applied to every
-        # spatial dimension below (radii/offsets/shape sizes) -- not to
-        # outline stroke widths or font sizes, which stay a fixed, crisp
-        # thickness/size regardless of how big the glyph itself gets, so
-        # the drone reads as "bigger", not "the same icon with thicker
-        # lines". Label y-offsets (py + r + ...) automatically move
-        # further out as r grows, so labels never overlap the bigger body.
-        scale = 3.0
+        # 0.7 -- small (per explicit request), smaller than even the
+        # original r=10.0 (scale=1.0 equivalent) this grew from via an
+        # earlier 200% increase. Applied to every spatial dimension below
+        # (radii/offsets/shape sizes) -- not to outline stroke widths or
+        # font sizes, which stay a fixed, crisp thickness/size regardless
+        # of how big or small the glyph itself gets. Label y-offsets
+        # (py + r + ...) automatically move closer in as r shrinks, so
+        # labels stay right under the now-smaller body.
+        scale = 0.7
         r = 10.0 * scale
         arm_ang = heading + math.pi / 4.0
 
@@ -2296,7 +2309,13 @@ class NetworkCanvas(tk.Canvas):
         pady = (ymax - ymin) * 0.18 + 8.0
         return (xmin - padx, xmax + padx, ymin - pady, ymax + pady)
 
+    def _invalidate_transform_cache(self) -> None:
+        self._transform_cache = None
+
     def _transform(self):
+        if self._transform_cache is not None:
+            return self._transform_cache
+
         W = self.winfo_width() or int(self.cget("width") or 400)
         H = self.winfo_height() or int(self.cget("height") or 400)
         if self._manual_scale is not None:
@@ -2306,13 +2325,16 @@ class NetworkCanvas(tk.Canvas):
             else:
                 xmin, xmax, ymin, ymax = self._bounds()
                 wcx, wcy = (xmin + xmax) / 2.0, (ymin + ymax) / 2.0
-            return scale, W / 2.0, H / 2.0, wcx, wcy
+            result = (scale, W / 2.0, H / 2.0, wcx, wcy)
+        else:
+            xmin, xmax, ymin, ymax = self._bounds()
+            wx = max(xmax - xmin, 1e-6)
+            wy = max(ymax - ymin, 1e-6)
+            scale = max(min((W - 40) / wx, (H - 40) / wy), 1e-6)
+            result = (scale, W / 2.0, H / 2.0, (xmin + xmax) / 2.0, (ymin + ymax) / 2.0)
 
-        xmin, xmax, ymin, ymax = self._bounds()
-        wx = max(xmax - xmin, 1e-6)
-        wy = max(ymax - ymin, 1e-6)
-        scale = max(min((W - 40) / wx, (H - 40) / wy), 1e-6)
-        return scale, W / 2.0, H / 2.0, (xmin + xmax) / 2.0, (ymin + ymax) / 2.0
+        self._transform_cache = result
+        return result
 
     def _world_to_px(self, x: float, y: float):
         scale, cx, cy, wcx, wcy = self._transform()
@@ -2461,6 +2483,7 @@ class NetworkCanvas(tk.Canvas):
 
     # ── Drawing ───────────────────────────────────────────────────────────
     def _redraw(self):
+        self._invalidate_transform_cache()
         self.delete("all")
         W = self.winfo_width() or int(self.cget("width") or 400)
         H = self.winfo_height() or int(self.cget("height") or 400)
