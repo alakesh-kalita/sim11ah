@@ -89,11 +89,11 @@ async function poll() {
 // outliers. The 80th-percentile distance keeps the dense part of the
 // network large instead; a couple of outliers just sit past the built
 // scene, same as any other map view.
-function nodeExtentRadius(nodesData, originX = 0, originY = 0) {
+function nodeExtentRadius(nodesData, originX = 0, originY = 0, pct = 0.8) {
   if (!nodesData.length) return 0;
   const dists = nodesData.map((n) => Math.hypot(n.pos[0] - originX, n.pos[1] - originY))
     .sort((a, b) => a - b);
-  const pIdx = Math.min(dists.length - 1, Math.floor(dists.length * 0.8));
+  const pIdx = Math.min(dists.length - 1, Math.floor(dists.length * pct));
   return dists[pIdx];
 }
 
@@ -122,19 +122,41 @@ function frameCameraOnNodes(nodesData, obstacles, environment) {
     cxWorld /= nodesData.length; cyWorld /= nodesData.length;
     targetX = cxWorld; targetZ = -cyWorld;
   }
-  let maxR = Math.max(100, nodeExtentRadius(nodesData, targetX, -targetZ));
-  // Also make sure every AP's own coverage-range ring (updateApRanges,
-  // a fixed circle around that AP's position, independent of where
-  // vehicles currently happen to be) fits inside the initial view --
-  // nodeExtentRadius alone only guarantees the live vehicle SCATTER is
-  // framed, and a range ring can extend past that scatter's own 80th-
-  // percentile radius (especially early on, or wherever traffic happens
-  // to be light), which would otherwise leave part of the ring outside
-  // the frustum by default.
-  for (const n of apNodes) {
-    if (typeof n.range_m !== 'number' || n.range_m <= 0) continue;
-    const apDist = Math.hypot(n.pos[0] - targetX, n.pos[1] + targetZ);
-    maxR = Math.max(maxR, apDist + n.range_m);
+  let maxR;
+  if (apNodes.length > 1) {
+    // Multi-AP corridor (cars_uavs/multi_ap): fitting every AP's own
+    // range ring (802.11ah's real range is 900m+) AND the AP grid's own
+    // spread (its far ends can be ~1km from the centroid this view is
+    // targeted on) at once used to force the camera to an ~880m-high
+    // satellite view for a typical cars_uavs scene -- at that distance
+    // NOTHING at ground level (buildings, vehicles, road/manhole detail,
+    // all of which this scene now actually has) is recognisable as
+    // anything but a speck. Framed on the node scatter alone instead, at
+    // a tighter percentile than the single-AP branch below (the long
+    // corridor's own far ends don't need to fit in the very first frame
+    // either) -- a detailed establishing shot over the busiest part of
+    // the corridor, not an orthographic map of the whole thing. Scroll/
+    // pan/free-fly reach the rest; nothing is actually hidden, just not
+    // forced into frame 1.
+    maxR = Math.max(100, nodeExtentRadius(nodesData, targetX, -targetZ, 0.5));
+  } else {
+    maxR = Math.max(100, nodeExtentRadius(nodesData, targetX, -targetZ));
+    // Also make sure the single AP's own coverage-range ring
+    // (updateApRanges, a fixed circle around its position, independent
+    // of where vehicles currently happen to be) fits inside the initial
+    // view -- nodeExtentRadius alone only guarantees the live vehicle
+    // SCATTER is framed, and a range ring can extend past that scatter's
+    // own 80th-percentile radius (especially early on, or wherever
+    // traffic happens to be light), which would otherwise leave part of
+    // the ring outside the frustum by default. Only reachable when
+    // apNodes.length <= 1 -- see the multi-AP branch above for why this
+    // exact approach doesn't scale to several APs spread across a
+    // corridor.
+    for (const n of apNodes) {
+      if (typeof n.range_m !== 'number' || n.range_m <= 0) continue;
+      const apDist = Math.hypot(n.pos[0] - targetX, n.pos[1] + targetZ);
+      maxR = Math.max(maxR, apDist + n.range_m);
+    }
   }
   // Also frame around the environment's built structures, not just node
   // positions -- a base/campus/site can extend well past a tight node
