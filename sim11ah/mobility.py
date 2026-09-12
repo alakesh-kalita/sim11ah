@@ -59,57 +59,60 @@ def grid_road_step(
     sta_id: int,
     dt: float,
     speed_mps: float,
-    x_bounds: Tuple[float, float],
-    y_bounds: Tuple[float, float],
+    x_stops: Tuple[float, ...],
+    y_stops: Tuple[float, ...],
     init_axis: str = "x",
     init_dir: float = 1.0,
+    turn_prob: float = 0.35,
 ) -> None:
     """
-    Drive a road vehicle continuously through a rectangular road grid --
-    replaces the old highway_loop_step/cross_street_loop_step, which
-    reset (teleported) a vehicle back to the start the instant it
-    reached the far end of its lane. That reset was itself a deliberate
-    replacement for an even older direction-reversing bounce, but got
-    reported as still visibly discontinuous ("position gets reset") --
-    this is the actual fix: a vehicle never resets and never reverses in
-    place, it turns 90 degrees onto the perpendicular road exactly where
-    its current one ends and keeps driving, forever.
+    Drive a road vehicle continuously through a real road GRID -- replaces
+    the old highway_loop_step/cross_street_loop_step, which reset
+    (teleported) a vehicle back to the start the instant it reached the
+    far end of its lane. That reset was itself a deliberate replacement
+    for an even older direction-reversing bounce, but got reported as
+    still visibly discontinuous ("position gets reset") -- so a vehicle
+    here never resets and never reverses in place, it turns 90 degrees
+    onto a perpendicular road instead.
 
-    State (which axis it's currently travelling along, and which
-    direction) lives in sim._grid_road_state[sta_id], seeded from
-    init_axis/init_dir only the first time a given sta_id is seen -- every
-    call after that ignores init_axis/init_dir entirely and just reads
-    back whatever this function itself last decided, so a single call
-    site can drive EVERY vehicle (avenue-started or cross-street-started
-    alike) through the same turning logic without needing to track "is
-    this still an avenue vehicle" itself; topology.py's CarsUavsBuilder
-    only needs init_axis/init_dir to match how each vehicle was actually
+    First version of this function always turned the same way (a fixed
+    "turn right" rule) and only ever turned at the outermost road on
+    each axis -- every vehicle's path converged onto the exact same
+    shared rectangle after its first lap, reported back as "all the
+    vehicles are following the same pattern... should be random". Fixed
+    here: x_stops/y_stops are every real cross-street x / avenue y a
+    vehicle on this axis will actually pass over (not just the two
+    outermost), and at each one reached mid-road there's a turn_prob
+    chance of turning -- onto a RANDOMLY chosen direction (left or
+    right, 50/50) rather than always the same way -- instead of always
+    continuing straight. Reaching the outermost stop in the current
+    direction of travel (nothing further to drive to) still forces a
+    turn, same as before, just now picked randomly too. Uses
+    sim.engine.rng (the simulator's own seeded RNG), not Python's global
+    random module, so traffic patterns stay reproducible for a given
+    seed like everything else in this codebase.
+
+    State (current axis + direction) lives in sim._grid_road_state[sta_id],
+    seeded from init_axis/init_dir only the first time a given sta_id is
+    seen -- every call after that ignores init_axis/init_dir entirely and
+    just reads back whatever this function itself last decided, so one
+    call site can drive EVERY vehicle (avenue-started or cross-street-
+    started alike) through the same logic without tracking "is this
+    still an avenue vehicle" itself; topology.py's CarsUavsBuilder only
+    needs init_axis/init_dir to match how each vehicle was actually
     placed (avenue: init_axis="x", init_dir=sign(lane_y); cross street:
-    init_axis="y", init_dir=sign(lane_offset) -- the same sign
-    convention the old functions used).
+    init_axis="y", init_dir=sign(lane_offset)).
 
-    x_bounds/y_bounds are shared by every vehicle (the corridor's own
-    x=[0, span] and y=[-outer_avenue, +outer_avenue] -- see
-    dashboard_tk.py's _advance_drones) and must each coincide with a
-    real road for the turn to happen with zero position jump: x_bounds
-    needs a cross street at both ends (CarsUavsBuilder.build adds
-    boundary cross streets at x=0/x=span for exactly this), y_bounds
-    needs a real avenue at both ends (the outermost one, by
-    construction). A vehicle that starts on an INNER avenue (not at
-    +/-y_bounds) simply drives straight through the interior on its
-    first cross-street leg without turning there -- turns only ever
-    happen where the vehicle's OWN current road ends, matching how a
-    real driver doesn't turn at every intersection it merely passes.
-
-    The four turns always rotate the same way (clockwise, viewed with
-    +x east/+y north: heading east -> turn south, heading south -> turn
-    west, heading west -> turn north, heading north -> turn east) --
-    "turn right" every time, a fixed, simple rule rather than needing to
-    pick a direction at each corner. overflow distance (this tick's step
-    minus however much room was left on the current road) carries onto
-    the new road in the same call, so a vehicle never visibly pauses at
-    a corner even at low tick rates -- capped at a few turns per call as
-    a sanity bound, never expected to matter at any real speed/dt.
+    Every value in x_stops must coincide with a real cross street, every
+    value in y_stops with a real avenue (CarsUavsBuilder.build adds
+    boundary cross streets at x=0/x=span for exactly this, so the
+    corridor's own edges are real turn points too) -- otherwise a turn
+    would jump the vehicle onto a road that doesn't exist there. A
+    vehicle currently on an axis whose OWN position isn't itself one of
+    these stops (e.g. an avenue vehicle riding an inner avenue y that
+    isn't in y_stops) just isn't offered a turn on that leg at all --
+    only entering a leg exactly AT a stop (which every turn, by
+    construction, does) makes turning possible there.
     """
     if not hasattr(sim, "_grid_road_state"):
         sim._grid_road_state = {}
@@ -120,51 +123,55 @@ def grid_road_step(
 
     node = sim.nodes[sta_id]
     x, y = node.pos
-    x_min, x_max = float(x_bounds[0]), float(x_bounds[1])
-    y_min, y_max = float(y_bounds[0]), float(y_bounds[1])
+    xs = sorted(float(v) for v in x_stops)
+    ys = sorted(float(v) for v in y_stops)
+    rng = sim.engine.rng
     remaining = max(0.0, float(speed_mps)) * float(dt)
 
     for _ in range(4):
         if remaining <= 0.0:
             break
         if state["axis"] == "x":
-            if state["dir"] > 0.0:
-                room = x_max - x
-                if remaining < room:
-                    x += remaining
-                    remaining = 0.0
-                else:
-                    remaining -= room
-                    x = x_max
-                    state["axis"], state["dir"] = "y", -1.0
+            forward = state["dir"] > 0.0
+            nxt = min((s for s in xs if s > x + 1e-9), default=None) if forward \
+                else max((s for s in xs if s < x - 1e-9), default=None)
+            if nxt is None:
+                # Already at (or past, from float error) the outermost
+                # stop with nowhere further to go -- force a turn in
+                # place rather than drive off the edge of the grid.
+                state["axis"] = "y"
+                state["dir"] = 1.0 if rng.random() < 0.5 else -1.0
+                continue
+            room = abs(nxt - x)
+            if remaining < room:
+                x += state["dir"] * remaining
+                remaining = 0.0
             else:
-                room = x - x_min
-                if remaining < room:
-                    x -= remaining
-                    remaining = 0.0
-                else:
-                    remaining -= room
-                    x = x_min
-                    state["axis"], state["dir"] = "y", 1.0
+                remaining -= room
+                x = nxt
+                is_extreme = (nxt >= xs[-1] - 1e-9) if forward else (nxt <= xs[0] + 1e-9)
+                if is_extreme or rng.random() < turn_prob:
+                    state["axis"] = "y"
+                    state["dir"] = 1.0 if rng.random() < 0.5 else -1.0
         else:
-            if state["dir"] > 0.0:
-                room = y_max - y
-                if remaining < room:
-                    y += remaining
-                    remaining = 0.0
-                else:
-                    remaining -= room
-                    y = y_max
-                    state["axis"], state["dir"] = "x", 1.0
+            forward = state["dir"] > 0.0
+            nxt = min((s for s in ys if s > y + 1e-9), default=None) if forward \
+                else max((s for s in ys if s < y - 1e-9), default=None)
+            if nxt is None:
+                state["axis"] = "x"
+                state["dir"] = 1.0 if rng.random() < 0.5 else -1.0
+                continue
+            room = abs(nxt - y)
+            if remaining < room:
+                y += state["dir"] * remaining
+                remaining = 0.0
             else:
-                room = y - y_min
-                if remaining < room:
-                    y -= remaining
-                    remaining = 0.0
-                else:
-                    remaining -= room
-                    y = y_min
-                    state["axis"], state["dir"] = "x", -1.0
+                remaining -= room
+                y = nxt
+                is_extreme = (nxt >= ys[-1] - 1e-9) if forward else (nxt <= ys[0] + 1e-9)
+                if is_extreme or rng.random() < turn_prob:
+                    state["axis"] = "x"
+                    state["dir"] = 1.0 if rng.random() < 0.5 else -1.0
 
     node.pos = (x, y)
 
