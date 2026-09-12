@@ -251,6 +251,27 @@ def _cross_streets(canvas) -> List[Dict[str, float]]:
     return [{"x": float(x), "y_min": -y_reach, "y_max": y_reach} for x in xs]
 
 
+def _avenue_ys(canvas) -> List[float]:
+    """cars_uavs mode only: every real avenue's signed y offset (both
+    +/- each magnitude in car_avenue_offsets_m). road_loops' own `hh`
+    field happens to also carry each avenue's offset, but that list
+    mixes in a decorative outer "city limits" loop that isn't a real
+    avenue -- rather than have world.js guess which loops are real from
+    that ambiguous list (exactly the kind of independent-guess drift
+    this project has been bitten by before), this is the same explicit,
+    single-source-of-truth number CarsUavsBuilder.build itself used,
+    sent directly. Used by world.js's rebuildIntersectionFillets to know
+    exactly where a cross street x and a real avenue y actually cross,
+    to round the pavement corner there."""
+    if canvas.environment != "Smart City" or canvas.sim is None:
+        return []
+    topo_cfg = canvas.sim.config.get("topology", {})
+    if topo_cfg.get("mode") != "cars_uavs":
+        return []
+    offsets = topo_cfg.get("car_avenue_offsets_m") or []
+    return sorted({float(y) for o in offsets for y in (o, -o)})
+
+
 def _overbridge(canvas) -> Optional[Dict[str, float]]:
     """cars_uavs mode only: one real grade-separated interchange -- a
     single cross street rises onto a raised deck (ramp up, flat elevated
@@ -489,6 +510,7 @@ def build_snapshot(dashboard) -> Dict[str, Any]:
         "vehicles": _vehicles(canvas),
         "road_loops": _road_loops(canvas),
         "cross_streets": _cross_streets(canvas),
+        "avenue_ys": _avenue_ys(canvas),
         "overbridge": _overbridge(canvas),
         "ap_links": _ap_backbone_pairs(canvas),
         "metrics": metrics,

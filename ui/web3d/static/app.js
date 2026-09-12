@@ -9,7 +9,7 @@ import { loadAllTextures } from './js/textures.js';
 import { camera, composer, controls, resize, applyEnvironment, updateSunSprite } from './js/scene.js';
 import {
   rebuildProps, rebuildBuildings, rebuildRoads, rebuildCrossStreets, rebuildOverbridge,
-  setActiveCrossStreets,
+  rebuildIntersectionFillets, setActiveCrossStreets,
   industrialRoadLoops, rebuildIndustrialTraffic, stepIndustrialTraffic,
   rebuildMilitaryPatrol, stepMilitaryPatrol,
   applyLoadedTextures, siteRadius, militaryExtent,
@@ -64,6 +64,7 @@ async function poll() {
     // positions car/scooter meshes using that lookup this same poll.
     rebuildCrossStreets(state.cross_streets ?? [], state.overbridge ?? null);
     rebuildOverbridge(state.overbridge ?? null);
+    rebuildIntersectionFillets(state.cross_streets ?? [], state.avenue_ys ?? []);
     rebuildIndustrialTraffic(state.obstacles, state.environment, state.variant);
     rebuildMilitaryPatrol(state.obstacles, state.environment);
     updateNodes(state.nodes);

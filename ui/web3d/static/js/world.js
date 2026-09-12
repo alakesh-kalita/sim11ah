@@ -6138,6 +6138,88 @@ export function bridgeDeckHeightAt(x, y) {
   return null;
 }
 
+// ---- rounded intersection corners (cars_uavs mode only) ------------------
+// Every avenue x cross-street crossing draws as a sharp 90-degree "+" --
+// reported as reading unnatural ("no curve in the roads"). A real curve
+// vehicles actually drive would need grid_road_step's straight-line-only
+// mobility rearchitected (real risk of reintroducing the position-reset/
+// same-pattern bugs fixed earlier this session for real functional
+// reasons) -- picked instead, per explicit choice: a purely decorative
+// curb fillet at each of the 4 corners of every intersection, ground-
+// texture patches layered just above the sidewalk that visually round
+// the corner the way a real curb return does, without moving a single
+// road surface vertex or touching where any vehicle actually drives.
+//
+// curbFilletShape's local (0,0) is the sharp pavement corner; the shape
+// covers the sliver between that corner and a quarter-circle arc bulging
+// toward it, in exactly the ground colour, so it reads as the ground
+// having eaten into the corner -- signU/signV pick which of the 4
+// quadrants the pavement (and therefore the fillet) actually occupies.
+// Built once per sign combination, not once per intersection -- every
+// corner across the whole grid reuses one of these 4 shared geometries.
+function curbFilletShape(signU, signV, radius, segments = 8) {
+  const shape = new THREE.Shape();
+  shape.moveTo(0, 0);
+  shape.lineTo(signU * radius, 0);
+  for (let i = 0; i <= segments; i++) {
+    // Sweeps from -90deg to -180deg explicitly (not THREE.Shape.absarc's
+    // own start/end/clockwise convention) so which quarter gets traced
+    // is never ambiguous -- verified directly against the real three.js
+    // package that each of the 4 (signU, signV) combinations produces a
+    // shape occupying exactly the expected quadrant.
+    const theta = -Math.PI / 2 - (i / segments) * (Math.PI / 2);
+    shape.lineTo(signU * (radius + radius * Math.cos(theta)), signV * (radius + radius * Math.sin(theta)));
+  }
+  shape.lineTo(0, 0);
+  shape.closePath();
+  return shape;
+}
+const CURB_FILLET_R = 8.0;
+const filletMat = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, map: tiledClone(TEX.concrete, 1, 1) });
+const filletGeoBySign = {};
+for (const su of [1, -1]) {
+  for (const sv of [1, -1]) {
+    filletGeoBySign[`${su},${sv}`] = new THREE.ShapeGeometry(curbFilletShape(su, sv, CURB_FILLET_R), 8);
+  }
+}
+let intersectionFilletMeshes = [];
+let lastFilletKey = '';
+export function rebuildIntersectionFillets(crossStreets, avenueYs) {
+  const key = JSON.stringify([crossStreets, avenueYs]);
+  if (key === lastFilletKey) return;
+  lastFilletKey = key;
+  for (const child of intersectionFilletMeshes) {
+    roadGroup.remove(child);
+  }
+  intersectionFilletMeshes = [];
+  for (const cs of crossStreets || []) {
+    for (const ay of avenueYs || []) {
+      if (ay < cs.y_min || ay > cs.y_max) continue; // this cross street doesn't reach this avenue at all
+      for (const cSignX of [1, -1]) {
+        for (const cSignY of [1, -1]) {
+          const cornerX = cs.x + cSignX * (ROAD_HALF_W + SIDEWALK_W);
+          const cornerY = ay + cSignY * (ROAD_HALF_W + SIDEWALK_W);
+          // The fillet shape extends from the corner TOWARD the
+          // intersection centre -- the opposite sign from which corner
+          // this is.
+          const geo = filletGeoBySign[`${-cSignX},${-cSignY}`];
+          const mesh = new THREE.Mesh(geo, filletMat);
+          mesh.rotation.x = -Math.PI / 2;
+          const scenePos = toScene(cornerX, cornerY);
+          // 0.42, just above the sidewalk layer's own y=0.4 -- same
+          // "thin gap between layers" convention every other stacked
+          // road/ground surface here already uses to stay flush without
+          // z-fighting.
+          mesh.position.set(scenePos.x, 0.42, scenePos.z);
+          mesh.receiveShadow = true;
+          roadGroup.add(mesh);
+          intersectionFilletMeshes.push(mesh);
+        }
+      }
+    }
+  }
+}
+
 // ---- Industrial Site roads + moving trucks -- Smart City gets its
 // road_loops/vehicles from Python (see snapshot.py), but Industrial Site
 // has no equivalent server-side road data, so both are computed here
