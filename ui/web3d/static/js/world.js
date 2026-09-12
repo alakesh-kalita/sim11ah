@@ -74,12 +74,26 @@ export function roofHeightAt(x, z) {
   return best;
 }
 
-// ---- decorative props: blocky trees (log column + leaf cube cluster),
+// ---- decorative props: real-tree-silhouette trees (tapered trunk +
+// overlapping low-poly canopy lobes, not a log column + leaf cube),
 // mining stockpiles, floodlight towers ------------------------------------
 const trunkMat = lazyMat('log');
 const leafMat = lazyMat('leaves');
-const logGeo = new THREE.BoxGeometry(2, 6, 2);
-const leafGeo = new THREE.BoxGeometry(5, 5, 5);
+// Tapered hexagonal prism (6 radial segments -- faceted, not round; stays
+// inside this scene's low-poly look) instead of a uniform box: wider at
+// the base, narrower at the top, the single biggest thing that used to
+// read as "a stick" rather than a trunk.
+const trunkGeo = new THREE.CylinderGeometry(0.42, 0.62, 6, 6);
+// Three overlapping icosahedra (20-tri faceted spheres -- the standard
+// low-poly-game foliage shape) instead of 6 axis-aligned leaf cubes: a
+// cube cluster reads as a stacked box no matter how it's arranged, an
+// icosahedron already reads as a rounded canopy lobe on its own, and
+// three overlapping, differently-sized ones at offset positions give an
+// asymmetric, organic silhouette instead of a symmetric block. Also one
+// FEWER mesh per tree than the old 6-cube cluster (3 lobes vs 6 cubes),
+// so this is a rendering-cost win too, not just a look one.
+const canopyLobeGeo = [3.3, 2.5, 2.0].map((r) => new THREE.IcosahedronGeometry(r, 0));
+const _CANOPY_LOBE_OFFSETS = [[0, 0.35, 0], [1.05, -0.25, 0.55], [-0.95, -0.15, -0.65]];
 // Boosts every addTree() call site at once -- trees sized to their raw
 // call-site scale read as roughly the same size as a 9m/13m-tall STA
 // node marker, which made a whole treeline look like a row of network
@@ -91,7 +105,7 @@ const _TREE_SCALE_BOOST = 1.45;
 function addTree(x, z, scaleIn) {
   const scale = scaleIn * _TREE_SCALE_BOOST;
   const g = new THREE.Group();
-  const trunk = new THREE.Mesh(logGeo, trunkMat);
+  const trunk = new THREE.Mesh(trunkGeo, trunkMat);
   trunk.position.y = 3 * scale;
   trunk.scale.set(scale, scale, scale);
   trunk.castShadow = true;
@@ -103,13 +117,27 @@ function addTree(x, z, scaleIn) {
   // is not a detail anyone notices at normal viewing distance, especially
   // under PCFSoftShadowMap's already-blurred edges. Real, broadly
   // applicable shadow-pass cost cut (every environment using addTree
-  // benefits, not just one) for a visual cost nobody will see.
-  const offsets = [[0, 0, 0], [1.6, 0.6, 0], [-1.6, 0.6, 0], [0, 0.6, 1.6], [0, 0.6, -1.6], [0, 2, 0]];
-  for (const [ox, oy, oz] of offsets) {
-    const leaf = new THREE.Mesh(leafGeo, leafMat);
-    leaf.position.set(ox * scale, (6.5 + oy) * scale, oz * scale);
-    leaf.scale.set(scale, scale, scale);
-    g.add(leaf);
+  // benefits, not just one) for a visual cost nobody will see. Still
+  // true with 3 lobes instead of 6 cubes.
+  //
+  // Per-tree jitter seeded from this tree's own (x, z) -- addTree's
+  // call sites only ever pass a position/scale, no rng function, and
+  // adding one would touch every one of them; deriving determinism from
+  // position instead (core.js's hashSeed/mulberry32, the same PRNG this
+  // file already uses elsewhere) keeps the signature unchanged while
+  // still making neighbouring trees look like distinct individuals
+  // instead of identical clones, and stays fully reproducible for a
+  // given layout (same positions -> same jitter, every run).
+  const jitter = mulberry32(hashSeed(`tree:${x.toFixed(2)}:${z.toFixed(2)}`));
+  for (let i = 0; i < canopyLobeGeo.length; i++) {
+    const [ox, oy, oz] = _CANOPY_LOBE_OFFSETS[i];
+    const jx = (jitter() - 0.5) * 1.1, jz = (jitter() - 0.5) * 1.1;
+    const lobe = new THREE.Mesh(canopyLobeGeo[i], leafMat);
+    lobe.position.set((ox + jx) * scale, (6.6 + oy) * scale, (oz + jz) * scale);
+    const s = scale * (0.85 + jitter() * 0.3);
+    lobe.scale.set(s, s * (0.8 + jitter() * 0.25), s);
+    lobe.rotation.y = jitter() * Math.PI * 2;
+    g.add(lobe);
   }
   g.position.set(x, 0, z);
   propsGroup.add(g);
@@ -5844,8 +5872,16 @@ function centerlineStrip(cx, cyMin, cyMax, y) {
 }
 let crossStreetMeshes = [];
 let lastCrossKey = '';
-export function rebuildCrossStreets(crossStreets) {
-  const key = JSON.stringify(crossStreets);
+// overbridge (ui/web3d/snapshot.py's _overbridge) picks exactly one cross
+// street to carry a raised interchange over one avenue instead of a flat
+// "+" crossing -- see rebuildOverbridge below, which draws the actual
+// ramp/deck/pier geometry. This function's own job for THAT one cross
+// street is just to stop drawing flat ground-level pavement through the
+// stretch the bridge now occupies (a flat strip AND an elevated deck
+// both existing at the same place would double up, and the flat one
+// would only ever be seen poking out from directly underneath the deck).
+export function rebuildCrossStreets(crossStreets, overbridge) {
+  const key = JSON.stringify([crossStreets, overbridge]);
   if (key === lastCrossKey) return;
   lastCrossKey = key;
   for (const child of crossStreetMeshes) {
@@ -5855,18 +5891,153 @@ export function rebuildCrossStreets(crossStreets) {
     child.material?.dispose?.();
   }
   crossStreetMeshes = [];
-  for (const cs of crossStreets || []) {
-    const span = Math.max(1, cs.y_max - cs.y_min);
+  function addFlatSegment(x, yMin, yMax) {
+    const span = Math.max(1, yMax - yMin);
     const rep = Math.max(1, span / 24);
     const sidewalkMat = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, map: tiledClone(TEX.sidewalk, rep, rep) });
-    const sw = stripMesh(cs.x, cs.y_min, cs.y_max, ROAD_HALF_W + SIDEWALK_W, sidewalkMat, 0.4);
+    const sw = stripMesh(x, yMin, yMax, ROAD_HALF_W + SIDEWALK_W, sidewalkMat, 0.4);
     roadGroup.add(sw); crossStreetMeshes.push(sw);
     const asphaltMat = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, map: tiledClone(TEX.road, rep, rep) });
-    const rd = stripMesh(cs.x, cs.y_min, cs.y_max, ROAD_HALF_W, asphaltMat, 0.8);
+    const rd = stripMesh(x, yMin, yMax, ROAD_HALF_W, asphaltMat, 0.8);
     roadGroup.add(rd); crossStreetMeshes.push(rd);
-    const cl = centerlineStrip(cs.x, cs.y_min, cs.y_max, 1.2);
+    const cl = centerlineStrip(x, yMin, yMax, 1.2);
     roadGroup.add(cl); crossStreetMeshes.push(cl);
   }
+  for (const cs of crossStreets || []) {
+    const isBridgeStreet = overbridge && Math.abs(cs.x - overbridge.cross_x) < 1e-6;
+    if (!isBridgeStreet) {
+      addFlatSegment(cs.x, cs.y_min, cs.y_max);
+      continue;
+    }
+    const gapHalf = overbridge.deck_half_len + overbridge.ramp_len;
+    const gapMin = overbridge.avenue_y - gapHalf, gapMax = overbridge.avenue_y + gapHalf;
+    if (cs.y_min < gapMin) addFlatSegment(cs.x, cs.y_min, gapMin);
+    if (gapMax < cs.y_max) addFlatSegment(cs.x, gapMax, cs.y_max);
+  }
+}
+
+// ---- overbridge: one cross street rises over one avenue instead of a
+// flat "+" crossing -- ramp up, flat elevated deck, ramp down, on
+// support piers, matching the gap rebuildCrossStreets carves out of
+// that cross street's own flat pavement above. rampMesh builds a single
+// sloped quad (unlike stripMesh's flat one) via an explicit
+// BufferGeometry -- ShapeGeometry (what stripMesh/ringMesh use) is
+// always planar, it has no way to give its 4 corners 2 different
+// heights. side:DoubleSide is cheap insurance on a handful of ramp
+// quads, not a sign the winding is actually expected to be wrong (it's
+// been checked: yB > yA always holds at every call site here, which is
+// what makes the computed face normal actually point up).
+function rampMesh(cx, yA, yB, hA, hB, halfWidth, material) {
+  const a0 = toScene(cx - halfWidth, yA); a0.y = hA;
+  const a1 = toScene(cx + halfWidth, yA); a1.y = hA;
+  const b0 = toScene(cx - halfWidth, yB); b0.y = hB;
+  const b1 = toScene(cx + halfWidth, yB); b1.y = hB;
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array([
+    a0.x, a0.y, a0.z, a1.x, a1.y, a1.z, b1.x, b1.y, b1.z,
+    a0.x, a0.y, a0.z, b1.x, b1.y, b1.z, b0.x, b0.y, b0.z,
+  ]);
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1]), 2));
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.receiveShadow = true;
+  mesh.castShadow = true;
+  return mesh;
+}
+let overbridgeMeshes = [];
+let lastOverbridgeKey = '';
+// Live copy of whatever overbridge config is currently active, read by
+// bridgeDeckHeightAt below (entities.js calls it through that export,
+// not this variable directly, same "module owns its own state, exposes
+// a lookup function" shape as buildingFootprints/roofHeightAt above).
+let currentOverbridge = null;
+export function rebuildOverbridge(overbridge) {
+  const key = JSON.stringify(overbridge);
+  if (key === lastOverbridgeKey) return;
+  lastOverbridgeKey = key;
+  currentOverbridge = overbridge || null;
+  for (const child of overbridgeMeshes) {
+    roadGroup.remove(child);
+    child.geometry?.dispose();
+    if (child.material?.map) child.material.map.dispose();
+    child.material?.dispose?.();
+  }
+  overbridgeMeshes = [];
+  if (!overbridge) return;
+  const { avenue_y: ay, cross_x: cx, deck_half_len: dh, ramp_len: rl, height: h } = overbridge;
+  const rampRep = Math.max(1, rl / 24);
+  const deckRep = Math.max(1, (2 * dh) / 24);
+  function addLayer(yA, yB, hA, hB, halfWidth, tex, rep, y0) {
+    const mat = new THREE.MeshStandardMaterial({
+      roughness: halfWidth > ROAD_HALF_W ? 0.9 : 0.85, metalness: 0,
+      map: tiledClone(tex, rep, rep),
+    });
+    const m = rampMesh(cx, yA, yB, hA + y0, hB + y0, halfWidth, mat);
+    roadGroup.add(m); overbridgeMeshes.push(m);
+  }
+  // Ramp up (ground -> deck height), flat deck, ramp down (deck height
+  // -> ground) -- sidewalk layer (wider, y0=0.4) under asphalt (y0=0.8),
+  // exactly mirroring the flat road's own two-layer pavement, just
+  // sloped/elevated instead of flat-on-the-ground.
+  for (const [halfWidth, rep, y0] of [[ROAD_HALF_W + SIDEWALK_W, rampRep, 0.4], [ROAD_HALF_W, rampRep, 0.8]]) {
+    const tex = halfWidth > ROAD_HALF_W ? TEX.sidewalk : TEX.road;
+    addLayer(ay - dh - rl, ay - dh, 0, h, halfWidth, tex, rep, y0);
+    addLayer(ay + dh, ay + dh + rl, h, 0, halfWidth, tex, rep, y0);
+  }
+  for (const [halfWidth, rep, y0] of [[ROAD_HALF_W + SIDEWALK_W, deckRep, 0.4], [ROAD_HALF_W, deckRep, 0.8]]) {
+    const tex = halfWidth > ROAD_HALF_W ? TEX.sidewalk : TEX.road;
+    addLayer(ay - dh, ay + dh, h, h, halfWidth, tex, rep, y0);
+  }
+  // Piers -- placed just outside the avenue's own paved half-width
+  // (ROAD_HALF_W+SIDEWALK_W=21) so they stand clear of its lanes, not
+  // in the middle of them (deck_half_len=30 from snapshot.py leaves
+  // exactly this room). One box per pier, from the ground up to just
+  // under the deck's underside.
+  const pierMat = new THREE.MeshStandardMaterial({ roughness: 0.75, metalness: 0.05, color: 0x9aa0a6 });
+  const pierY = (ROAD_HALF_W + SIDEWALK_W) + 4;
+  // h, not h-something -- h is the deck's own base height (the addLayer
+  // calls above stack the thin 0.4/0.8 pavement layers ON TOP of h, same
+  // as the flat road's own layers sit on top of ground level 0), so
+  // flush with h is flush with the underside of the deck's structure,
+  // not floating short of it with a visible gap.
+  const pierTopY = h;
+  for (const py of [ay - pierY, ay + pierY]) {
+    const geo = new THREE.BoxGeometry(2 * ROAD_HALF_W * 0.7, pierTopY, 3.2);
+    const pier = new THREE.Mesh(geo, pierMat);
+    const scenePos = toScene(cx, py);
+    pier.position.set(scenePos.x, pierTopY / 2, scenePos.z);
+    pier.castShadow = true;
+    pier.receiveShadow = true;
+    roadGroup.add(pier); overbridgeMeshes.push(pier);
+  }
+}
+
+// Real car/scooter elevation while it's actually on the bridge's avenue
+// AND within the bridge's x-span -- entities.js's altitudeFor calls this
+// for car/scooter nodes (which otherwise always render at ground level,
+// see its own is_car/is_scooter branch) so a vehicle visibly rises onto
+// the deck and back down instead of driving through it. Purely a
+// function of live (x, y): works regardless of which way the vehicle is
+// currently facing/turning, unlike trying to key off role/heading.
+export function bridgeDeckHeightAt(x, y) {
+  const ob = currentOverbridge;
+  if (!ob) return null;
+  // The bridge elevates the CROSS STREET (fixed x = cross_x, travels
+  // along y) over the avenue (fixed y = avenue_y, travels along x) --
+  // ramps/deck below are built along y at fixed x for exactly that
+  // reason, so a vehicle only rises here if IT is the one on that cross
+  // street (x close to cross_x), based on how far along y it is from
+  // the avenue crossing. An avenue vehicle passing through the same
+  // point stays flat -- it's the one going under, not over.
+  if (Math.abs(x - ob.cross_x) > ROAD_HALF_W + SIDEWALK_W) return null;
+  const dy = Math.abs(y - ob.avenue_y);
+  if (dy <= ob.deck_half_len) return ob.height;
+  if (dy <= ob.deck_half_len + ob.ramp_len) {
+    const t = (dy - ob.deck_half_len) / ob.ramp_len;
+    return ob.height * (1 - t);
+  }
+  return null;
 }
 
 // ---- Industrial Site roads + moving trucks -- Smart City gets its

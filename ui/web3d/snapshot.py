@@ -9,7 +9,7 @@ visualisation feature; a torn read at worst drops one frame of motion).
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 # Same canonical PHY-range formula the 2D topology canvas uses for its own
 # selected-node range circle (topology_canvas.py's _draw_selection_overlay)
@@ -251,6 +251,49 @@ def _cross_streets(canvas) -> List[Dict[str, float]]:
     return [{"x": float(x), "y_min": -y_reach, "y_max": y_reach} for x in xs]
 
 
+def _overbridge(canvas) -> Optional[Dict[str, float]]:
+    """cars_uavs mode only: one real grade-separated interchange -- a
+    single cross street rises onto a raised deck (ramp up, flat elevated
+    span, ramp down) exactly where it crosses one specific avenue, which
+    stays flat and passes underneath -- instead of every intersection
+    being a flat "+" crossing. Purely decorative geometry (world.js's
+    rebuildOverbridge draws the ramps/deck/piers, carving the matching
+    gap out of that one cross street's normal flat strip in
+    rebuildCrossStreets) plus a real functional effect: entities.js's
+    bridgeDeckHeightAt raises any real car/scooter that's actually on
+    this avenue, within the bridge's x-span, onto the deck instead of
+    driving through it at ground level.
+
+    avenue_y picked as the second avenue (index 1, not the innermost
+    one right next to the AP cluster) so the interchange reads clearly
+    away from the densest part of the scene; falls back to whatever's
+    available if there's only one avenue. cross_x picked as a middle
+    interior cross street (not the very first/last, which are closer to
+    the corridor's own ends) for the same "give it room to read"
+    reason. deck_half_len (30) is deliberately wider than the avenue's
+    own paved half-width (ROAD_HALF_W+SIDEWALK_W=21 in world.js) so the
+    support piers -- placed just outside that width, under the deck --
+    don't end up standing in the middle of the avenue's own lanes."""
+    if canvas.environment != "Smart City" or canvas.sim is None:
+        return None
+    topo_cfg = canvas.sim.config.get("topology", {})
+    if topo_cfg.get("mode") != "cars_uavs":
+        return None
+    car_avenue_offsets = topo_cfg.get("car_avenue_offsets_m") or []
+    interior_xs = topo_cfg.get("cross_street_xs_interior") or []
+    if not car_avenue_offsets or not interior_xs:
+        return None
+    avenue_y = float(car_avenue_offsets[min(1, len(car_avenue_offsets) - 1)])
+    cross_x = float(interior_xs[len(interior_xs) // 2])
+    return {
+        "avenue_y": avenue_y,
+        "cross_x": cross_x,
+        "deck_half_len": 30.0,
+        "ramp_len": 45.0,
+        "height": 9.0,
+    }
+
+
 def _vehicles(canvas) -> List[Dict[str, Any]]:
     """Same rectangular-racetrack math as NetworkCanvas._draw_vehicles_overlay
     (pure function of sim time), re-run here to compute world positions
@@ -446,6 +489,7 @@ def build_snapshot(dashboard) -> Dict[str, Any]:
         "vehicles": _vehicles(canvas),
         "road_loops": _road_loops(canvas),
         "cross_streets": _cross_streets(canvas),
+        "overbridge": _overbridge(canvas),
         "ap_links": _ap_backbone_pairs(canvas),
         "metrics": metrics,
     }

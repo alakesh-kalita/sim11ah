@@ -8,7 +8,7 @@ import { POLL_MS } from './js/core.js';
 import { loadAllTextures } from './js/textures.js';
 import { camera, composer, controls, resize, applyEnvironment } from './js/scene.js';
 import {
-  rebuildProps, rebuildBuildings, rebuildRoads, rebuildCrossStreets,
+  rebuildProps, rebuildBuildings, rebuildRoads, rebuildCrossStreets, rebuildOverbridge,
   industrialRoadLoops, rebuildIndustrialTraffic, stepIndustrialTraffic,
   rebuildMilitaryPatrol, stepMilitaryPatrol,
   applyLoadedTextures, siteRadius, militaryExtent,
@@ -48,9 +48,14 @@ async function poll() {
     rebuildProps(state.environment, state.obstacles, roadLoops, nodeExtentRadius(state.nodes), state.variant);
     rebuildBuildings(state.obstacles, state.environment, state.variant, roadLoops);
     rebuildRoads(roadLoops);
-    // cars_uavs mode only -- state.cross_streets is empty everywhere else
-    // (ui/web3d/snapshot.py's _cross_streets), so this is a no-op there.
-    rebuildCrossStreets(state.cross_streets ?? []);
+    // cars_uavs mode only -- state.cross_streets/overbridge are empty/null
+    // everywhere else (ui/web3d/snapshot.py's _cross_streets/_overbridge),
+    // so these are no-ops there. rebuildOverbridge before updateNodes: it
+    // updates world.js's own live bridge-config state that
+    // bridgeDeckHeightAt reads, and updateNodes is what actually
+    // positions car/scooter meshes using that lookup this same poll.
+    rebuildCrossStreets(state.cross_streets ?? [], state.overbridge ?? null);
+    rebuildOverbridge(state.overbridge ?? null);
     rebuildIndustrialTraffic(state.obstacles, state.environment, state.variant);
     rebuildMilitaryPatrol(state.obstacles, state.environment);
     updateNodes(state.nodes);

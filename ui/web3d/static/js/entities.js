@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { ASSOC, PKT_COLORS, STATUS_COLOR, POLL_MS, toScene } from './core.js';
 import { nodesGroup, linksGroup, packetsGroup, vehiclesGroup } from './scene.js';
-import { roofHeightAt } from './world.js';
+import { roofHeightAt, bridgeDeckHeightAt } from './world.js';
 
 // ---- per-node info label: distance to the AP (metres) always, plus the
 // "why hasn't this joined" code (E417/E240/E102 -- see _diagnose_unjoined
@@ -309,7 +309,14 @@ function altitudeFor(n, sx, sz) {
   if (n.role === 'AP') return 0;
   // A car/scooter is road-bound, not a building occupant -- unlike a plain
   // STA, it should never rise onto a rooftop its (x, y) happens to cross.
-  if (n.is_car || n.is_scooter) return 0;
+  // It SHOULD rise onto the overbridge deck if it's actually driving the
+  // cross street that carries it, over the avenue passing underneath
+  // (world.js's bridgeDeckHeightAt, purely a function of live (x, y), so
+  // it doesn't matter which way the vehicle is currently facing/turning).
+  if (n.is_car || n.is_scooter) {
+    const bridge = bridgeDeckHeightAt(sx, -sz);
+    return bridge === null ? 0 : bridge;
+  }
   const roof = roofHeightAt(sx, sz);
   return roof === null ? 0 : roof;
 }
