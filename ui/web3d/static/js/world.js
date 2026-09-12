@@ -36,14 +36,14 @@ loadSoldierModel();
 
 // Module-level materials get constructed when this module is first
 // imported, which happens synchronously before app.js's main() awaits
-// loadAllTextures() -- so `new THREE.MeshLambertMaterial({ map: TEX.foo })`
+// loadAllTextures() -- so `new THREE.MeshStandardMaterial({ map: TEX.foo })`
 // at top level bakes in `map: undefined` forever (TEX.foo isn't populated
 // yet). lazyMat() defers the map assignment: it hands back a plain
 // material immediately and records it, then applyLoadedTextures() (called
 // once textures actually finish loading) fills in every recorded map.
 const deferredTexMats = [];
 function lazyMat(key, extra) {
-  const m = new THREE.MeshLambertMaterial(extra);
+  const m = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0.0, ...extra });
   deferredTexMats.push([m, key]);
   return m;
 }
@@ -132,7 +132,7 @@ function addStockpile(x, z, radius, rng) {
   propsGroup.add(g);
 }
 
-const floodMastMat = new THREE.MeshLambertMaterial({ color: 0x2e3238 });
+const floodMastMat = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.7, color: 0x2e3238 });
 const floodLampMat = new THREE.MeshBasicMaterial({ color: 0xfff2c2 });
 function addFloodlight(x, z, rng) {
   const g = new THREE.Group();
@@ -155,7 +155,7 @@ function addFloodlight(x, z, rng) {
 // Shipping-container stack -- a small colourful cluster of boxes, the
 // single most recognisable "industrial yard is full of stuff" prop.
 const containerMats = [0xc0392b, 0x2a6f97, 0x3a7d5c, 0xe0a13a, 0x8a5fa8]
-  .map(color => new THREE.MeshLambertMaterial({ color }));
+  .map(color => new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0.45, color }));
 const containerGeo = new THREE.BoxGeometry(6, 2.6, 2.4);
 function addContainerStack(x, z, rng) {
   const g = new THREE.Group();
@@ -178,9 +178,9 @@ function addContainerStack(x, z, rng) {
 
 // Oil-drum cluster -- quick scattered detail between the bigger props.
 const barrelMats = [
-  new THREE.MeshLambertMaterial({ color: 0x3a4a52 }),
-  new THREE.MeshLambertMaterial({ color: 0x8a4a2a }),
-  new THREE.MeshLambertMaterial({ color: 0x4a5c2a }),
+  new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.5, color: 0x3a4a52 }),
+  new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.5, color: 0x8a4a2a }),
+  new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.5, color: 0x4a5c2a }),
 ];
 function addBarrelCluster(x, z, rng) {
   const g = new THREE.Group();
@@ -199,9 +199,9 @@ function addBarrelCluster(x, z, rng) {
 
 // Parked heavy truck -- cab + flatbed + wheels, the "mining site" traffic
 // that's always sitting around a real yard even when not moving.
-const truckBodyMats = [0xc0392b, 0x2a6f97, 0xe0a13a, 0x5c6672].map(color => new THREE.MeshLambertMaterial({ color }));
-const truckBedMat = new THREE.MeshLambertMaterial({ color: 0x4a4f55 });
-const truckWheelMat = new THREE.MeshLambertMaterial({ color: 0x15171b });
+const truckBodyMats = [0xc0392b, 0x2a6f97, 0xe0a13a, 0x5c6672].map(color => new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.5, color }));
+const truckBedMat = new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0.4, color: 0x4a4f55 });
+const truckWheelMat = new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.15, color: 0x15171b });
 const truckCabGeo = new THREE.BoxGeometry(3, 2.6, 2.6);
 const truckBedGeo = new THREE.BoxGeometry(6, 1.8, 2.7);
 const truckWheelGeo = new THREE.BoxGeometry(0.9, 1.3, 1.3);
@@ -236,8 +236,8 @@ function addTruck(x, z, ry, rng) {
 // Worker's car -- low two-box sedan, visibly half the truck's bulk. A
 // busy site is full of staff vehicles, not just plant machinery.
 const carBodyMats = [0xd8dade, 0x9aa2ab, 0xb03a2e, 0x2e5fa3, 0x23272c, 0x74833f]
-  .map(color => new THREE.MeshLambertMaterial({ color }));
-const carGlassMat = new THREE.MeshLambertMaterial({ color: 0x9fc4d8 });
+  .map(color => new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.5, color }));
+const carGlassMat = new THREE.MeshStandardMaterial({ roughness: 0.12, metalness: 0.35, color: 0x9fc4d8 });
 const carBodyGeo = new THREE.BoxGeometry(3.8, 0.9, 1.8);
 const carCabinGeo = new THREE.BoxGeometry(1.9, 0.75, 1.6);
 const carWheelGeo = new THREE.BoxGeometry(0.6, 0.75, 0.75);
@@ -274,7 +274,7 @@ function addCar(x, z, ry, rng) {
 // them reads fine at this scale, and it's the heavy-haul silhouette a
 // mining/logistics yard is actually full of.
 const semiCabMats = [0xc0392b, 0x1f6f50, 0x2a6f97, 0xd9dbe0, 0xe0a13a]
-  .map(color => new THREE.MeshLambertMaterial({ color }));
+  .map(color => new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.5, color }));
 const semiHoodGeo = new THREE.BoxGeometry(2.2, 1.5, 2.3);
 const semiCabGeo = new THREE.BoxGeometry(2.2, 3.1, 2.6);
 const semiStackGeo = new THREE.BoxGeometry(0.35, 2.4, 0.35);
@@ -348,7 +348,7 @@ function addSemiRow(x, z, ry, n, rng) {
 // ---- Smart City street furniture -- the sidewalk-scale clutter (lamps,
 // benches, signals, shelters) that makes a downtown read as inhabited
 // rather than a bare road ring between towers ------------------------------
-const lampPoleMat = new THREE.MeshLambertMaterial({ color: 0x33383e });
+const lampPoleMat = new THREE.MeshStandardMaterial({ roughness: 0.45, metalness: 0.7, color: 0x33383e });
 const lampHeadMat = new THREE.MeshBasicMaterial({ color: 0xffe9b0 });
 const lampPoleGeo = new THREE.BoxGeometry(0.5, 8.5, 0.5);
 const lampArmGeo = new THREE.BoxGeometry(2.4, 0.4, 0.4);
@@ -370,8 +370,8 @@ function addStreetlamp(x, z, ry) {
   propsGroup.add(g);
 }
 
-const benchWoodMat = new THREE.MeshLambertMaterial({ color: 0x8a6a42 });
-const benchLegMat = new THREE.MeshLambertMaterial({ color: 0x2c2f33 });
+const benchWoodMat = new THREE.MeshStandardMaterial({ roughness: 0.75, metalness: 0, color: 0x8a6a42 });
+const benchLegMat = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.6, color: 0x2c2f33 });
 const benchSeatGeo = new THREE.BoxGeometry(1.1, 0.3, 3);
 const benchBackGeo = new THREE.BoxGeometry(0.25, 1.0, 3);
 const benchLegGeo = new THREE.BoxGeometry(1.0, 0.9, 0.3);
@@ -394,7 +394,7 @@ function addBench(x, z, ry) {
   propsGroup.add(g);
 }
 
-const binMat = new THREE.MeshLambertMaterial({ color: 0x37503f });
+const binMat = new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.25, color: 0x37503f });
 const binGeo = new THREE.CylinderGeometry(0.65, 0.55, 1.4, 6);
 function addTrashCan(x, z) {
   const bin = new THREE.Mesh(binGeo, binMat);
@@ -403,7 +403,7 @@ function addTrashCan(x, z) {
   propsGroup.add(bin);
 }
 
-const hydrantMat = new THREE.MeshLambertMaterial({ color: 0xc23b2e });
+const hydrantMat = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.35, color: 0xc23b2e });
 const hydrantGeo = new THREE.BoxGeometry(0.7, 1.1, 0.7);
 const hydrantCapGeo = new THREE.BoxGeometry(0.45, 0.35, 0.45);
 function addHydrant(x, z) {
@@ -418,7 +418,7 @@ function addHydrant(x, z) {
   propsGroup.add(g);
 }
 
-const signalDarkMat = new THREE.MeshLambertMaterial({ color: 0x23262b });
+const signalDarkMat = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.3, color: 0x23262b });
 const signalPoleGeo = new THREE.BoxGeometry(0.45, 7, 0.45);
 const signalHeadGeo = new THREE.BoxGeometry(0.8, 2.3, 0.9);
 const signalLightGeo = new THREE.BoxGeometry(0.3, 0.5, 0.5);
@@ -442,7 +442,7 @@ function addTrafficLight(x, z, ry) {
   propsGroup.add(g);
 }
 
-const shelterRoofMat = new THREE.MeshLambertMaterial({ color: 0x2a6f97 });
+const shelterRoofMat = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.35, color: 0x2a6f97 });
 const shelterPostGeo = new THREE.BoxGeometry(0.35, 3.1, 0.35);
 const shelterRoofGeo = new THREE.BoxGeometry(2.6, 0.35, 5.6);
 const shelterBackGeo = new THREE.BoxGeometry(0.25, 2.2, 5.6);
@@ -469,7 +469,7 @@ function addBusShelter(x, z, ry) {
   propsGroup.add(g);
 }
 
-const kioskAwningMat = new THREE.MeshLambertMaterial({ color: 0xe8e4da });
+const kioskAwningMat = new THREE.MeshStandardMaterial({ roughness: 0.75, metalness: 0, color: 0xe8e4da });
 const kioskBodyGeo = new THREE.BoxGeometry(3.2, 2.7, 2.6);
 const kioskAwningGeo = new THREE.BoxGeometry(1.4, 0.25, 3.2);
 function addKiosk(x, z, ry, rng) {
@@ -490,7 +490,7 @@ function addKiosk(x, z, ry, rng) {
   propsGroup.add(g);
 }
 
-const fountainStoneMat = new THREE.MeshLambertMaterial({ color: 0x9aa0a6 });
+const fountainStoneMat = new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0, color: 0x9aa0a6 });
 const fountainWaterMat = new THREE.MeshBasicMaterial({ color: 0x6cc8e8 });
 const fountainBasinGeo = new THREE.CylinderGeometry(7, 7.6, 1.4, 8);
 const fountainWaterGeo = new THREE.CylinderGeometry(5.9, 5.9, 0.5, 8);
@@ -520,7 +520,7 @@ function addFountain(x, z) {
 // and a centre circle, two low-poly goal frames at the short ends.
 const pitchGrassMat = lazyMat('grass');
 const pitchLineMat = new THREE.MeshBasicMaterial({ color: 0xf4f6f2 });
-const goalPostMat = new THREE.MeshLambertMaterial({ color: 0xe8ebee });
+const goalPostMat = new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.7, color: 0xe8ebee });
 function addFootballField(x, z, ry, halfW, halfD) {
   const g = new THREE.Group();
   const turf = new THREE.Mesh(new THREE.BoxGeometry(halfW * 2, 0.15, halfD * 2), pitchGrassMat);
@@ -600,9 +600,9 @@ function addPond(x, z, r) {
 
 // Playground -- a sandpit with a blocky swing set and slide. Neither
 // needs to be literal, just readable as "playground" at this scale.
-const playSandMat = new THREE.MeshLambertMaterial({ color: 0xd8c48a });
-const playFrameMat = new THREE.MeshLambertMaterial({ color: 0xc23b2e });
-const playSlideMat = new THREE.MeshLambertMaterial({ color: 0x2a6f97 });
+const playSandMat = new THREE.MeshStandardMaterial({ roughness: 0.95, metalness: 0, color: 0xd8c48a });
+const playFrameMat = new THREE.MeshStandardMaterial({ roughness: 0.45, metalness: 0.6, color: 0xc23b2e });
+const playSlideMat = new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.5, color: 0x2a6f97 });
 function addPlayground(x, z, ry) {
   const g = new THREE.Group();
   const sand = new THREE.Mesh(new THREE.BoxGeometry(16, 0.1, 12), playSandMat);
@@ -677,7 +677,7 @@ function addGazebo(x, z) {
 
 // Flowerbed with a low hedge border -- garden filler between the bigger
 // park zones.
-const gardenBedMat = new THREE.MeshLambertMaterial({ color: 0x5c4630 });
+const gardenBedMat = new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0, color: 0x5c4630 });
 const gardenHedgeMat = lazyMat('leaves');
 const gardenFlowerMats = [0xc0392b, 0xe0a72e, 0x8b5cf6, 0xffffff].map(c => new THREE.MeshBasicMaterial({ color: c }));
 function addGardenBed(x, z, ry, rng) {
@@ -729,7 +729,7 @@ function loopEdgePoint(l, t, offset) {
 // Perimeter chain-link fence -- posts + wire strands around a fixed
 // boundary centred on the AP, the "this is a contained facility, not
 // buildings floating in a void" cue a real industrial site always has.
-const fencePostMat = new THREE.MeshLambertMaterial({ color: 0x55585c });
+const fencePostMat = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.6, color: 0x55585c });
 const fencePostGeo = new THREE.BoxGeometry(0.5, 3, 0.5);
 const fenceWireMat = new THREE.LineBasicMaterial({ color: 0x9aa0a6 });
 function addFencePerimeter(hw, hd) {
@@ -761,8 +761,8 @@ function addFencePerimeter(hw, hd) {
 // just elevated and doubled, and built straight from world coordinates
 // (like addFencePerimeter) rather than taking a `parent` -- it always
 // belongs directly in propsGroup, which sits at scene-root identity.
-const pipeMat = new THREE.MeshLambertMaterial({ color: 0x8a97a0 });
-const pipePostMat = new THREE.MeshLambertMaterial({ color: 0x454f55 });
+const pipeMat = new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.75, color: 0x8a97a0 });
+const pipePostMat = new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.7, color: 0x454f55 });
 function addPipeRack(pts, elevation) {
   const runGeos = [], postGeos = [];
   for (let i = 0; i < pts.length - 1; i++) {
@@ -971,8 +971,8 @@ function paddyExtentSig(env, nodeExtentR) {
 // views read as the same place. Previously this environment had no
 // geometry of its own at all: rebuildProps fell through to Open Area's
 // bare tree-ring scatter. -------------------------------------------------
-const paddyBundMat = new THREE.MeshLambertMaterial({ color: 0x9c8a5e });
-const paddyWaterMat = new THREE.MeshLambertMaterial({ color: 0x7fb6cf });
+const paddyBundMat = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, color: 0x9c8a5e });
+const paddyWaterMat = new THREE.MeshStandardMaterial({ roughness: 0.12, metalness: 0, color: 0x7fb6cf });
 const paddyGlintMat = new THREE.MeshBasicMaterial({ color: 0xeef8fb });
 // One near-white row-striped tile tinted per stage (Lambert multiplies
 // map x colour), so all seven growth stages share a single texture yet
@@ -980,41 +980,41 @@ const paddyGlintMat = new THREE.MeshBasicMaterial({ color: 0xeef8fb });
 // stubble, with the transplant-row grain visible in each.
 const paddyCropMats = ['#6fb04e', '#83c15f', '#9ed36f', '#57964a', '#b6de84', '#c8c266', '#dcd28e']
   .map((c) => lazyMat('paddy_crop', { color: c }));
-const paddySproutMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+const paddySproutMat = new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0, color: 0xffffff });
 const paddySproutColors = [0x4c7a3e, 0x57964a].map((c) => new THREE.Color(c));
-const paddyChannelMat = new THREE.MeshLambertMaterial({ color: 0x5f9dbf });
+const paddyChannelMat = new THREE.MeshStandardMaterial({ roughness: 0.15, metalness: 0, color: 0x5f9dbf });
 const paddyChannelLtMat = new THREE.MeshBasicMaterial({ color: 0xa9d8e8 });
-const paddyTrackMat = new THREE.MeshLambertMaterial({ color: 0xc7ae7f });
+const paddyTrackMat = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, color: 0xc7ae7f });
 const paddyRutMat = new THREE.MeshBasicMaterial({ color: 0xa3967c });
 // Doubles as straw (haystacks, figure heads) -- mud-plaster and rice
 // straw share a tone in the 2D hut palette.
-const paddyHutWallMat = new THREE.MeshLambertMaterial({ color: 0xc9a36a });
-const paddyRiverMat = new THREE.MeshLambertMaterial({ color: 0x63849a });
-const paddyRiverBankMat = new THREE.MeshLambertMaterial({ color: 0xb2b995 });
+const paddyHutWallMat = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, color: 0xc9a36a });
+const paddyRiverMat = new THREE.MeshStandardMaterial({ roughness: 0.15, metalness: 0, color: 0x63849a });
+const paddyRiverBankMat = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, color: 0xb2b995 });
 const paddyRiverLtMat = new THREE.MeshBasicMaterial({ color: 0xa4bbc7 });
-const paddyBridgeDeckMat = new THREE.MeshLambertMaterial({ color: 0x8b7761 });
-const paddyBridgeRailMat = new THREE.MeshLambertMaterial({ color: 0x645440 });
-const paddyHatMat = new THREE.MeshLambertMaterial({ color: 0xdcd28e });
-const paddyShirtMat = new THREE.MeshLambertMaterial({ color: 0x63849a });
-const paddyTrouserMat = new THREE.MeshLambertMaterial({ color: 0x645440 });
-const paddyBuffaloMat = new THREE.MeshLambertMaterial({ color: 0x5d6156 });
-const paddyHornMat = new THREE.MeshLambertMaterial({ color: 0xabaea1 });
-const paddyEgretMat = new THREE.MeshLambertMaterial({ color: 0xe7ebeb });
-const paddyBeakMat = new THREE.MeshLambertMaterial({ color: 0xc7ae7f });
-const paddyYardMat = new THREE.MeshLambertMaterial({
+const paddyBridgeDeckMat = new THREE.MeshStandardMaterial({ roughness: 0.75, metalness: 0, color: 0x8b7761 });
+const paddyBridgeRailMat = new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0, color: 0x645440 });
+const paddyHatMat = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, color: 0xdcd28e });
+const paddyShirtMat = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, color: 0x63849a });
+const paddyTrouserMat = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, color: 0x645440 });
+const paddyBuffaloMat = new THREE.MeshStandardMaterial({ roughness: 0.75, metalness: 0, color: 0x5d6156 });
+const paddyHornMat = new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0, color: 0xabaea1 });
+const paddyEgretMat = new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0, color: 0xe7ebeb });
+const paddyBeakMat = new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0, color: 0xc7ae7f });
+const paddyYardMat = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, 
   color: 0xc7ae7f, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
 });
 // flatShading so the low-segment backdrop cones read as faceted low-poly
 // massifs rather than smooth plastic humps. The back range is pre-tinted
 // with the 2D canvas's aerial-perspective haze tone; distance fog then
 // finishes the job.
-const paddyMtnBaseMat = new THREE.MeshLambertMaterial({ color: 0x7d8175, flatShading: true });
-const paddyMtnMidMat = new THREE.MeshLambertMaterial({ color: 0x93968b, flatShading: true });
-const paddyMtnHazeMat = new THREE.MeshLambertMaterial({ color: 0xc3c6bb, flatShading: true });
-const paddyMtnSnowMat = new THREE.MeshLambertMaterial({ color: 0xe7ebeb, flatShading: true });
+const paddyMtnBaseMat = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, color: 0x7d8175, flatShading: true });
+const paddyMtnMidMat = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, color: 0x93968b, flatShading: true });
+const paddyMtnHazeMat = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, color: 0xc3c6bb, flatShading: true });
+const paddyMtnSnowMat = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0, color: 0xe7ebeb, flatShading: true });
 const paddyTerraceMats = ['#4f8a48', '#5f9852', '#71a75e', '#85b76e', '#9bc880', '#b3d494', '#c9dda8']
-  .map((c) => new THREE.MeshLambertMaterial({ color: c, flatShading: true }));
-const paddyCanopyMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  .map((c) => new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, color: c, flatShading: true }));
+const paddyCanopyMat = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, color: 0xffffff });
 const paddyTreeGreens = [0x3f7a3f, 0x2e5c30, 0x4f9450].map((c) => new THREE.Color(c));
 const PADDY_SPROUT_GEO = new THREE.ConeGeometry(0.5, 1, 5);
 const PADDY_TRUNK_GEO = new THREE.CylinderGeometry(0.5, 0.7, 1, 5);
@@ -2220,11 +2220,11 @@ const beaconGeo = new THREE.BoxGeometry(1.6, 1.6, 1.6);
 function addBlockBox(parent, w, h, d, wallTex, roofTex, centerY) {
   const geo = new THREE.BoxGeometry(Math.max(1, w), Math.max(1, h), Math.max(1, d));
   const tileM = 4;
-  const mkWallMat = (span) => new THREE.MeshLambertMaterial({
+  const mkWallMat = (span) => new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, 
     map: tiledClone(wallTex, Math.max(1, Math.round(span / tileM)), Math.max(1, Math.round(h / tileM))),
   });
   const side = mkWallMat(d), front = mkWallMat(w);
-  const roofMat = new THREE.MeshLambertMaterial({
+  const roofMat = new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0.05, 
     map: tiledClone(roofTex, Math.max(1, Math.round(w / tileM)), Math.max(1, Math.round(d / tileM))),
   });
   const mesh = new THREE.Mesh(geo, [side, side, roofMat, roofMat, front, front]);
@@ -2239,7 +2239,7 @@ function addRock(parent, o, idx) {
   const rng = mulberry32(hashSeed(String(o.label || idx)));
   const n = Math.max(4, Math.round(o.r / 3.5));
   const g = new THREE.Group();
-  const mat = new THREE.MeshLambertMaterial({ map: tiledClone(TEX.stone, 1, 1) });
+  const mat = new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0, map: tiledClone(TEX.stone, 1, 1) });
   for (let i = 0; i < n; i++) {
     const ang = rng() * Math.PI * 2, rr = rng() * o.r;
     const s = o.r * (0.28 + rng() * 0.24);
@@ -2255,12 +2255,12 @@ function addRock(parent, o, idx) {
 }
 
 function addTank(parent, x, z, r, h, rng) {
-  const wallMat = new THREE.MeshLambertMaterial({ map: tiledClone(TEX.metal, 1, 1) });
+  const wallMat = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.6, map: tiledClone(TEX.metal, 1, 1) });
   const tank = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 8), wallMat);
   tank.position.set(x, h / 2, z);
   tank.castShadow = true; tank.receiveShadow = true;
   parent.add(tank);
-  const capMat = new THREE.MeshLambertMaterial({ color: 0xb8bcc0 });
+  const capMat = new THREE.MeshStandardMaterial({ roughness: 0.75, metalness: 0, color: 0xb8bcc0 });
   const cap = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.94, 1.4, 8), capMat);
   cap.position.set(x, h + 0.7, z);
   cap.castShadow = true;
@@ -2304,16 +2304,16 @@ function addTankFarm(parent, o) {
 // _bg_military_v1 layout. Plain-colour low-poly materials (no baked
 // sandbag/camo texture assets exist yet), matched to that view's own
 // hex palette so it reads as the same base.
-const MIL_BUNKER_MAT = new THREE.MeshLambertMaterial({ color: 0x8a8570 });
-const MIL_BUNKER_DK_MAT = new THREE.MeshLambertMaterial({ color: 0x6f6b5a });
-const MIL_SANDBAG_MAT = new THREE.MeshLambertMaterial({ color: 0xa49a72 });
-const MIL_DOOR_MAT = new THREE.MeshLambertMaterial({ color: 0x2b2a22 });
-const MIL_NET_MAT = new THREE.MeshLambertMaterial({ color: 0x4c5a3a, transparent: true, opacity: 0.88, side: THREE.DoubleSide });
-const MIL_NET_MAT2 = new THREE.MeshLambertMaterial({ color: 0x6f7a4a, transparent: true, opacity: 0.88, side: THREE.DoubleSide });
-const MIL_TOWER_MAT = new THREE.MeshLambertMaterial({ color: 0x4c4a3e });
-const MIL_TANK_HULL_MATS = [0x586347, 0x4f5a3f].map(c => new THREE.MeshLambertMaterial({ color: c }));
-const MIL_TANK_DK_MAT = new THREE.MeshLambertMaterial({ color: 0x454e37 });
-const MIL_TANK_TURRET_MAT = new THREE.MeshLambertMaterial({ color: 0x657154 });
+const MIL_BUNKER_MAT = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, color: 0x8a8570 });
+const MIL_BUNKER_DK_MAT = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, color: 0x6f6b5a });
+const MIL_SANDBAG_MAT = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, color: 0xa49a72 });
+const MIL_DOOR_MAT = new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.15, color: 0x2b2a22 });
+const MIL_NET_MAT = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, color: 0x4c5a3a, transparent: true, opacity: 0.88, side: THREE.DoubleSide });
+const MIL_NET_MAT2 = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, color: 0x6f7a4a, transparent: true, opacity: 0.88, side: THREE.DoubleSide });
+const MIL_TOWER_MAT = new THREE.MeshStandardMaterial({ roughness: 0.45, metalness: 0.65, color: 0x4c4a3e });
+const MIL_TANK_HULL_MATS = [0x586347, 0x4f5a3f].map(c => new THREE.MeshStandardMaterial({ roughness: 0.65, metalness: 0.45, color: c }));
+const MIL_TANK_DK_MAT = new THREE.MeshStandardMaterial({ roughness: 0.65, metalness: 0.45, color: 0x454e37 });
+const MIL_TANK_TURRET_MAT = new THREE.MeshStandardMaterial({ roughness: 0.65, metalness: 0.45, color: 0x657154 });
 // Shared faction-livery palette for every mobile military unit (soldiers,
 // planes, trucks, helicopters) -- muted/desaturated ("military type dark
 // color") but varied per instance rather than one flat colour for the
@@ -2341,22 +2341,22 @@ const MIL_UNIT_PALETTE = [
 // convention as MIL_TANK_HULL_MATS, just paired instead of flat.
 function buildLiveryMatPairs() {
   return MIL_UNIT_PALETTE.map(c => ({
-    main: new THREE.MeshLambertMaterial({ color: c.main }),
-    dark: new THREE.MeshLambertMaterial({ color: c.dark }),
+    main: new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0, color: c.main }),
+    dark: new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0, color: c.dark }),
   }));
 }
 function pickLivery(mats, rng) {
   return mats[(rng() * mats.length) | 0];
 }
 const MIL_SOLDIER_UNIFORM_MATS = MIL_UNIT_PALETTE.map(
-  c => new THREE.MeshLambertMaterial({ color: c.main }));
-const MIL_SOLDIER_SKIN_MAT = new THREE.MeshLambertMaterial({ color: 0xc69a72 });
-const MIL_HELMET_MAT = new THREE.MeshLambertMaterial({ color: 0x3d4530 });
-const MIL_FLAG_MAT = new THREE.MeshLambertMaterial({ color: 0xa4392f, side: THREE.DoubleSide });
+  c => new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0, color: c.main }));
+const MIL_SOLDIER_SKIN_MAT = new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0, color: 0xc69a72 });
+const MIL_HELMET_MAT = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.4, color: 0x3d4530 });
+const MIL_FLAG_MAT = new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0, color: 0xa4392f, side: THREE.DoubleSide });
 const MIL_WIRE_MAT = new THREE.LineBasicMaterial({ color: 0x9a9587 });
-const MIL_POST_MAT = new THREE.MeshLambertMaterial({ color: 0x554f3d });
-const MIL_PAD_MAT = new THREE.MeshLambertMaterial({ color: 0x7a715a });
-const MIL_PAD_MARK_MAT = new THREE.MeshLambertMaterial({ color: 0xe7e2cf });
+const MIL_POST_MAT = new THREE.MeshStandardMaterial({ roughness: 0.75, metalness: 0.05, color: 0x554f3d });
+const MIL_PAD_MAT = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, color: 0x7a715a });
+const MIL_PAD_MARK_MAT = new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0, color: 0xe7e2cf });
 
 function addWatchtower(parent, x, z, h) {
   const g = new THREE.Group();
@@ -2430,9 +2430,9 @@ function addFlagpole(parent, x, z, h) {
   parent.add(g);
 }
 
-const MIL_TENT_MAT = new THREE.MeshLambertMaterial({ color: 0x5c6b4a });
-const MIL_TENT_DK_MAT = new THREE.MeshLambertMaterial({ color: 0x495638 });
-const MIL_CRATE_MAT = new THREE.MeshLambertMaterial({ color: 0x6b5a3c });
+const MIL_TENT_MAT = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, color: 0x5c6b4a });
+const MIL_TENT_DK_MAT = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, color: 0x495638 });
+const MIL_CRATE_MAT = new THREE.MeshStandardMaterial({ roughness: 0.75, metalness: 0, color: 0x6b5a3c });
 
 function addTent(parent, x, z, w, h, len) {
   const g = new THREE.Group();
@@ -2470,10 +2470,10 @@ function addCrateStack(parent, x, z, rng) {
 // Campfire + fuel drums -- the details that make a cluster of tents read
 // as an actual lived-in camp instead of just "some tents dropped on the
 // ground".
-const MIL_FIRE_MAT = new THREE.MeshLambertMaterial({ color: 0xff6a2a, emissive: 0xdd4400, emissiveIntensity: 0.9 });
-const MIL_LOG_MAT = new THREE.MeshLambertMaterial({ color: 0x4a3624 });
-const MIL_DRUM_MAT = new THREE.MeshLambertMaterial({ color: 0x5c5a3a });
-const MIL_DRUM_DK_MAT = new THREE.MeshLambertMaterial({ color: 0x3a3826 });
+const MIL_FIRE_MAT = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, color: 0xff6a2a, emissive: 0xdd4400, emissiveIntensity: 0.9 });
+const MIL_LOG_MAT = new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0, color: 0x4a3624 });
+const MIL_DRUM_MAT = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.5, color: 0x5c5a3a });
+const MIL_DRUM_DK_MAT = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.5, color: 0x3a3826 });
 function addCampfire(parent, x, z) {
   const g = new THREE.Group();
   const ringR = 1.1;
@@ -2923,7 +2923,7 @@ function buildSoldierMesh(rng) {
 // distance the old 0x2b2a22 was indistinguishable from both the dark
 // uniform and the ground shadow, so the rifle was technically there but
 // never actually visible.
-const MIL_RIFLE_MAT = new THREE.MeshLambertMaterial({ color: 0x6b6a60 });
+const MIL_RIFLE_MAT = new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.7, color: 0x6b6a60 });
 function attachRifle(model) {
   const hand = model.getObjectByName('mixamorigRightHand');
   if (!hand) return null;
@@ -3079,7 +3079,7 @@ function buildRealSoldier(rng, opts) {
 // coordinated dark trim -- cockpit glass stays a fixed dark tactical tint
 // regardless of livery (real canopy glass doesn't repaint with the hull).
 const MIL_PLANE_LIVERY_MATS = buildLiveryMatPairs();
-const MIL_PLANE_COCKPIT_MAT = new THREE.MeshLambertMaterial({ color: 0x2f4550 });
+const MIL_PLANE_COCKPIT_MAT = new THREE.MeshStandardMaterial({ roughness: 0.15, metalness: 0.3, color: 0x2f4550 });
 function buildMilitaryPlaneMesh(rng) {
   const liv = pickLivery(MIL_PLANE_LIVERY_MATS, rng);
   const g = new THREE.Group();
@@ -3124,8 +3124,8 @@ function buildMilitaryPlaneMesh(rng) {
 // dark trim -- cockpit glass and rotor blades stay fixed regardless of
 // livery, same reasoning as the plane's canopy.
 const MIL_HELI_LIVERY_MATS = buildLiveryMatPairs();
-const MIL_HELI_GLASS_MAT = new THREE.MeshLambertMaterial({ color: 0x7fa0b0 });
-const MIL_ROTOR_MAT = new THREE.MeshLambertMaterial({ color: 0x121212 });
+const MIL_HELI_GLASS_MAT = new THREE.MeshStandardMaterial({ roughness: 0.12, metalness: 0.35, color: 0x7fa0b0 });
+const MIL_ROTOR_MAT = new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.7, color: 0x121212 });
 function buildMilitaryHelicopterMesh(rng) {
   const liv = pickLivery(MIL_HELI_LIVERY_MATS, rng);
   const g = new THREE.Group();
@@ -3177,8 +3177,8 @@ function buildMilitaryHelicopterMesh(rng) {
 // separate stores, not painted to match the cab) and wheels stay dark --
 // tires being colorful reads as wrong regardless of the rest of the paint.
 const MIL_TRUCK_LIVERY_MATS = buildLiveryMatPairs();
-const MIL_TRUCK_CANVAS_MAT = new THREE.MeshLambertMaterial({ color: 0x6b6048 });
-const MIL_TRUCK_WHEEL_MAT = new THREE.MeshLambertMaterial({ color: 0x232323 });
+const MIL_TRUCK_CANVAS_MAT = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, color: 0x6b6048 });
+const MIL_TRUCK_WHEEL_MAT = new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.15, color: 0x232323 });
 function buildMilitaryTruckMesh(rng) {
   const liv = pickLivery(MIL_TRUCK_LIVERY_MATS, rng);
   const g = new THREE.Group();
@@ -3405,9 +3405,9 @@ function addHelipad(parent, cx, cz) {
 // watchtower's stubby platform) topped with a dish and a blinking
 // obstruction light, the tallest single silhouette on the base and a
 // distinct landmark from the corner/bunker watchtowers.
-const MIL_RADIO_MAT = new THREE.MeshLambertMaterial({ color: 0x4a4a42 });
-const MIL_DISH_MAT = new THREE.MeshLambertMaterial({ color: 0xb8b4a8 });
-const MIL_LIGHT_MAT = new THREE.MeshLambertMaterial({ color: 0xff4433, emissive: 0xb01f14, emissiveIntensity: 0.7 });
+const MIL_RADIO_MAT = new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.6, color: 0x4a4a42 });
+const MIL_DISH_MAT = new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.6, color: 0xb8b4a8 });
+const MIL_LIGHT_MAT = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.4, color: 0xff4433, emissive: 0xb01f14, emissiveIntensity: 0.7 });
 function addRadioTower(parent, x, z, h) {
   const g = new THREE.Group();
   // Base width/leg thickness/dish size all scale off `h` relative to the
@@ -3456,9 +3456,9 @@ function addRadioTower(parent, x, z, h) {
 // Bridge over a shallow decorative ravine -- a classic battlefield
 // chokepoint landmark, purely visual (no obstacle, nothing needs it to
 // cross anything for PHY purposes).
-const MIL_RAVINE_MAT = new THREE.MeshLambertMaterial({ color: 0x473d2d });
-const MIL_BRIDGE_DECK_MAT = new THREE.MeshLambertMaterial({ color: 0x6b5a3c });
-const MIL_BRIDGE_RAIL_MAT = new THREE.MeshLambertMaterial({ color: 0x3d3a2e });
+const MIL_RAVINE_MAT = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, color: 0x473d2d });
+const MIL_BRIDGE_DECK_MAT = new THREE.MeshStandardMaterial({ roughness: 0.75, metalness: 0, color: 0x6b5a3c });
+const MIL_BRIDGE_RAIL_MAT = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.5, color: 0x3d3a2e });
 function addRavineBridge(parent, cx, cz, angle, span) {
   const g = new THREE.Group();
   const ravine = new THREE.Mesh(new THREE.BoxGeometry(span * 1.15, 1.4, 13), MIL_RAVINE_MAT);
@@ -3512,9 +3512,9 @@ function addRavineBridge(parent, cx, cz, angle, span) {
 // get their own shared unit geometry, scaled/rotated/positioned per
 // instance via a transform matrix (and, for ground patches, tinted per
 // instance via instanceColor so one mesh still reads as multi-tone camo).
-const MIL_CRATER_MAT = new THREE.MeshLambertMaterial({ color: 0x5c5540 });
-const MIL_ROCK_MAT = new THREE.MeshLambertMaterial({ color: 0x6b6558 });
-const MIL_SCRUB_MAT = new THREE.MeshLambertMaterial({ color: 0x585a3f });
+const MIL_CRATER_MAT = new THREE.MeshStandardMaterial({ roughness: 0.88, metalness: 0, color: 0x5c5540 });
+const MIL_ROCK_MAT = new THREE.MeshStandardMaterial({ roughness: 0.88, metalness: 0, color: 0x6b6558 });
+const MIL_SCRUB_MAT = new THREE.MeshStandardMaterial({ roughness: 0.88, metalness: 0, color: 0x585a3f });
 // Opaque, not transparent -- an earlier transparent+depthWrite:false
 // version fixed a z-fighting flicker, but blending ~1000 overlapping
 // instances is real GPU overdraw cost, and it's unnecessary now the
@@ -3526,7 +3526,7 @@ const MIL_SCRUB_MAT = new THREE.MeshLambertMaterial({ color: 0x585a3f });
 // precision headroom on its own: without this they intermittently
 // z-fight/flicker against the ground depending on camera distance,
 // reading as "unstable" graphics rather than a steady painted patch.
-const MIL_GROUND_PATCH_MAT = new THREE.MeshLambertMaterial({
+const MIL_GROUND_PATCH_MAT = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, 
   color: 0xffffff, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
 });
 // Was a 5-colour "camo" palette spanning dirt/scrub/khaki -- read as a
@@ -3546,8 +3546,8 @@ const UNIT_SCRUB_GEO = new THREE.IcosahedronGeometry(1, 0);
 // Simple forest trees -- two InstancedMesh calls (trunk cylinder + cone
 // canopy) sharing the same per-instance positions, same low-draw-call
 // pattern as the rock/scrub/crater filler below.
-const MIL_TRUNK_MAT = new THREE.MeshLambertMaterial({ color: 0x4a3826 });
-const MIL_CANOPY_MAT = new THREE.MeshLambertMaterial({ color: 0xffffff });
+const MIL_TRUNK_MAT = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, color: 0x4a3826 });
+const MIL_CANOPY_MAT = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, color: 0xffffff });
 const MIL_CANOPY_COLORS = [0x35492a, 0x3f5531, 0x2e4025]
   .map((c) => new THREE.Color(c));
 const UNIT_TRUNK_GEO = new THREE.CylinderGeometry(0.4, 0.55, 1, 6);
@@ -3752,7 +3752,7 @@ function addMilitaryGroundCamo(parent, rng, hw, hd, count) {
 // as the ground camo patches (including polygonOffset, for the same
 // z-fighting-at-distance reason), just near-black and semi-transparent so
 // they read as scorched ground instead of a solid black sticker.
-const MIL_SCORCH_MAT = new THREE.MeshLambertMaterial({
+const MIL_SCORCH_MAT = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, 
   color: 0x161410, transparent: true, opacity: 0.6,
   polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
 });
@@ -3784,7 +3784,7 @@ const MIL_WATER_MAT = new THREE.MeshBasicMaterial({
   color: 0x3f7fa6,
   polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6,
 });
-const MIL_MUD_RIM_MAT = new THREE.MeshLambertMaterial({
+const MIL_MUD_RIM_MAT = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, 
   color: 0x4a3f28,
   polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -5,
 });
@@ -3814,7 +3814,7 @@ function addMilitaryWaterBody(parent, x, z, rx, rz, rng) {
 // Crate/drum materials reused from the field-camp props above (same
 // wood-crate/fuel-drum look, just loose on the ground instead of stacked
 // at a camp) -- only scrap plate needs a new material.
-const MIL_SCRAP_MAT = new THREE.MeshLambertMaterial({ color: 0x46484a });
+const MIL_SCRAP_MAT = new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0.55, color: 0x46484a });
 const UNIT_DEBRIS_DRUM_GEO = new THREE.CylinderGeometry(1, 1, 1.6, 10);
 function addInstancedDebris(parent, rng, hw, hd, keepOut, count, avoidLoops, avoidLines) {
   const pts = scatterPositions(rng, hw, hd, keepOut, count, avoidLoops, avoidLines);
@@ -3861,7 +3861,7 @@ function addInstancedDebris(parent, rng, hw, hd, keepOut, count, avoidLoops, avo
 // black, tilts it like it's dug into a shell crater, and gives it a slow
 // rising smoke wisp via the same emitter pool the industrial smokestacks
 // use, for a "still smouldering" read instead of pristine wreckage.
-const MIL_WRECK_MAT = new THREE.MeshLambertMaterial({ color: 0x2a2621 });
+const MIL_WRECK_MAT = new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0.5, color: 0x2a2621 });
 function addVehicleWreck(parent, x, z, rng, isTank) {
   const built = isTank ? buildMilitaryTankMesh(rng) : buildMilitaryTruckMesh(rng);
   const g = built.group;
@@ -4186,8 +4186,8 @@ function spawnStandingGroups(rng, hw, hd, keepOut, count, build, avoidLoops, avo
 // -- same "always something to see, not a one-shot event a viewer could
 // easily miss" philosophy as the gun firing/explosions/patrol loops
 // elsewhere in this file, rather than a single drop that only plays once.
-const MIL_CHUTE_CANOPY_MAT = new THREE.MeshLambertMaterial({ color: 0xcabb8a, side: THREE.DoubleSide });
-const MIL_CHUTE_STRIPE_MAT = new THREE.MeshLambertMaterial({ color: 0x8a5a3a, side: THREE.DoubleSide });
+const MIL_CHUTE_CANOPY_MAT = new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0, color: 0xcabb8a, side: THREE.DoubleSide });
+const MIL_CHUTE_STRIPE_MAT = new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0, color: 0x8a5a3a, side: THREE.DoubleSide });
 const MIL_CHUTE_CORD_MAT = new THREE.MeshBasicMaterial({ color: 0x1c1a16 });
 // Orients a unit-length-agnostic cylinder mesh to run exactly between two
 // points (position at the midpoint, default +Y axis rotated onto the
@@ -4818,14 +4818,14 @@ function spawnExplosion(x, z) {
   flash.visible = true;
   smokeGroup.add(flash);
 
-  // Fireball -> smoke: blocky cubes (BoxGeometry, MeshLambertMaterial),
+  // Fireball -> smoke: blocky cubes (BoxGeometry, MeshStandardMaterial),
   // matching the deliberately low-poly primitive look every other
   // particle-ish effect in this file uses (see smoke.js's own puffs) --
   // NOT another soft gradient sprite, which would read as "matter" made
   // of light rather than an actual solid cloud.
   const debris = [];
   for (let i = 0; i < 3; i++) {
-    const mat = new THREE.MeshLambertMaterial({ color: MIL_FIREBALL_COLOR, transparent: true, opacity: 0.95 });
+    const mat = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, color: MIL_FIREBALL_COLOR, transparent: true, opacity: 0.95 });
     const mesh = new THREE.Mesh(UNIT_BOX_GEO, mat);
     mesh.position.set(x + (Math.random() - 0.5) * 4, 1 + Math.random() * 2, z + (Math.random() - 0.5) * 4);
     mesh.rotation.y = Math.random() * Math.PI;
@@ -5267,7 +5267,7 @@ function makeGableRoofGeometry(w, d, ridgeH) {
 }
 function addGableRoof(parent, w, d, ridgeH, baseY, roofTex) {
   const geo = makeGableRoofGeometry(w * 1.1, d * 1.1, ridgeH);
-  const mat = new THREE.MeshLambertMaterial({
+  const mat = new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0.05, 
     map: tiledClone(roofTex, Math.max(1, Math.round(w / 4)), Math.max(1, Math.round(ridgeH / 3))),
     side: THREE.DoubleSide,
   });
@@ -5344,12 +5344,12 @@ function addBuilding(parent, o, idx, environment) {
     const stackH = Math.max(24, h * 1.5 + rng() * 16);
     const stackR = 2.0 + rng() * 0.6;
     const localX = w * 0.26, localZ = d * 0.18;
-    const stackMat = new THREE.MeshLambertMaterial({ color: 0x45484d });
+    const stackMat = new THREE.MeshStandardMaterial({ roughness: 0.45, metalness: 0.6, color: 0x45484d });
     const stack = new THREE.Mesh(new THREE.BoxGeometry(stackR * 1.6, stackH, stackR * 1.6), stackMat);
     stack.position.set(localX, h + stackH / 2, localZ);
     stack.castShadow = true;
     group.add(stack);
-    const bandMat = new THREE.MeshLambertMaterial({ map: tiledClone(TEX.warning, 1, 1) });
+    const bandMat = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.5, map: tiledClone(TEX.warning, 1, 1) });
     for (const f of [0.6, 0.85]) {
       const band = new THREE.Mesh(new THREE.BoxGeometry(stackR * 1.8, stackH * 0.08, stackR * 1.8), bandMat);
       band.position.set(localX, h + stackH * f, localZ);
@@ -5405,7 +5405,7 @@ function addFillerBuilding(parent, x, z, rng, styleBias, withChimney) {
     const localX = w * 0.28, localZ = d * 0.2;
     const stack = new THREE.Mesh(
       new THREE.BoxGeometry(stackR * 1.6, stackH, stackR * 1.6),
-      new THREE.MeshLambertMaterial({ color: 0x45484d }),
+      new THREE.MeshStandardMaterial({ roughness: 0.45, metalness: 0.6, color: 0x45484d }),
     );
     stack.position.set(localX, h + stackH / 2, localZ);
     stack.castShadow = true;
@@ -5795,10 +5795,10 @@ export function rebuildRoads(loops) {
     // scene's now much bigger (1100m+) footprint -- exactly what reads
     // as flicker ("z-fighting") while zooming. A wider real gap between
     // layers is robust to that regardless of how far the camera is.
-    const sidewalkMat = new THREE.MeshLambertMaterial({ map: tiledClone(TEX.sidewalk, rep, rep) });
+    const sidewalkMat = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, map: tiledClone(TEX.sidewalk, rep, rep) });
     const sw = ringMesh(l.cx, l.cy, l.hw, l.hh, ROAD_HALF_W + SIDEWALK_W, sidewalkMat, 0.4);
     roadGroup.add(sw); roadMeshes.push(sw);
-    const asphaltMat = new THREE.MeshLambertMaterial({ map: tiledClone(TEX.road, rep, rep) });
+    const asphaltMat = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, map: tiledClone(TEX.road, rep, rep) });
     const rd = ringMesh(l.cx, l.cy, l.hw, l.hh, ROAD_HALF_W, asphaltMat, 0.8);
     roadGroup.add(rd); roadMeshes.push(rd);
     const cl = centerlineLoop(l.cx, l.cy, l.hw, l.hh, 1.2);
@@ -5858,10 +5858,10 @@ export function rebuildCrossStreets(crossStreets) {
   for (const cs of crossStreets || []) {
     const span = Math.max(1, cs.y_max - cs.y_min);
     const rep = Math.max(1, span / 24);
-    const sidewalkMat = new THREE.MeshLambertMaterial({ map: tiledClone(TEX.sidewalk, rep, rep) });
+    const sidewalkMat = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, map: tiledClone(TEX.sidewalk, rep, rep) });
     const sw = stripMesh(cs.x, cs.y_min, cs.y_max, ROAD_HALF_W + SIDEWALK_W, sidewalkMat, 0.4);
     roadGroup.add(sw); crossStreetMeshes.push(sw);
-    const asphaltMat = new THREE.MeshLambertMaterial({ map: tiledClone(TEX.road, rep, rep) });
+    const asphaltMat = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, map: tiledClone(TEX.road, rep, rep) });
     const rd = stripMesh(cs.x, cs.y_min, cs.y_max, ROAD_HALF_W, asphaltMat, 0.8);
     roadGroup.add(rd); crossStreetMeshes.push(rd);
     const cl = centerlineStrip(cs.x, cs.y_min, cs.y_max, 1.2);

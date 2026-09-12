@@ -1,7 +1,12 @@
 // Renderer, camera, lighting, ground plane and the scene-graph groups
-// every other module attaches its meshes to. Blocky-game look: flat sky,
-// no atmospheric scattering, no bloom/PBR gloss -- one hard sun over
-// nearest-filtered pixel-art blocks.
+// every other module attaches its meshes to. Still a deliberately
+// low-poly/blocky city layout (no geometry rewrite), but PBR-lit: every
+// material in world.js/entities.js/smoke.js is MeshStandardMaterial
+// (roughness/metalness per surface -- concrete and dirt stay matte, metal
+// railings/panels/vehicle trim get real specular, glass/water get a glossy
+// low-roughness response), filmic tone mapping instead of a flat linear
+// output, and a vertical gradient sky (see paintSkyGradient below) instead
+// of one flat background colour.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -18,19 +23,64 @@ const canvas = document.getElementById('app-canvas');
 export const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
-// PCFSoftShadowMap softens shadow EDGES only -- materials stay flat
-// Lambert, no PBR/bloom added, so this stays inside the "blocky-game
-// look" above. BasicShadowMap's hard-edged, slightly aliased shadow
-// boundary was the single most obviously "unpolished" thing in every
-// screenshot of this scene; Minecraft's own default shadows are soft-
-// edged too, so this isn't fighting the voxel aesthetic, just cleaning
-// up an artifact of the cheapest shadow-map filter.
+// PCFSoftShadowMap softens shadow EDGES -- BasicShadowMap's hard-edged,
+// slightly aliased shadow boundary was the single most obviously
+// "unpolished" thing in every screenshot of this scene; Minecraft's own
+// default shadows are soft-edged too, so this isn't fighting the voxel
+// geometry, just cleaning up an artifact of the cheapest shadow-map filter.
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.NoToneMapping;
+// ACESFilmic replaces the old flat/linear output -- it rolls off highlights
+// (sun-lit metal/glass specular from the PBR materials below, the emissive
+// fire/warning-light materials) instead of clipping them to solid white,
+// which is most of what makes a scene read as "rendered", not "lit". Goes
+// through OutputPass (composer, below), which is exactly what that pass
+// exists for. Exposure nudged slightly above 1.0 to compensate for
+// ACESFilmic's midtone compression against this scene's existing light
+// intensities (sun/hemi below are unchanged from the pre-PBR pass).
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
 
 export const scene = new THREE.Scene();
-scene.background = new THREE.Color(SKY_COLOR);
+
+// ---- sky -----------------------------------------------------------------
+// A flat single-colour background reads as a solid-colour backdrop, not
+// sky -- real open-air haze always lightens toward the horizon (more
+// atmosphere between the eye and the horizon than straight up). Cheap,
+// low-risk stand-in for a full atmospheric-scattering dome: a vertical
+// gradient (deep/saturated at the zenith, hazy/whitened at the horizon)
+// painted onto a tiny canvas and used as scene.background. Regenerated
+// (not just recoloured) whenever setBattleAtmosphere below swaps the
+// active mood colour, same trigger as before.
+let skyCanvas = null, skyCtx = null, skyTexture = null;
+function ensureSkyCanvas() {
+  if (skyTexture) return;
+  skyCanvas = document.createElement('canvas');
+  skyCanvas.width = 2;
+  skyCanvas.height = 256;
+  skyCtx = skyCanvas.getContext('2d');
+  skyTexture = new THREE.CanvasTexture(skyCanvas);
+  skyTexture.colorSpace = THREE.SRGBColorSpace;
+}
+// Returns the horizon colour actually painted, so callers can keep fog
+// (which represents the same haze, just applied to distant geometry
+// instead of the empty sky) matched to it rather than to the zenith tone.
+function paintSkyGradient(baseHex) {
+  ensureSkyCanvas();
+  const base = new THREE.Color(baseHex);
+  const zenith = base.clone().multiplyScalar(0.72);
+  const horizon = base.clone().lerp(new THREE.Color(0xffffff), 0.55);
+  const grad = skyCtx.createLinearGradient(0, 0, 0, skyCanvas.height);
+  grad.addColorStop(0, `#${zenith.getHexString()}`);
+  grad.addColorStop(1, `#${horizon.getHexString()}`);
+  skyCtx.fillStyle = grad;
+  skyCtx.fillRect(0, 0, skyCanvas.width, skyCanvas.height);
+  skyTexture.needsUpdate = true;
+  return horizon;
+}
+const initialHorizon = paintSkyGradient(SKY_COLOR);
+scene.background = skyTexture;
+
 // FAR raised alongside every other AP-range-derived scale constant here
 // (controls.maxDistance, the shadow frustum below) once topology_canvas.py's
 // _ENV_PATH_LOSS_EXP gave each environment a realistic outdoor link budget
@@ -38,7 +88,7 @@ scene.background = new THREE.Color(SKY_COLOR);
 // the old 3200 far plane started fogging out real, in-range nodes well
 // before the edge of a large scatter.
 const DEFAULT_FOG_NEAR = 700, DEFAULT_FOG_FAR = 6000;
-scene.fog = new THREE.Fog(SKY_COLOR, DEFAULT_FOG_NEAR, DEFAULT_FOG_FAR);
+scene.fog = new THREE.Fog(initialHorizon, DEFAULT_FOG_NEAR, DEFAULT_FOG_FAR);
 
 // Military Zone's real extent (802.11ah's long range routinely pushes it
 // past 1km) can put the actual playable area, mountains and all, well
@@ -80,11 +130,10 @@ controls.target.set(0, 15, 0);
 // where blocks actually touch (ground/building corners, prop clusters)
 // rather than producing the big soft grey halos a large-radius AO pass
 // casts around every object -- that broad-halo look reads as hazy/washed
-// out against flat Lambert materials and would fight the "blocky-game
-// look" this scene deliberately keeps (see the top-of-file comment).
-// Materials, lighting model and tone mapping are untouched; this only
-// adds a multiplicative darkening term in the few pixels where geometry
-// actually occludes itself.
+// out and would fight the PBR materials' own specular response (see the
+// top-of-file comment). Geometry/layout untouched; this only adds a
+// multiplicative darkening term in the few pixels where geometry actually
+// occludes itself.
 export const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 const ssaoPass = new SSAOPass(scene, camera, window.innerWidth, window.innerHeight);
@@ -143,8 +192,9 @@ const MIL_SUN_COLOR = 0xffcf94, MIL_SUN_INTENSITY = 1.5;
 const DEFAULT_HEMI_SKY = 0xbfe3ff, DEFAULT_HEMI_GROUND = 0x7c6b4e, DEFAULT_HEMI_INTENSITY = 0.95;
 const MIL_HEMI_SKY = 0xd8cfa8, MIL_HEMI_GROUND = 0x6b5a3e, MIL_HEMI_INTENSITY = 0.85;
 export function setBattleAtmosphere(active) {
-  scene.background = active ? MIL_BG_COLOR : DEFAULT_BG_COLOR;
-  scene.fog.color.set(active ? MIL_BG_COLOR : DEFAULT_BG_COLOR);
+  const horizon = paintSkyGradient(active ? MIL_BG_COLOR : DEFAULT_BG_COLOR);
+  scene.background = skyTexture;
+  scene.fog.color.set(horizon);
   sun.color.set(active ? MIL_SUN_COLOR : DEFAULT_SUN_COLOR);
   sun.intensity = active ? MIL_SUN_INTENSITY : DEFAULT_SUN_INTENSITY;
   hemi.color.set(active ? MIL_HEMI_SKY : DEFAULT_HEMI_SKY);
@@ -160,7 +210,7 @@ export function setBattleAtmosphere(active) {
 // sky with a visible seam where the ground texture just stopped.
 export const GROUND_SIZE = 12000;
 const groundGeo = new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE);
-const groundMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+const groundMat = new THREE.MeshStandardMaterial({ roughness: 0.92, metalness: 0, color: 0xffffff });
 const ground = new THREE.Mesh(groundGeo, groundMat);
 ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;

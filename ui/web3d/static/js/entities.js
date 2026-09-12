@@ -93,8 +93,8 @@ const nodeMeshes = new Map();
 // purple outline there too -- see topology_canvas.py's _BLUE/_PURPLE).
 // Previously both were near-black/near-identical and easy to lose
 // against the terrain or each other.
-const apBodyMat = new THREE.MeshLambertMaterial({ color: 0x3b6fd6 });
-const relayBodyMat = new THREE.MeshLambertMaterial({ color: 0x8a4fd6 });
+const apBodyMat = new THREE.MeshStandardMaterial({ roughness: 0.45, metalness: 0.5, color: 0x3b6fd6 });
+const relayBodyMat = new THREE.MeshStandardMaterial({ roughness: 0.45, metalness: 0.5, color: 0x8a4fd6 });
 // Multi-select ring -- one shared geometry/material (per-instance state
 // is just visibility), flat on the ground under a node, same amber the
 // 2D canvas's own selection ring uses. Hidden unless interact.js's
@@ -103,7 +103,7 @@ const selRingGeo = new THREE.RingGeometry(6, 7.4, 24);
 const selRingMat = new THREE.MeshBasicMaterial({
   color: 0xf59e0b, side: THREE.DoubleSide, transparent: true, opacity: 0.9, depthWrite: false,
 });
-const staBodyMat = new THREE.MeshLambertMaterial({ color: 0x454c57 });
+const staBodyMat = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.4, color: 0x454c57 });
 // Aerial-relay drones (role 'RELAY', is_drone) reuse relayBodyMat outright --
 // same role, same colour, just airborne, exactly like the AP/relay/STA rule
 // above. UAV end nodes (role 'STA', is_uav) get their own teal, matching the
@@ -114,9 +114,9 @@ const staBodyMat = new THREE.MeshLambertMaterial({ color: 0x454c57 });
 // immediately overwrites with the live association-state colour on the very
 // first updateNodes() call, so that LED distinction never actually rendered
 // and relay drones were visually identical to UAV end nodes in the scene.
-const uavBodyMat = new THREE.MeshLambertMaterial({ color: 0x14b8a6 });
-const armMat = new THREE.MeshLambertMaterial({ color: 0x14171c });
-const rotorMat = new THREE.MeshLambertMaterial({ color: 0x0e1013, transparent: true, opacity: 0.5 });
+const uavBodyMat = new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.45, color: 0x14b8a6 });
+const armMat = new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.5, color: 0x14171c });
+const rotorMat = new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.5, color: 0x0e1013, transparent: true, opacity: 0.5 });
 
 function statusHex(n) {
   // Everything except the AP has a real, meaningful assoc_state -- STAs,
@@ -130,9 +130,9 @@ function statusHex(n) {
   return STATUS_COLOR.PENDING;
 }
 
-const plinthMat = new THREE.MeshLambertMaterial({ color: 0x2a2f38 });
-const apPanelMat = new THREE.MeshLambertMaterial({ color: 0x93c5fd });
-const relayPanelMat = new THREE.MeshLambertMaterial({ color: 0xd8b4fe });
+const plinthMat = new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0.1, color: 0x2a2f38 });
+const apPanelMat = new THREE.MeshStandardMaterial({ roughness: 0.3, metalness: 0.4, color: 0x93c5fd });
+const relayPanelMat = new THREE.MeshStandardMaterial({ roughness: 0.3, metalness: 0.4, color: 0xd8b4fe });
 
 function buildApOrRelay(isAp) {
   const g = new THREE.Group();
@@ -200,7 +200,7 @@ function buildApOrRelay(isAp) {
   return { group: g, ledMat, rotors: null };
 }
 
-const staCapMat = new THREE.MeshLambertMaterial({ color: 0x5b6472 });
+const staCapMat = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.4, color: 0x5b6472 });
 
 function buildStation() {
   const g = new THREE.Group();
@@ -633,15 +633,15 @@ export function updatePackets(packets, pulses, nodesData) {
 // itself doesn't care whether its position/color come from a decorative
 // time formula or a real node's live (x, y) and role -- only the two
 // callers differ. -----------------------------------------------------------
-const wheelMat = new THREE.MeshLambertMaterial({ color: 0x15171b });
+const wheelMat = new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.15, color: 0x15171b });
 function buildCarBody(bodyColor) {
   const group = new THREE.Group();
-  const bodyMat = new THREE.MeshLambertMaterial({ color: bodyColor });
+  const bodyMat = new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.5, color: bodyColor });
   const body = new THREE.Mesh(new THREE.BoxGeometry(4.6, 1.4, 2.1), bodyMat);
   body.position.y = 0.95;
   body.castShadow = true;
   group.add(body);
-  const cabinMat = new THREE.MeshLambertMaterial({ color: 0x9fd0ea, transparent: true, opacity: 0.85 });
+  const cabinMat = new THREE.MeshStandardMaterial({ roughness: 0.12, metalness: 0.35, color: 0x9fd0ea, transparent: true, opacity: 0.85 });
   const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.0, 1.85), cabinMat);
   cabin.position.set(-0.3, 1.75, 0);
   group.add(cabin);
@@ -702,12 +702,12 @@ function buildCar() {
 // convention updateNodes already applies to cars.
 function buildScooter() {
   const group = new THREE.Group();
-  const bodyMat = new THREE.MeshLambertMaterial({ color: 0xf97316 });
+  const bodyMat = new THREE.MeshStandardMaterial({ roughness: 0.45, metalness: 0.35, color: 0xf97316 });
   const deck = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.35, 0.9), bodyMat);
   deck.position.y = 0.55;
   deck.castShadow = true;
   group.add(deck);
-  const stemMat = new THREE.MeshLambertMaterial({ color: 0x2b2f38 });
+  const stemMat = new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.6, color: 0x2b2f38 });
   const stem = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.3, 0.2), stemMat);
   stem.position.set(1.0, 1.2, 0);
   group.add(stem);

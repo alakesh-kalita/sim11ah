@@ -30,7 +30,7 @@ function spawnSmoke(dt) {
     if (s._t < 0.55) continue;
     s._t = 0;
     if (smokePuffs.length >= MAX_SMOKE_PUFFS) continue;
-    const mat = new THREE.MeshLambertMaterial({ color: 0xcfd2d4, transparent: true, opacity: 0.55 });
+    const mat = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, color: 0xcfd2d4, transparent: true, opacity: 0.55 });
     const mesh = new THREE.Mesh(puffGeo, mat);
     mesh.position.set(s.x + (Math.random() - 0.5) * 1.4, s.y, s.z + (Math.random() - 0.5) * 1.4);
     mesh.rotation.y = Math.random() * Math.PI;
@@ -81,7 +81,7 @@ function spawnDust(dt) {
     // Cloned per puff (not shared) -- each puff fades on its own opacity
     // timeline, a shared material would make every live puff flicker to
     // whichever one last wrote opacity.
-    const mat = new THREE.MeshLambertMaterial({ color: 0xa8946a, transparent: true, opacity: 0.4 });
+    const mat = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, color: 0xa8946a, transparent: true, opacity: 0.4 });
     const mesh = new THREE.Mesh(puffGeo, mat);
     mesh.position.set(s.x + (Math.random() - 0.5) * 2.5, s.y, s.z + (Math.random() - 0.5) * 2.5);
     mesh.rotation.y = Math.random() * Math.PI;
