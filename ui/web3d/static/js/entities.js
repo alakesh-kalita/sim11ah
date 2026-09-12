@@ -331,16 +331,16 @@ export function updateNodes(nodesData) {
     if (entry.info) {
       updateInfoSprite(entry.info, nodeInfoText(n), nodeInfoColor(n));
     }
-    // A car/scooter's heading changes in fixed 90-degree steps whenever
-    // it turns onto the next road (see sim11ah/mobility.py's
-    // grid_road_step) -- set directly each poll, not lerped like
-    // position below, so a turn reads as a sharp corner rather than a
-    // smooth arc (matching how the vehicle's own position actually moves
-    // -- straight, then a corner, never a curve). Same world-heading ->
-    // rotation.y convention updateVehicles already uses for the
-    // decorative Smart City traffic (local model forward is +X; three.js's
-    // rotation.y maps that to exactly the world heading, no sign flip
-    // needed).
+    // A car/scooter's heading now sweeps smoothly while it turns onto the
+    // next road -- grid_road_step (sim11ah/mobility.py) drives an actual
+    // quarter-circle arc through the turn and reports the live tangent
+    // heading at every tick, not just 0/90/180/270. Set directly each
+    // poll, not lerped like position below: grid_road_step's own heading
+    // is already exact and continuous, so lerping it here would only add
+    // lag, not smoothness. Same world-heading -> rotation.y convention
+    // updateVehicles already uses for the decorative Smart City traffic
+    // (local model forward is +X; three.js's rotation.y maps that to
+    // exactly the world heading, no sign flip needed).
     if ((n.is_car || n.is_scooter) && typeof n.heading === 'number') {
       entry.group.rotation.y = n.heading;
     }

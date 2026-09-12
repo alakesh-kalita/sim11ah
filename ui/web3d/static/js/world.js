@@ -6140,15 +6140,19 @@ export function bridgeDeckHeightAt(x, y) {
 
 // ---- rounded intersection corners (cars_uavs mode only) ------------------
 // Every avenue x cross-street crossing draws as a sharp 90-degree "+" --
-// reported as reading unnatural ("no curve in the roads"). A real curve
-// vehicles actually drive would need grid_road_step's straight-line-only
-// mobility rearchitected (real risk of reintroducing the position-reset/
-// same-pattern bugs fixed earlier this session for real functional
-// reasons) -- picked instead, per explicit choice: a purely decorative
-// curb fillet at each of the 4 corners of every intersection, ground-
-// texture patches layered just above the sidewalk that visually round
-// the corner the way a real curb return does, without moving a single
-// road surface vertex or touching where any vehicle actually drives.
+// reported as reading unnatural ("no curve in the roads"). Originally
+// shipped as a purely decorative fix (real vehicles still pivoted
+// instantly, straight-line-only) to avoid touching grid_road_step's
+// carefully-tuned mobility again -- "roads should be curved" then asked
+// for the real thing, so grid_road_step (sim11ah/mobility.py) now drives
+// each turn through an actual quarter-circle arc of radius
+// CURB_FILLET_R, so a vehicle's real path and this drawn curb agree.
+// This decorative curb fillet at each of the 4 corners of every
+// intersection -- ground-texture patches layered just above the
+// sidewalk that visually round the corner the way a real curb return
+// does -- stays exactly as before: it doesn't move any road surface
+// vertex, it just needs to (and does) match the radius vehicles now
+// actually turn on.
 //
 // curbFilletShape's local (0,0) is the sharp pavement corner; the shape
 // covers the sliver between that corner and a quarter-circle arc bulging
