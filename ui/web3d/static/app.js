@@ -19,7 +19,8 @@ import {
 } from './js/entities.js';
 import { stepSmoke } from './js/smoke.js';
 import { updateHud, showStatus, hideStatus } from './js/hud.js';
-import './js/interact.js'; // wires node drag-and-drop; no exports, side-effect only
+import './js/interact.js'; // wires node drag-and-drop (also exports getSelectedIds, for camera-modes.js's follow mode)
+import { getCameraMode, stepCameraModes } from './js/camera-modes.js';
 
 let firstFrame = true;
 let latestSimTime = 0;
@@ -60,7 +61,15 @@ async function poll() {
     updateVehicles(state.vehicles);
     updateHud(state);
 
-    if (firstFrame) { firstFrame = false; frameCameraOnNodes(state.nodes, state.obstacles, state.environment); }
+    // Only when still in the default orbit view -- a rebuild/env change
+    // landing mid free-fly or mid chase-cam shouldn't yank the camera
+    // back to the auto-framed orbit shot the user has already moved away
+    // from (firstFrame itself only ever fires once per page load, but
+    // this guard costs nothing and is the correct behaviour either way).
+    if (firstFrame) {
+      firstFrame = false;
+      if (getCameraMode() === 'orbit') frameCameraOnNodes(state.nodes, state.obstacles, state.environment);
+    }
   } catch (err) {
     showStatus('3D view: connection lost, retrying…');
   } finally {
@@ -155,6 +164,7 @@ function animate() {
   latestSimTime += dt;
   stepIndustrialTraffic(latestSimTime);
   stepMilitaryPatrol(latestSimTime, dt);
+  stepCameraModes(dt);
   controls.update();
   composer.render();
 }

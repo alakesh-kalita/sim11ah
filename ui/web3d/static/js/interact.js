@@ -27,6 +27,7 @@ import {
   beginDrag, setDragPosition, endDrag, isAirborne, currentAltitude,
   getNodePosition, setNodeSelected,
 } from './entities.js';
+import { getCameraMode } from './camera-modes.js';
 
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
@@ -72,7 +73,18 @@ function clearSelection() {
   selectedIds.clear();
 }
 
+// camera-modes.js's follow mode chases whichever node this selection set
+// currently holds -- read-only from there (it only ever iterates it to
+// pick a target, never mutates it).
+export function getSelectedIds() {
+  return selectedIds;
+}
+
 dom.addEventListener('pointerdown', (e) => {
+  // Free-fly/follow own the canvas's pointer events while active (mouse-
+  // look, or nothing at all) -- node click/select/drag only makes sense
+  // in plain orbit mode.
+  if (getCameraMode() !== 'orbit') return;
   if (e.button !== 0 || dragIds !== null) return;
   const id = pickDraggableNodeId(e);
 
@@ -117,6 +129,7 @@ dom.addEventListener('pointerdown', (e) => {
 });
 
 dom.addEventListener('pointermove', (e) => {
+  if (getCameraMode() !== 'orbit') return;
   if (dragIds === null) {
     dom.style.cursor = pickDraggableNodeId(e) !== null ? 'grab' : 'default';
     return;
