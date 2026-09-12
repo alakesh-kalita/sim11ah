@@ -511,20 +511,30 @@ def vehicle_heading(nid: int, n, topo_cfg: dict, sim=None) -> float:
     only needs stating once.
 
     Reads sim._grid_road_state[nid] (mobility.grid_road_step's own live
-    axis/direction for this vehicle) when available -- the only correct
-    source of truth once a vehicle can turn onto a different road mid-
-    run (see grid_road_step's docstring): a vehicle that started on an
-    avenue but has since turned onto a cross street (or vice versa) would
-    get the WRONG rule from car_cross_ids/scooter_cross_ids alone, since
-    those only record where it started, not where it is now. Falls back
-    to the old static, position-based inference (correct only for a
-    freshly seeded/reseeded layout that hasn't taken its first mobility
-    step yet, e.g. the 2D canvas's own reseed preview) when sim is
-    omitted or the vehicle has no recorded state yet."""
+    state for this vehicle) when available -- the only correct source of
+    truth once a vehicle can turn onto a different road mid-run (see
+    grid_road_step's docstring): a vehicle that started on an avenue but
+    has since turned onto a cross street (or vice versa) would get the
+    WRONG rule from car_cross_ids/scooter_cross_ids alone, since those
+    only record where it started, not where it is now. Prefers
+    entry["heading"] directly when set -- grid_road_step now turns via a
+    smooth arc, not an instant pivot, so a mid-turn vehicle's heading is
+    continuously changing, not just one of 0/pi/+-pi/2; centralising that
+    computation in grid_road_step (which already has the full arc state)
+    avoids duplicating arc-angle math here. Falls back to the discrete
+    axis/dir rule (still exactly 0/pi/+-pi/2, correct for any vehicle not
+    mid-turn) when heading hasn't been set yet, and to the old static,
+    position-based inference (correct only for a freshly seeded/reseeded
+    layout that hasn't taken its first mobility step yet, e.g. the 2D
+    canvas's own reseed preview) when sim is omitted or the vehicle has
+    no recorded state yet."""
     if sim is not None:
         state = getattr(sim, "_grid_road_state", None)
         entry = state.get(nid) if state else None
         if entry is not None:
+            heading = entry.get("heading")
+            if heading is not None:
+                return float(heading)
             if entry["axis"] == "x":
                 return 0.0 if entry["dir"] > 0.0 else math.pi
             return math.pi / 2.0 if entry["dir"] > 0.0 else -math.pi / 2.0
