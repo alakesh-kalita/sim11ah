@@ -324,15 +324,16 @@ export function updateNodes(nodesData) {
     if (entry.info) {
       updateInfoSprite(entry.info, nodeInfoText(n), nodeInfoColor(n));
     }
-    // A car/scooter's heading is fixed for its whole lifetime (derived
-    // from its own lane's sign -- see sim11ah/mobility.py's
-    // highway_loop_step, shared by both -- it loops continuously forward
-    // rather than reversing at each end, so there's no direction flip to
-    // animate at all). Direct set either way, not lerped like position
-    // below. Same world-heading -> rotation.y
-    // convention updateVehicles already uses for the decorative Smart City
-    // traffic (local model forward is +X; three.js's rotation.y maps that
-    // to exactly the world heading, no sign flip needed).
+    // A car/scooter's heading changes in fixed 90-degree steps whenever
+    // it turns onto the next road (see sim11ah/mobility.py's
+    // grid_road_step) -- set directly each poll, not lerped like
+    // position below, so a turn reads as a sharp corner rather than a
+    // smooth arc (matching how the vehicle's own position actually moves
+    // -- straight, then a corner, never a curve). Same world-heading ->
+    // rotation.y convention updateVehicles already uses for the
+    // decorative Smart City traffic (local model forward is +X; three.js's
+    // rotation.y maps that to exactly the world heading, no sign flip
+    // needed).
     if ((n.is_car || n.is_scooter) && typeof n.heading === 'number') {
       entry.group.rotation.y = n.heading;
     }
@@ -350,13 +351,13 @@ export function updateNodes(nodesData) {
       entry.toPos = target.clone();
       entry.t = 1;
     } else if (!target.equals(entry.toPos)) {
-      // A jump this large (real vehicle motion never covers anywhere
-      // near this much ground between polls) can only be
-      // highway_loop_step's wrap-around -- reaches the end of its lane,
-      // resets straight back to the start -- not real travel. Snap
-      // straight to it instead of lerping, or the car/scooter mesh
-      // would visibly fly across the entire highway over the next
-      // stepNodeAnimation cycle rather than reappearing at the start.
+      // Real vehicle motion (grid_road_step/uav_bounce_step, both fully
+      // continuous -- turn, never teleport) never covers anywhere near
+      // this much ground between polls, so a jump this large is only
+      // ever a genuine repositioning (a topology rebuild reusing a node
+      // id, say). Snap straight to it instead of lerping, or the mesh
+      // would visibly fly across the map over the next
+      // stepNodeAnimation cycle.
       if (entry.group.position.distanceTo(target) > 60) {
         entry.group.position.copy(target);
         entry.fromPos = target.clone();

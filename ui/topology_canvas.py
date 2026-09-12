@@ -503,16 +503,32 @@ def _assoc_peer(node) -> Optional[int]:
     return int(peer) if peer is not None else None
 
 
-def vehicle_heading(nid: int, n, topo_cfg: dict) -> float:
+def vehicle_heading(nid: int, n, topo_cfg: dict, sim=None) -> float:
     """Heading (radians) for a real cars_uavs vehicle -- 0.0/pi for one
-    on an avenue (see sim11ah/mobility.py's highway_loop_step: direction
-    comes from its own fixed lane_y's sign), +/-pi/2 for one on a cross
-    street (see cross_street_loop_step: direction comes from its lane
-    offset's sign relative to that street's own centre x, not the
-    vehicle's raw x, since cross streets don't all share one common x
-    the way every avenue shares the same y=0 centreline). Shared by both
-    views (ui/web3d/snapshot.py imports this) and both vehicle kinds, so
-    the heading rule only needs stating once."""
+    currently driving an avenue (east/west), +/-pi/2 for one currently on
+    a cross street (north/south). Shared by both views (ui/web3d/
+    snapshot.py imports this) and both vehicle kinds, so the heading rule
+    only needs stating once.
+
+    Reads sim._grid_road_state[nid] (mobility.grid_road_step's own live
+    axis/direction for this vehicle) when available -- the only correct
+    source of truth once a vehicle can turn onto a different road mid-
+    run (see grid_road_step's docstring): a vehicle that started on an
+    avenue but has since turned onto a cross street (or vice versa) would
+    get the WRONG rule from car_cross_ids/scooter_cross_ids alone, since
+    those only record where it started, not where it is now. Falls back
+    to the old static, position-based inference (correct only for a
+    freshly seeded/reseeded layout that hasn't taken its first mobility
+    step yet, e.g. the 2D canvas's own reseed preview) when sim is
+    omitted or the vehicle has no recorded state yet."""
+    if sim is not None:
+        state = getattr(sim, "_grid_road_state", None)
+        entry = state.get(nid) if state else None
+        if entry is not None:
+            if entry["axis"] == "x":
+                return 0.0 if entry["dir"] > 0.0 else math.pi
+            return math.pi / 2.0 if entry["dir"] > 0.0 else -math.pi / 2.0
+
     car_cross_ids = topo_cfg.get("car_cross_ids", ())
     scooter_cross_ids = topo_cfg.get("scooter_cross_ids", ())
     if nid in car_cross_ids or nid in scooter_cross_ids:
@@ -1060,8 +1076,12 @@ def _seed_default_layout(sim, mode: str, relay_ids: Set[int], obstacles=None,
             scooter_avenues = topo_cfg.get("scooter_avenue_offsets_m") or [
                 float(topo_cfg.get("scooter_lane_offset_m", 15.0))
             ]
-            cross_xs = topo_cfg.get("cross_street_xs") or []
-            cross_y_reach = float(topo_cfg.get("cross_street_y_reach", 0.0))
+            # interior-only, not the boundary-capped cross_street_xs --
+            # must match CarsUavsBuilder.build's own _cross_lane_positions
+            # exactly (see that topo_cfg key's own comment): a boundary
+            # cap at x=0/x=span +/- a lane offset could land outside
+            # [0, span].
+            cross_xs = topo_cfg.get("cross_street_xs_interior") or []
             car_cross_off = float(topo_cfg.get("cross_lane_offset_m", 10.0))
             scooter_cross_off = float(topo_cfg.get("scooter_cross_lane_offset_m", 7.0))
 
@@ -1078,7 +1098,7 @@ def _seed_default_layout(sim, mode: str, relay_ids: Set[int], obstacles=None,
                     lane = lanes[j % len(lanes)]
                     nodes[nid].pos = (frac * span, lane)
 
-            def _cross_lane_seed(ids, lane_offset_m: float) -> None:
+            def _cross_lane_seed(ids, lane_offset_m: float, y_reach: float) -> None:
                 if not cross_xs:
                     return
                 lanes = (lane_offset_m, -lane_offset_m)
@@ -1089,13 +1109,17 @@ def _seed_default_layout(sim, mode: str, relay_ids: Set[int], obstacles=None,
                     cx = cross_xs[j % len(cross_xs)]
                     frac = (j + 0.5) / max(1, n)
                     lane = lanes[j % len(lanes)]
-                    y = frac * (2.0 * cross_y_reach) - cross_y_reach
+                    # +/-y_reach = the CALLER's own outermost avenue (cars
+                    # and scooters ride different avenues -- see the two
+                    # call sites below), matching build()'s own
+                    # _cross_lane_positions exactly.
+                    y = frac * (2.0 * y_reach) - y_reach
                     nodes[nid].pos = (cx + lane, y)
 
             _lane_seed(car_avenue_ids, car_avenues)
             _lane_seed(scooter_avenue_ids, scooter_avenues)
-            _cross_lane_seed(car_cross_ids_ord, car_cross_off)
-            _cross_lane_seed(scooter_cross_ids_ord, scooter_cross_off)
+            _cross_lane_seed(car_cross_ids_ord, car_cross_off, float(car_avenues[-1]))
+            _cross_lane_seed(scooter_cross_ids_ord, scooter_cross_off, float(scooter_avenues[-1]))
             n_uav = len(uav_ids)
             for j, nid in enumerate(uav_ids):
                 if nid in nodes:
@@ -1801,9 +1825,9 @@ class NetworkCanvas(tk.Canvas):
         _assoc_peer_id resolves to, not hardcoded to the AP.
 
         The roam-boundary circle below is skipped for "cars_uavs" mode:
-        it's anchored on a single AP (node 0), but that mode's UAVs fly
-        random-waypoint across the WHOLE multi-AP corridor
-        (uav_waypoint_step), not a fixed annulus around one AP -- drawing
+        it's anchored on a single AP (node 0), but that mode's UAVs fly a
+        continuous reflecting path across the WHOLE multi-AP corridor
+        (uav_bounce_step), not a fixed annulus around one AP -- drawing
         it there would show a boundary the UAVs routinely fly outside of,
         which is misleading rather than just incomplete."""
         if not self.uav_ids:
@@ -1846,18 +1870,17 @@ class NetworkCanvas(tk.Canvas):
 
     def _draw_cars_overlay(self, nodes) -> None:
         """Cars in "cars_uavs" mode (see sim11ah/topology.py's
-        CarsUavsBuilder): real simulator nodes on a live highway_loop_step
+        CarsUavsBuilder): real simulator nodes on a live grid_road_step
         crossing, unlike _draw_vehicles_overlay's Smart-City traffic (pure
         decoration, no association/physics) -- reuses that method's own
         _draw_car_icon glyph, since the icon itself doesn't care whether
         its position came from a decorative time formula or a real node's
         actual (x, y), just heading and pixel position.
 
-        Heading is derived straight from the car's own lane sign (the
-        same rule highway_loop_step/cross_street_loop_step themselves
-        drive by -- see vehicle_heading's own docstring for both rules),
-        not from consecutive positions like the Smart City loop does --
-        cheaper, and exact rather than a one-tick-lagged estimate."""
+        Heading is read straight from grid_road_step's own live axis/
+        direction state (see vehicle_heading's own docstring), not
+        derived from consecutive positions like the Smart City loop does
+        -- cheaper, and exact rather than a one-tick-lagged estimate."""
         if not self.car_ids or self.sim is None:
             return
         topo_cfg = self.sim.config.get("topology", {})
@@ -1878,12 +1901,12 @@ class NetworkCanvas(tk.Canvas):
             self._append_trail_pos(cid, cn.pos)
             self._draw_fading_trail(self._drone_trails[cid])
 
-            heading = vehicle_heading(cid, cn, topo_cfg)
+            heading = vehicle_heading(cid, cn, topo_cfg, sim=self.sim)
             self._draw_car_icon(cpx, cpy, heading, _REAL_CAR_COLORS[i % n])
 
     def _draw_scooters_overlay(self, nodes) -> None:
         """Scooters in "cars_uavs" mode: same real-node treatment as
-        _draw_cars_overlay (live highway_loop_step crossing, not
+        _draw_cars_overlay (live grid_road_step crossing, not
         decoration), just riding the inner lane (closer to the corridor
         centreline -- see CarsUavsBuilder's scooter_lane_offset_m) with
         their own smaller glyph (_draw_scooter_icon) and colour palette
@@ -1908,7 +1931,7 @@ class NetworkCanvas(tk.Canvas):
             self._append_trail_pos(sid, sn.pos)
             self._draw_fading_trail(self._drone_trails[sid])
 
-            heading = vehicle_heading(sid, sn, topo_cfg)
+            heading = vehicle_heading(sid, sn, topo_cfg, sim=self.sim)
             self._draw_scooter_icon(spx, spy, heading, _REAL_SCOOTER_COLORS[i % n])
 
     # ── Smart City traffic (pure scenery -- not simulator nodes) ─────────
@@ -2136,13 +2159,12 @@ class NetworkCanvas(tk.Canvas):
         """Append pos to node `key`'s fading trail, clearing the trail
         first if pos is a big jump from its last recorded point. Real
         vehicle motion (cars/scooters at up to ~15 m/s, UAVs similarly
-        slow) never covers anywhere near jump_threshold metres in one
-        tick, so a jump that large can only be highway_loop_step's
-        wrap-around (reaches the end of its lane, resets straight back
-        to the start) -- without this, the very next trail segment would
-        span the jump too, drawing a spurious line clear across the
-        whole highway every single lap instead of the vehicle's actual
-        recent path."""
+        slow, grid_road_step/uav_bounce_step both fully continuous --
+        turn, never teleport) never covers anywhere near jump_threshold
+        metres in one tick, so this is a defensive guard against a stale
+        trail spanning a genuine repositioning (a topology rebuild reusing
+        a node id, say) rather than something normal operation is
+        expected to ever actually trigger."""
         trail = self._drone_trails.setdefault(key, [])
         if trail:
             lx, ly = trail[-1]
@@ -3912,15 +3934,17 @@ class NetworkCanvas(tk.Canvas):
         """cars_uavs mode's dedicated Smart City background: a real road
         network, not the generic 3x3 downtown grid v1/v2/v3 draw. One
         paved avenue per entry in car_avenue_offsets_m (both +/- each
-        value), at the exact same y real cars/scooters drive at (see
-        CarsUavsBuilder's car_avenue_offsets_m / sim11ah/mobility.py's
-        highway_loop_step) -- rather than at some arbitrary fraction of
-        the live view's bounding box, so a vehicle always renders sitting
-        on the road it's actually assigned to, on whichever avenue that
-        is, not just the one nearest the centreline. Cars/scooters only
-        ever move along x at their fixed lane y (highway_loop_step
-        never touches y), so this is a standing guarantee, not something
-        that can drift out of sync.
+        value), at the exact same y values real cars/scooters can drive
+        at (see CarsUavsBuilder's car_avenue_offsets_m / sim11ah/
+        mobility.py's grid_road_step) -- rather than at some arbitrary
+        fraction of the live view's bounding box, so a vehicle always
+        renders sitting on a real road, not floating between two drawn
+        avenues. grid_road_step only ever holds y fixed at exactly one of
+        these avenue offsets (or, mid cross-street leg, only ever varies
+        y BETWEEN two of them) -- it can turn onto a different avenue
+        than the one it started on, but never onto a y that isn't one of
+        these, so this is a standing guarantee, not something that can
+        drift out of sync.
 
         Buildings fill the gaps BETWEEN consecutive avenues (denser/
         shorter near the centre, sparser/taller further out, with one
@@ -3999,9 +4023,9 @@ class NetworkCanvas(tk.Canvas):
         # intersection) with the exact same styling, just rotated 90
         # degrees. Positions/reach come straight from topo_cfg
         # (CarsUavsBuilder.build computed and stored cross_street_xs/
-        # cross_street_y_reach) -- real cars/scooters are assigned to
-        # these exact streets now (see cross_street_loop_step), so this
-        # can't recompute its own copy of the spacing formula independently
+        # cross_street_y_reach) -- real cars/scooters can turn onto and
+        # drive these exact streets (see grid_road_step), so this can't
+        # recompute its own copy of the spacing formula independently
         # without risking it drifting from where vehicles actually are;
         # mirrors ui/web3d/snapshot.py's own _cross_streets, which reads
         # the same stored values.

@@ -53,7 +53,7 @@ except ImportError:
         _ap_range_m, resolve_ap_peer,
     )
 
-from sim11ah.mobility import highway_loop_step, cross_street_loop_step, uav_waypoint_step
+from sim11ah.mobility import grid_road_step, uav_bounce_step
 from sim11ah.topology import CarsUavsBuilder
 
 from sim11ah.sensor_profiles import list_profiles as _sensor_list_profiles, get_profile as _sensor_get_profile
@@ -2271,29 +2271,46 @@ class Dashboard(tk.Tk):
 
             # Cars + UAVs multi-AP layout (see sim11ah/topology.py's
             # CarsUavsBuilder): a distinct mode from plain "uav" above --
-            # multiple real APs (topo_cfg["ap_ids"]), cars driving a
-            # highway (sim11ah/mobility.py's highway_loop_step) rather
-            # than wandering, and UAVs flying across the WHOLE corridor
-            # (uav_waypoint_step) rather than circling a single AP, so
-            # this can't reuse advance_uav_positions above (anchored on
-            # node 0 specifically). Reuses the existing UAV Speed slider
-            # for the UAV leg -- no dedicated Car Speed control exists
-            # yet, so highway speed is a fixed, realistic default for now.
+            # multiple real APs (topo_cfg["ap_ids"]), cars driving a road
+            # grid (sim11ah/mobility.py's grid_road_step -- turns onto
+            # the next road, never resets, once it reaches the end of
+            # its current one) rather than wandering, and UAVs flying a
+            # continuous reflecting path across the WHOLE corridor
+            # (uav_bounce_step) rather than circling a single AP, so this
+            # can't reuse advance_uav_positions above (anchored on node 0
+            # specifically). Reuses the existing UAV Speed slider for
+            # the UAV leg -- no dedicated Car Speed control exists yet,
+            # so highway speed is a fixed, realistic default for now.
             if mode == "cars_uavs":
                 car_ids = topo_cfg.get("car_ids", [])
                 uav_ids2 = topo_cfg.get("uav_ids", [])
                 dt = float(self.step_dt)
                 span = float(topo_cfg.get("corridor_span_m", 0.0))
-                # A quarter of each fleet drives cross streets (see
-                # CarsUavsBuilder.build) instead of avenues -- north-
+                # A quarter of each fleet STARTS on a cross street (see
+                # CarsUavsBuilder.build) instead of an avenue -- north-
                 # south instead of east-west -- so vehicles actually move
                 # in every direction the road network offers. cross_ids
                 # is a SUFFIX of car_ids/scooter_ids (build() appends
                 # them last), so set-membership below is exactly "is this
-                # one of the last n_cross ids", nothing fuzzier.
+                # one of the last n_cross ids", nothing fuzzier. Only
+                # matters for how grid_road_step's very first call for a
+                # given vehicle is seeded (init_axis/init_dir) -- every
+                # call after that reads back its own persisted turn state
+                # instead (sim._grid_road_state), so a vehicle that has
+                # since turned onto a different kind of road keeps being
+                # driven correctly regardless of which set it started in.
+                # x_bounds is shared corridor-wide; y_bounds is each
+                # fleet's OWN outermost avenue (scooters ride further
+                # inset than cars, see CarsUavsBuilder.build's
+                # scooter_inset) -- both ends of both bounds must be a
+                # real road for grid_road_step's turns to land with zero
+                # position jump (see its own docstring).
                 car_cross_ids = set(topo_cfg.get("car_cross_ids", []))
-                cross_y_reach = float(topo_cfg.get("cross_street_y_reach", 0.0))
                 cross_off = float(topo_cfg.get("cross_lane_offset_m", 10.0))
+                car_avenue_offsets = topo_cfg.get("car_avenue_offsets_m") or [25.0]
+                car_outer_avenue = float(car_avenue_offsets[-1])
+                car_x_bounds = (0.0, span)
+                car_y_bounds = (-car_outer_avenue, car_outer_avenue)
                 if car_ids:
                     car_speed_mps = 15.0  # ~54 km/h
                     cross_j = 0
@@ -2305,29 +2322,34 @@ class Dashboard(tk.Tk):
                             # negative" pairing CarsUavsBuilder.build's
                             # own _cross_lane_positions used to place
                             # these to begin with -- has to match exactly,
-                            # or this would drive a vehicle the wrong way
-                            # relative to which lane it actually started
-                            # on.
+                            # or this would seed a vehicle heading the
+                            # wrong way relative to which lane it actually
+                            # started on.
                             lane_offset = cross_off if cross_j % 2 == 0 else -cross_off
                             cross_j += 1
-                            cross_street_loop_step(
+                            grid_road_step(
                                 self.sim, cid, dt, car_speed_mps,
-                                lane_offset=lane_offset, y_min=-cross_y_reach, y_max=cross_y_reach,
+                                x_bounds=car_x_bounds, y_bounds=car_y_bounds,
+                                init_axis="y", init_dir=lane_offset,
                             )
                         else:
                             lane_y = self.sim.nodes[cid].pos[1]
-                            highway_loop_step(
+                            grid_road_step(
                                 self.sim, cid, dt, car_speed_mps,
-                                lane_y=lane_y, x_min=0.0, x_max=span,
+                                x_bounds=car_x_bounds, y_bounds=car_y_bounds,
+                                init_axis="x", init_dir=lane_y,
                             )
-                # Scooters share the exact same highway_loop_step/
-                # cross_street_loop_step primitives as cars (see
-                # sim11ah/mobility.py's docstrings), just slower and on
-                # their own inner lane/offset -- no separate mobility
-                # function needed, only different fixed speeds/offsets.
+                # Scooters share the exact same grid_road_step primitive
+                # as cars (see sim11ah/mobility.py's docstring), just
+                # slower and on their own inner lane/offset/y_bounds --
+                # no separate mobility function needed.
                 scooter_ids = topo_cfg.get("scooter_ids", [])
                 scooter_cross_ids = set(topo_cfg.get("scooter_cross_ids", []))
                 scooter_cross_off = float(topo_cfg.get("scooter_cross_lane_offset_m", 7.0))
+                scooter_avenue_offsets = topo_cfg.get("scooter_avenue_offsets_m") or [15.0]
+                scooter_outer_avenue = float(scooter_avenue_offsets[-1])
+                scooter_x_bounds = (0.0, span)
+                scooter_y_bounds = (-scooter_outer_avenue, scooter_outer_avenue)
                 if scooter_ids:
                     scooter_speed_mps = 8.0  # ~29 km/h
                     cross_j = 0
@@ -2337,15 +2359,17 @@ class Dashboard(tk.Tk):
                         if sid in scooter_cross_ids:
                             lane_offset = scooter_cross_off if cross_j % 2 == 0 else -scooter_cross_off
                             cross_j += 1
-                            cross_street_loop_step(
+                            grid_road_step(
                                 self.sim, sid, dt, scooter_speed_mps,
-                                lane_offset=lane_offset, y_min=-cross_y_reach, y_max=cross_y_reach,
+                                x_bounds=scooter_x_bounds, y_bounds=scooter_y_bounds,
+                                init_axis="y", init_dir=lane_offset,
                             )
                         else:
                             lane_y = self.sim.nodes[sid].pos[1]
-                            highway_loop_step(
+                            grid_road_step(
                                 self.sim, sid, dt, scooter_speed_mps,
-                                lane_y=lane_y, x_min=0.0, x_max=span,
+                                x_bounds=scooter_x_bounds, y_bounds=scooter_y_bounds,
+                                init_axis="x", init_dir=lane_y,
                             )
                 if uav_ids2:
                     # ap_ids now holds every AP in the 2D grid (columns x
@@ -2369,7 +2393,7 @@ class Dashboard(tk.Tk):
                     uav_speed_mps = float(self._uav_speed_var.get())
                     for uid in uav_ids2:
                         if uid in self.sim.nodes:
-                            uav_waypoint_step(self.sim, uid, dt, uav_speed_mps, region=region)
+                            uav_bounce_step(self.sim, uid, dt, uav_speed_mps, region=region)
         except Exception:
             pass
 

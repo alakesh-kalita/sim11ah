@@ -54,147 +54,179 @@ def corridor_step(
     return new_traveled < total_dist
 
 
-def highway_loop_step(
+def grid_road_step(
     sim,
     sta_id: int,
     dt: float,
     speed_mps: float,
-    lane_y: float,
-    x_min: float,
-    x_max: float,
+    x_bounds: Tuple[float, float],
+    y_bounds: Tuple[float, float],
+    init_axis: str = "x",
+    init_dir: float = 1.0,
 ) -> None:
     """
-    Drive a road vehicle one-way along a straight highway at constant
-    speed, continuously looping back to the start the instant it reaches
-    the far end -- real highway traffic flowing past and re-entering,
-    not a back-and-forth bounce (a vehicle never reverses, so it always
-    ends up moving through every AP's overlap region in the same
-    direction on every lap). Meant to be called every tick indefinitely
-    (unlike corridor_step, which is a one-shot crossing) -- see
-    topology.py's CarsUavsBuilder, which lays cars AND scooters out on
-    lanes along the same axis the APs sit on (scooters closer to the
-    centreline, cars further out).
+    Drive a road vehicle continuously through a rectangular road grid --
+    replaces the old highway_loop_step/cross_street_loop_step, which
+    reset (teleported) a vehicle back to the start the instant it
+    reached the far end of its lane. That reset was itself a deliberate
+    replacement for an even older direction-reversing bounce, but got
+    reported as still visibly discontinuous ("position gets reset") --
+    this is the actual fix: a vehicle never resets and never reverses in
+    place, it turns 90 degrees onto the perpendicular road exactly where
+    its current one ends and keeps driving, forever.
 
-    Which way is "forward" is derived from lane_y's own sign, not any
-    stored per-vehicle state: a vehicle on the positive-offset lane
-    drives toward x_max and resets to x_min on arrival, one on the
-    negative-offset lane drives the opposite way and resets to x_max --
-    the same "opposite lanes carry opposite-direction traffic" divided-
-    highway convention CarsUavsBuilder's own lane layout already implies
-    (car_lane_offset_m/scooter_lane_offset_m alternate sign per
-    vehicle), so this needs no extra state at all, unlike the direction-
-    reversing bounce this replaced (which had to remember which way each
-    vehicle was currently headed in sim._highway_dirs). Vehicle-agnostic
-    -- cars and scooters both call this exact same function, just with
-    their own speed and lane.
+    State (which axis it's currently travelling along, and which
+    direction) lives in sim._grid_road_state[sta_id], seeded from
+    init_axis/init_dir only the first time a given sta_id is seen -- every
+    call after that ignores init_axis/init_dir entirely and just reads
+    back whatever this function itself last decided, so a single call
+    site can drive EVERY vehicle (avenue-started or cross-street-started
+    alike) through the same turning logic without needing to track "is
+    this still an avenue vehicle" itself; topology.py's CarsUavsBuilder
+    only needs init_axis/init_dir to match how each vehicle was actually
+    placed (avenue: init_axis="x", init_dir=sign(lane_y); cross street:
+    init_axis="y", init_dir=sign(lane_offset) -- the same sign
+    convention the old functions used).
+
+    x_bounds/y_bounds are shared by every vehicle (the corridor's own
+    x=[0, span] and y=[-outer_avenue, +outer_avenue] -- see
+    dashboard_tk.py's _advance_drones) and must each coincide with a
+    real road for the turn to happen with zero position jump: x_bounds
+    needs a cross street at both ends (CarsUavsBuilder.build adds
+    boundary cross streets at x=0/x=span for exactly this), y_bounds
+    needs a real avenue at both ends (the outermost one, by
+    construction). A vehicle that starts on an INNER avenue (not at
+    +/-y_bounds) simply drives straight through the interior on its
+    first cross-street leg without turning there -- turns only ever
+    happen where the vehicle's OWN current road ends, matching how a
+    real driver doesn't turn at every intersection it merely passes.
+
+    The four turns always rotate the same way (clockwise, viewed with
+    +x east/+y north: heading east -> turn south, heading south -> turn
+    west, heading west -> turn north, heading north -> turn east) --
+    "turn right" every time, a fixed, simple rule rather than needing to
+    pick a direction at each corner. overflow distance (this tick's step
+    minus however much room was left on the current road) carries onto
+    the new road in the same call, so a vehicle never visibly pauses at
+    a corner even at low tick rates -- capped at a few turns per call as
+    a sanity bound, never expected to matter at any real speed/dt.
     """
-    node = sim.nodes[sta_id]
-    x, _y = node.pos
-    if float(lane_y) >= 0.0:
-        new_x = x + max(0.0, float(speed_mps)) * float(dt)
-        if new_x >= x_max:
-            new_x = x_min
-    else:
-        new_x = x - max(0.0, float(speed_mps)) * float(dt)
-        if new_x <= x_min:
-            new_x = x_max
-    node.pos = (new_x, float(lane_y))
+    if not hasattr(sim, "_grid_road_state"):
+        sim._grid_road_state = {}
+    state = sim._grid_road_state.get(sta_id)
+    if state is None:
+        state = {"axis": init_axis, "dir": 1.0 if float(init_dir) >= 0.0 else -1.0}
+        sim._grid_road_state[sta_id] = state
 
-
-def cross_street_loop_step(
-    sim,
-    sta_id: int,
-    dt: float,
-    speed_mps: float,
-    lane_offset: float,
-    y_min: float,
-    y_max: float,
-) -> None:
-    """
-    Drive a road vehicle one-way along a cross street (perpendicular to
-    the highway avenues) at constant speed, continuously looping back to
-    the start the instant it reaches the far end -- the y-axis
-    counterpart of highway_loop_step (see its own docstring for the full
-    "loop, don't bounce" rationale); together the two let a fleet
-    actually move in every direction the road network offers, not just
-    along the highway. Which way is "forward" is derived from
-    lane_offset's own sign (positive drives toward y_max and resets to
-    y_min, negative the opposite) -- the same "the lane's own sign
-    determines direction" rule highway_loop_step uses, just relative to
-    THIS street's own centre rather than the world's y=0 centreline,
-    since cross streets don't all share one common x the way every
-    avenue shares the same y=0 centreline (see topology.py's
-    CarsUavsBuilder, which is where cross_street_xs/cross_lane_offset_m
-    come from).
-
-    x is held fixed throughout, reconstructed from the node's own
-    current x minus lane_offset (its street's centre, which never
-    changes) rather than passed in separately -- one less parameter the
-    caller has to keep in sync with where the vehicle actually is."""
     node = sim.nodes[sta_id]
     x, y = node.pos
-    street_x = x - float(lane_offset)
-    if float(lane_offset) >= 0.0:
-        new_y = y + max(0.0, float(speed_mps)) * float(dt)
-        if new_y >= y_max:
-            new_y = y_min
-    else:
-        new_y = y - max(0.0, float(speed_mps)) * float(dt)
-        if new_y <= y_min:
-            new_y = y_max
-    node.pos = (street_x + float(lane_offset), new_y)
+    x_min, x_max = float(x_bounds[0]), float(x_bounds[1])
+    y_min, y_max = float(y_bounds[0]), float(y_bounds[1])
+    remaining = max(0.0, float(speed_mps)) * float(dt)
+
+    for _ in range(4):
+        if remaining <= 0.0:
+            break
+        if state["axis"] == "x":
+            if state["dir"] > 0.0:
+                room = x_max - x
+                if remaining < room:
+                    x += remaining
+                    remaining = 0.0
+                else:
+                    remaining -= room
+                    x = x_max
+                    state["axis"], state["dir"] = "y", -1.0
+            else:
+                room = x - x_min
+                if remaining < room:
+                    x -= remaining
+                    remaining = 0.0
+                else:
+                    remaining -= room
+                    x = x_min
+                    state["axis"], state["dir"] = "y", 1.0
+        else:
+            if state["dir"] > 0.0:
+                room = y_max - y
+                if remaining < room:
+                    y += remaining
+                    remaining = 0.0
+                else:
+                    remaining -= room
+                    y = y_max
+                    state["axis"], state["dir"] = "x", 1.0
+            else:
+                room = y - y_min
+                if remaining < room:
+                    y -= remaining
+                    remaining = 0.0
+                else:
+                    remaining -= room
+                    y = y_min
+                    state["axis"], state["dir"] = "x", -1.0
+
+    node.pos = (x, y)
 
 
-def uav_waypoint_step(
+def uav_bounce_step(
     sim,
     sta_id: int,
     dt: float,
     speed_mps: float,
     region: Tuple[float, float, float, float],
-    arrive_eps_m: float = 2.0,
 ) -> None:
     """
-    Fly a UAV toward a random waypoint inside `region` (x_min, y_min,
-    x_max, y_max), picking a fresh random waypoint on arrival -- classic
-    random-waypoint mobility. Not anchored to any single AP: pass a region
-    spanning the whole multi-AP corridor (see topology.py's
-    CarsUavsBuilder.uav_region) so a UAV naturally wanders across every
-    AP's coverage over time instead of circling just one.
+    Fly a UAV in a continuous straight line, reflecting its heading off
+    whichever edge of `region` (x_min, y_min, x_max, y_max) it reaches --
+    replaces the old uav_waypoint_step, which flew toward a random point
+    and picked a fresh, independent random target the instant it arrived
+    (reported as looking like the same kind of discontinuity as the
+    cars' old position-reset, since the heading could flip to any new
+    direction with no relation to the one just flown). A reflection is
+    always continuous in position and, for anything but a dead-on
+    perpendicular hit, reads as exactly the "turn" a vehicle reaching the
+    end of its road takes -- just applied to free flight instead of a
+    fixed road grid, since a UAV isn't confined to one.
 
-    This is the multi-AP, headless counterpart to
-    ui/topology_canvas.py's advance_uav_positions (the existing single-AP
-    GUI mobility, which anchors on node 0 and is driven by the Tk tick
-    loop) -- kept separate rather than generalizing that function in
-    place, since the existing "uav" topology's random-waypoint behavior
-    around a single AP is itself an established, regression-tested
-    result. Target state lives in sim._multi_ap_uav_targets (a distinct
-    attribute name from that function's own sim._uav_targets, even though
-    both hold the same {sta_id: (x, y)} shape, so the two mobility drivers
-    can never collide if a caller somehow mixed them).
-
-    Uses sim.engine.rng (the simulator's own seeded RNG), not Python's
-    global random module, so flight paths stay reproducible for a given
-    seed like everything else in this codebase.
+    Heading is a persistent unit vector in sim._uav_bounce_heading
+    (seeded once per sta_id from sim.engine.rng -- the simulator's own
+    seeded RNG, so flight paths stay reproducible for a given seed like
+    everything else here); every call after that just keeps flying that
+    heading, reflecting one or both components on hitting a wall. Not
+    anchored to any single AP: pass a region spanning the whole multi-AP
+    corridor (see topology.py's CarsUavsBuilder.uav_region) so a UAV
+    naturally wanders across every AP's coverage over time.
     """
-    if not hasattr(sim, "_multi_ap_uav_targets"):
-        sim._multi_ap_uav_targets = {}
+    if not hasattr(sim, "_uav_bounce_heading"):
+        sim._uav_bounce_heading = {}
 
     x_min, y_min, x_max, y_max = region
     node = sim.nodes[sta_id]
     x, y = node.pos
 
-    target = sim._multi_ap_uav_targets.get(sta_id)
-    if target is None or math.hypot(target[0] - x, target[1] - y) < arrive_eps_m:
-        target = (
-            x_min + sim.engine.rng.random() * (x_max - x_min),
-            y_min + sim.engine.rng.random() * (y_max - y_min),
-        )
-        sim._multi_ap_uav_targets[sta_id] = target
+    heading = sim._uav_bounce_heading.get(sta_id)
+    if heading is None:
+        angle = sim.engine.rng.random() * 2.0 * math.pi
+        heading = (math.cos(angle), math.sin(angle))
 
-    tx, ty = target
-    dx, dy = tx - x, ty - y
-    dist = math.hypot(dx, dy)
-    if dist <= 1e-9:
-        return
-    step = min(dist, max(0.0, float(speed_mps)) * float(dt))
-    node.pos = (x + dx / dist * step, y + dy / dist * step)
+    hx, hy = heading
+    step = max(0.0, float(speed_mps)) * float(dt)
+    new_x = x + hx * step
+    new_y = y + hy * step
+
+    if new_x > x_max:
+        new_x = x_max - (new_x - x_max)
+        hx = -hx
+    elif new_x < x_min:
+        new_x = x_min + (x_min - new_x)
+        hx = -hx
+    if new_y > y_max:
+        new_y = y_max - (new_y - y_max)
+        hy = -hy
+    elif new_y < y_min:
+        new_y = y_min + (y_min - new_y)
+        hy = -hy
+
+    sim._uav_bounce_heading[sta_id] = (hx, hy)
+    node.pos = (new_x, new_y)

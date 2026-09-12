@@ -307,15 +307,17 @@ class MultiApBuilder:
 class CarsUavsBuilder:
     """
     A multi-AP corridor populated with three kinds of mobile STA: cars and
-    scooters driving a straight highway through the AP chain (same
-    mobility function, different lane/speed), and UAVs flying
-    random-waypoint across the same span -- a layout for visualizing
+    scooters driving a road grid through the AP chain (same mobility
+    function, different lane/speed -- turning onto the next road rather
+    than resetting once they reach the end of the current one), and UAVs
+    flying a continuous reflecting flight path across the same span -- a
+    layout for visualizing
     inter-AP handover with vehicle-mounted and airborne devices instead of
     static ground STAs. Built ON TOP of MultiApBuilder (same AP layout +
     all-pairs linking), not a fork of it -- this class only adds role
     tagging and initial positions for the three mobility kinds; actually
     driving them each tick is sim11ah/mobility.py's job
-    (highway_loop_step for cars/scooters, uav_waypoint_step for UAVs),
+    (grid_road_step for cars/scooters, uav_bounce_step for UAVs),
     called from wherever runs the simulation (a GUI tick loop, or a
     headless script).
 
@@ -474,9 +476,17 @@ class CarsUavsBuilder:
         outer_avenue = car_avenue_offsets[-1] if car_avenue_offsets else car_lane_offset_m
         cross_street_y_reach = outer_avenue + 21.0 + 10.0
         n_cross_streets = max(1, int(span / cross_street_spacing_m))
-        cross_street_xs = [
+        interior_cross_street_xs = [
             (i + 0.5) * (span / n_cross_streets) for i in range(n_cross_streets)
         ]
+        # Two boundary cross streets capping the corridor at x=0/x=span, on
+        # top of the interior ones above -- mobility.grid_road_step turns a
+        # highway vehicle onto a real cross street exactly where the avenue
+        # ends (x_min=0/x_max=span, see dashboard_tk.py's _advance_drones),
+        # which only works with zero position jump if a cross street
+        # genuinely exists there. Without these two, an avenue vehicle
+        # reaching the corridor edge would have nothing to turn onto.
+        cross_street_xs = [0.0] + interior_cross_street_xs + [span]
 
         # Cars/scooters mostly start on an avenue (round-robin across
         # every avenue x both sides, so vehicles actually spread across
@@ -487,10 +497,11 @@ class CarsUavsBuilder:
         # direction the road network offers instead of only ever along
         # the highway. Purely cosmetic either way -- doesn't affect
         # RSSI/PHY, which only cares about the resulting (x, y).
-        # highway_loop_step/cross_street_loop_step then drive each one
-        # continuously forward for real, forever staying on whichever
-        # lane it started on (that lane's own sign is what both
-        # functions read to decide which way "forward" is).
+        # mobility.grid_road_step then drives each one continuously
+        # forward for real, starting on whichever lane it's placed on
+        # here (that lane's sign picks the initial direction) but free to
+        # turn onto a cross street/avenue and keep going once it reaches
+        # the end of its current road -- see that function's docstring.
         def _lane_positions(count: int, offsets: List[float]) -> List[Tuple[float, float]]:
             lanes = []
             for off in offsets:
@@ -503,31 +514,48 @@ class CarsUavsBuilder:
                 out.append((frac * span, lane))
             return out
 
-        def _cross_lane_positions(count: int, lane_offset_m: float) -> List[Tuple[float, float]]:
+        def _cross_lane_positions(
+            count: int, lane_offset_m: float, y_reach: float,
+        ) -> List[Tuple[float, float]]:
             lanes = (lane_offset_m, -lane_offset_m)
             out = []
             for j in range(count):
-                cx = cross_street_xs[j % len(cross_street_xs)]
+                # interior_cross_street_xs, not the boundary-capped
+                # cross_street_xs below -- cx +/- lane_offset_m must stay
+                # inside [0, span] (a real road), which the two boundary
+                # streets at exactly x=0/x=span can't guarantee (cx=0.0
+                # with a negative lane would land at x<0).
+                cx = interior_cross_street_xs[j % len(interior_cross_street_xs)]
                 frac = (j + 0.5) / max(1, count)
                 lane = lanes[j % len(lanes)]
-                y = frac * (2.0 * cross_street_y_reach) - cross_street_y_reach
+                # +/-y_reach (the CALLER's own outermost avenue -- cars
+                # and scooters ride different avenues, see the two call
+                # sites below), not +/-cross_street_y_reach -- a vehicle
+                # placed here must start within grid_road_step's own turn
+                # bound for ITS vehicle kind (see mobility.py), so its
+                # very first leg is already inside legal travel range,
+                # not past it.
+                y = frac * (2.0 * y_reach) - y_reach
                 out.append((cx + lane, y))
             return out
 
         n_car_cross = num_cars // 4
         n_car_ave = num_cars - n_car_cross
         car_positions = (_lane_positions(n_car_ave, car_avenue_offsets)
-                         + _cross_lane_positions(n_car_cross, cross_lane_offset_m))
+                         + _cross_lane_positions(n_car_cross, cross_lane_offset_m, outer_avenue))
 
         n_scooter_cross = num_scooters // 4
         n_scooter_ave = num_scooters - n_scooter_cross
-        scooter_positions = (_lane_positions(n_scooter_ave, scooter_avenue_offsets)
-                             + _cross_lane_positions(n_scooter_cross, scooter_cross_lane_offset_m))
+        scooter_outer_avenue = scooter_avenue_offsets[-1] if scooter_avenue_offsets else scooter_lane_offset_m
+        scooter_positions = (
+            _lane_positions(n_scooter_ave, scooter_avenue_offsets)
+            + _cross_lane_positions(n_scooter_cross, scooter_cross_lane_offset_m, scooter_outer_avenue)
+        )
 
-        # UAVs start scattered near the corridor; uav_waypoint_step then
-        # flies them on a random-waypoint pattern across the whole
-        # AP-spanning region (see uav_region below), not anchored to a
-        # single AP.
+        # UAVs start scattered near the corridor; uav_bounce_step then
+        # flies each one in a continuous straight line, reflecting off
+        # the edge whenever it reaches one (see uav_region below for the
+        # region it reflects within), not anchored to a single AP.
         uav_positions = [
             ((j + 0.5) / max(1, num_uavs) * span, 0.0)
             for j in range(num_uavs)
@@ -566,6 +594,13 @@ class CarsUavsBuilder:
         topo_cfg["car_cross_ids"] = car_cross_ids
         topo_cfg["scooter_cross_ids"] = scooter_cross_ids
         topo_cfg["cross_street_xs"] = [float(x) for x in cross_street_xs]
+        # The interior-only subset (no x=0/x=span boundary caps) --
+        # _cross_lane_positions above places new cross-street vehicles
+        # using ONLY this list (a boundary cap +/- a lane offset could
+        # land outside [0, span]), and ui/topology_canvas.py's
+        # _seed_default_layout mirrors that exactly, so it needs the same
+        # interior-only list rather than reconstructing it by slicing.
+        topo_cfg["cross_street_xs_interior"] = [float(x) for x in interior_cross_street_xs]
         topo_cfg["cross_street_y_reach"] = float(cross_street_y_reach)
         topo_cfg["cross_lane_offset_m"] = float(cross_lane_offset_m)
         topo_cfg["scooter_cross_lane_offset_m"] = float(scooter_cross_lane_offset_m)
@@ -598,7 +633,7 @@ class CarsUavsBuilder:
         sim: "Simulator", ap_spacing_m: float, num_aps: int, margin_m: Optional[float] = None,
     ) -> Tuple[float, float, float, float]:
         """(x_min, y_min, x_max, y_max) spanning the whole AP corridor plus
-        a margin -- the region to pass to mobility.uav_waypoint_step so
+        a margin -- the region to pass to mobility.uav_bounce_step so
         UAVs wander across every AP's coverage instead of drifting off
         past the last one or clumping in the middle.
 

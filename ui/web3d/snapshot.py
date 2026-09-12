@@ -158,7 +158,7 @@ def _road_loops(canvas) -> List[Dict[str, float]]:
     # avenue's own offset (not a fraction of anything), so ringMesh's
     # paved band -- centred at y = cy_w +/- hh, width
     # (ROAD_HALF_W+SIDEWALK_W)*2 either side of that -- lands exactly
-    # straddling the real car lanes highway_loop_step drives on that
+    # straddling the real car lanes grid_road_step drives on that
     # avenue (see CarsUavsBuilder's car_avenue_offsets_m; scooters ride
     # the smaller scooter_avenue_offsets_m, inside the same bands nearer
     # each one's inner edge). hw reaches a little past each end AP so
@@ -236,8 +236,8 @@ def _cross_streets(canvas) -> List[Dict[str, float]]:
 
     Positions/reach come straight from topo_cfg (CarsUavsBuilder.build
     computed and stored cross_street_xs/cross_street_y_reach), not
-    recomputed here -- real cars/scooters are assigned to these exact
-    streets now (see cross_street_loop_step), so the drawn geometry and
+    recomputed here -- real cars/scooters can turn onto and drive these
+    exact streets (see grid_road_step), so the drawn geometry and
     where vehicles actually drive have to be the SAME numbers, not two
     independently-tuned copies of the same spacing formula that could
     silently drift apart."""
@@ -305,20 +305,22 @@ def _node_dict(canvas, nid: int, n, sim) -> Dict[str, Any]:
         range_m = None
     is_drone = nid in canvas.drone_ids
     is_uav = nid in canvas.uav_ids
-    # Real network node on a highway_loop_step/cross_street_loop_step
-    # crossing (see sim11ah/topology.py's CarsUavsBuilder /
-    # sim11ah/mobility.py) -- distinct from is_drone/is_uav, entities.js
-    # dispatches it to its own car/scooter mesh the same way. Heading
-    # uses the shared vehicle_heading rule (topology_canvas.py) both
-    # views read from -- not from diffing consecutive positions like the
-    # decorative Smart City vehicles below do -- cheaper and exact
-    # rather than a one-poll-lagged estimate, and needs no separate
-    # stored per-vehicle direction state at all.
+    # Real network node on a live grid_road_step crossing (see
+    # sim11ah/topology.py's CarsUavsBuilder / sim11ah/mobility.py) --
+    # distinct from is_drone/is_uav, entities.js dispatches it to its own
+    # car/scooter mesh the same way. Heading uses the shared
+    # vehicle_heading rule (topology_canvas.py) both views read from --
+    # not from diffing consecutive positions like the decorative Smart
+    # City vehicles below do -- cheaper and exact rather than a
+    # one-poll-lagged estimate. Passing sim lets it read
+    # grid_road_step's own live per-vehicle axis/direction state, the
+    # only correct source once a vehicle can turn onto a different road
+    # mid-run (see vehicle_heading's own docstring).
     is_car = nid in canvas.car_ids
     is_scooter = nid in canvas.scooter_ids
     heading = None
     if is_car or is_scooter:
-        heading = vehicle_heading(nid, n, sim.config.get("topology", {}))
+        heading = vehicle_heading(nid, n, sim.config.get("topology", {}), sim=sim)
     altitude_m = None
     if is_drone or is_uav:
         try:
