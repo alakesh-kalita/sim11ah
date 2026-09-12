@@ -12,8 +12,9 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { SKY_COLOR, tiledClone } from './core.js';
+import { SKY_COLOR, tiledClone, hashSeed, mulberry32 } from './core.js';
 import { TEX } from './textures.js';
 
 const canvas = document.getElementById('app-canvas');
@@ -141,6 +142,15 @@ ssaoPass.kernelRadius = 6;
 ssaoPass.minDistance = 0.0005;
 ssaoPass.maxDistance = 0.03;
 composer.addPass(ssaoPass);
+// Threshold high (0.87) so only the BRIGHTEST pixels bloom -- the sun
+// disc, emissive warning/beacon lights, headlights, direct sun-glint off
+// the PBR metal surfaces -- not the whole scene. Strength/radius kept
+// modest (0.35/0.4) for a subtle glow, not a haze over everything;
+// tune these two first if it reads as too much or too little.
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight), 0.35, 0.4, 0.87,
+);
+composer.addPass(bloomPass);
 // Must be the last pass -- EffectComposer's intermediate render targets
 // don't apply the renderer's own sRGB output conversion automatically;
 // without this the composited frame comes out visibly washed out
@@ -155,6 +165,7 @@ export function resize() {
   renderer.setSize(w, h);
   composer.setSize(w, h);
   ssaoPass.setSize(w, h);
+  bloomPass.setSize(w, h);
 }
 window.addEventListener('resize', resize);
 
@@ -200,6 +211,94 @@ export function setBattleAtmosphere(active) {
   hemi.color.set(active ? MIL_HEMI_SKY : DEFAULT_HEMI_SKY);
   hemi.groundColor.set(active ? MIL_HEMI_GROUND : DEFAULT_HEMI_GROUND);
   hemi.intensity = active ? MIL_HEMI_INTENSITY : DEFAULT_HEMI_INTENSITY;
+  sunSpriteMat.color.copy(sun.color);
+}
+
+// ---- sun disc + clouds ---------------------------------------------------
+// The gradient sky above reads as atmosphere but had nothing IN it -- a
+// visible sun disc and a scattering of clouds are the two cheapest,
+// highest-impact things a sky can have that a flat gradient alone can't.
+function makeSunTexture() {
+  const size = 128;
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  grad.addColorStop(0, 'rgba(255,255,250,1)');
+  grad.addColorStop(0.22, 'rgba(255,244,214,0.95)');
+  grad.addColorStop(0.55, 'rgba(255,230,180,0.28)');
+  grad.addColorStop(1, 'rgba(255,230,180,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+// Additive + no depth-write: a soft glow that composites onto the sky
+// behind it rather than an opaque disc that could clip through terrain.
+// fog:false -- a real sun is effectively at infinite distance, so unlike
+// everything else in the scene, atmospheric haze shouldn't dim it.
+const sunSpriteMat = new THREE.SpriteMaterial({
+  map: makeSunTexture(), color: DEFAULT_SUN_COLOR, transparent: true,
+  depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+});
+const sunSprite = new THREE.Sprite(sunSpriteMat);
+sunSprite.scale.set(900, 900, 1);
+scene.add(sunSprite);
+const SUN_SPRITE_DIST = 5200;
+const _sunDir = new THREE.Vector3();
+// Camera-relative position, not a fixed world point -- a real sun stays
+// in the same DIRECTION no matter where you stand, so as the camera
+// roams a multi-km scene (free-fly/chase-cam can travel far from the
+// origin) the disc must move with it rather than visibly drift the way
+// a finite-distance prop would. Called every animate() frame (app.js),
+// not just on environment change, since the camera moves every frame
+// under those newer modes.
+export function updateSunSprite() {
+  _sunDir.copy(sun.position).normalize();
+  sunSprite.position.copy(camera.position).addScaledVector(_sunDir, SUN_SPRITE_DIST);
+}
+updateSunSprite();
+
+// A handful of scattered cloud clusters -- the same "a few overlapping
+// low-poly icosahedra" technique world.js's addTree uses for canopies,
+// just bigger, flatter and high up. Fixed world positions (unlike the
+// sun disc above) -- these represent real objects at a real altitude
+// over a real part of the map, not something at effectively infinite
+// distance, so they DO get fogged at a distance like everything else
+// (no fog:false here) and don't need to track the camera.
+const cloudMat = new THREE.MeshStandardMaterial({ color: 0xfbfcff, roughness: 0.95, metalness: 0 });
+const cloudLobeGeo = [1, 0.82, 0.66].map((r) => new THREE.IcosahedronGeometry(r, 1));
+const cloudsGroup = new THREE.Group();
+scene.add(cloudsGroup);
+const _cloudLobeOffsets = [[0, 0, 0], [1.3, -0.15, 0.5], [-1.2, -0.1, -0.45], [0.4, 0.1, -0.9]];
+function addCloud(cx, cy, cz, scale, rng) {
+  const g = new THREE.Group();
+  for (let i = 0; i < _cloudLobeOffsets.length; i++) {
+    const [ox, oy, oz] = _cloudLobeOffsets[i];
+    const lobe = new THREE.Mesh(cloudLobeGeo[i % cloudLobeGeo.length], cloudMat);
+    lobe.position.set(ox, oy * 0.4, oz);
+    const s = 0.8 + rng() * 0.5;
+    lobe.scale.set(s * 1.6, s * 0.7, s * 1.6);
+    g.add(lobe);
+  }
+  g.position.set(cx, cy, cz);
+  g.scale.setScalar(scale);
+  cloudsGroup.add(g);
+}
+// Seeded, not Math.random() -- reproducible across reloads like every
+// other procedural layout here. Scattered in a ring from 400 to 3600
+// units out (never right overhead at the origin, where the densest node
+// cluster/camera framing usually is) so clouds read as background sky
+// dressing instead of competing with the scene itself for attention.
+{
+  const cloudRng = mulberry32(hashSeed('sim11ah-clouds'));
+  for (let i = 0; i < 18; i++) {
+    const ang = cloudRng() * Math.PI * 2;
+    const r = 400 + cloudRng() * 3200;
+    const cy = 320 + cloudRng() * 140;
+    addCloud(Math.cos(ang) * r, cy, Math.sin(ang) * r, 60 + cloudRng() * 70, cloudRng);
+  }
 }
 
 // ---- ground -------------------------------------------------------------

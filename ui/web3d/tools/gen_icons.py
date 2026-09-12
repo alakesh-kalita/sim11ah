@@ -12,6 +12,7 @@ longer generates any art itself.
 """
 from __future__ import annotations
 
+import math
 import random
 from pathlib import Path
 
@@ -194,6 +195,25 @@ def gen_road():
     img, d = canvas()
     fill(d, "#3a3d42")
     speckle(d, random.Random(10), ["#4c5057", "#232529", "#54585f", "#2c2e32"], 130)
+    # A couple of irregular asphalt patch repairs -- a perfectly uniform
+    # speckled fill still reads as "one flat texture", not an aged real
+    # road surface. Rectangular, not blob-shaped -- that's what a real
+    # cut-and-fill repair actually looks like.
+    rng = random.Random(30)
+    for _ in range(2):
+        x0, y0 = rng.randrange(S - 10), rng.randrange(S - 8)
+        w, h = 6 + rng.randrange(6), 5 + rng.randrange(5)
+        shade = rng.choice(["#454850", "#2f3236"])
+        d.rectangle([x0, y0, min(S - 1, x0 + w), min(S - 1, y0 + h)], fill=shade)
+    # A couple of thin hairline cracks (short connected segments, not one
+    # straight line -- real pavement cracks meander).
+    for _ in range(3):
+        x, y = rng.randrange(S), rng.randrange(S)
+        for _ in range(rng.randrange(3, 6)):
+            nx = max(0, min(S - 1, x + rng.randrange(-3, 4)))
+            ny = max(0, min(S - 1, y + rng.randrange(-3, 4)))
+            d.line([x, y, nx, ny], fill="#1c1e21")
+            x, y = nx, ny
     save(img, "road")
 
 
@@ -204,6 +224,23 @@ def gen_sidewalk():
         d.rectangle([x, 0, x + 1, S - 1], fill="#8f9296")
     for y in range(0, S, 16):
         d.rectangle([0, y, S - 1, y + 1], fill="#8f9296")
+    # Subtle per-slab shade variation (inset well clear of the joint
+    # lines just drawn) plus a couple of hairline cracks -- every slab
+    # being the exact same flat grey read as one tiled swatch, not real
+    # poured concrete.
+    rng = random.Random(31)
+    for sx in range(0, S, 16):
+        for sy in range(0, S, 16):
+            if rng.random() < 0.5:
+                tint = rng.choice(["#9fa3a7", "#b2b6ba"])
+                d.rectangle([sx + 2, sy + 2, sx + 13, sy + 13], fill=tint)
+    for _ in range(2):
+        x, y = rng.randrange(S), rng.randrange(S)
+        ang = rng.random() * 6.283
+        length = rng.randrange(4, 9)
+        nx = max(0, min(S - 1, int(x + math.cos(ang) * length)))
+        ny = max(0, min(S - 1, int(y + math.sin(ang) * length)))
+        d.line([x, y, nx, ny], fill="#7d8084")
     save(img, "sidewalk")
 
 

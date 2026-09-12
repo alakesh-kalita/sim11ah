@@ -2263,6 +2263,45 @@ function addBlockBox(parent, w, h, d, wallTex, roofTex, centerY) {
   return mesh;
 }
 
+// Rooftop clutter for a FLAT roof only (a pitched/gabled or setback-
+// tower roof has no single flat plane to scatter this on) -- AC units,
+// vent pipes, a small water tank, scattered per-building via the same
+// seeded rng addBuilding/addFillerBuilding already derive from the
+// building's own label, so it's stable across rebuilds like everything
+// else here. A flat-topped box on its own reads as an empty rooftop no
+// real building has; this is the single cheapest way to break that up.
+const roofAcMat = new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.4, color: 0xc9ccd1 });
+const roofVentMat = new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0.5, color: 0x6b6f76 });
+function addRoofClutter(parent, w, d, roofY, rng) {
+  if (rng() >= 0.7) return; // not every rooftop -- an empty one now and then reads as real variety, not a bug
+  const marginX = Math.min(w, d) * 0.16 + 1.6;
+  const halfW = Math.max(0.1, w / 2 - marginX), halfD = Math.max(0.1, d / 2 - marginX);
+  const n = 1 + Math.floor(rng() * 3);
+  for (let i = 0; i < n; i++) {
+    const x = (rng() * 2 - 1) * halfW, z = (rng() * 2 - 1) * halfD;
+    const kind = rng();
+    if (kind < 0.55) {
+      const s = 1.2 + rng() * 1.0;
+      const box = new THREE.Mesh(new THREE.BoxGeometry(s * 1.4, s * 0.8, s * 1.1), roofAcMat);
+      box.position.set(x, roofY + s * 0.4, z);
+      box.castShadow = true;
+      parent.add(box);
+    } else if (kind < 0.82) {
+      const r = 0.35 + rng() * 0.25, h = 1.5 + rng() * 1.5;
+      const pipe = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 6), roofVentMat);
+      pipe.position.set(x, roofY + h / 2, z);
+      pipe.castShadow = true;
+      parent.add(pipe);
+    } else {
+      const r = 0.9 + rng() * 0.6, h = 1.8 + rng() * 1.2;
+      const tank = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 8), roofAcMat);
+      tank.position.set(x, roofY + h / 2, z);
+      tank.castShadow = true;
+      parent.add(tank);
+    }
+  }
+}
+
 function addRock(parent, o, idx) {
   const rng = mulberry32(hashSeed(String(o.label || idx)));
   const n = Math.max(4, Math.round(o.r / 3.5));
@@ -5352,6 +5391,7 @@ function addBuilding(parent, o, idx, environment) {
     addGableRoof(group, w, d, h - wallH, wallH, TEX.roof_shingle);
   } else {
     addBlockBox(group, w, h, d, wallTex, TEX.roof, h / 2);
+    addRoofClutter(group, w, d, h, rng);
   }
 
   if (!isIndustrial && tier === 1) {
@@ -5424,6 +5464,7 @@ function addFillerBuilding(parent, x, z, rng, styleBias, withChimney) {
     addGableRoof(group, w, d, h - wallH, wallH, TEX.roof_shingle);
   } else {
     addBlockBox(group, w, h, d, wallTex, TEX.roof, h / 2);
+    addRoofClutter(group, w, d, h, rng);
   }
 
   // Probability tuned down from 0.5 alongside the ~2x filler-count bump so
@@ -5553,6 +5594,7 @@ function addCityFillerBuilding(parent, x, z, rf, rng, variant = 1, heightMul = 1
     addGableRoof(group, w, d, h - wallH, wallH, TEX.roof_shingle);
   } else {
     addBlockBox(group, w, h, d, wallTex, TEX.roof, h / 2);
+    addRoofClutter(group, w, d, h, rng);
   }
   group.position.set(x, 0, z);
   parent.add(group);

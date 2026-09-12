@@ -642,20 +642,50 @@ export function updatePackets(packets, pulses, nodesData) {
 // time formula or a real node's live (x, y) and role -- only the two
 // callers differ. -----------------------------------------------------------
 const wheelMat = new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.15, color: 0x15171b });
+// Octagonal low-poly cylinder, not a box -- a wheel is the single most
+// recognisable "this is a vehicle, not a floating block" cue, and a cube
+// reads as a wheel only by position/context, never by its own shape.
+// Rotated +90deg around X below (not authored with a rotated axis here)
+// so the SAME shared geometry works unrotated for anything that ever
+// wants a plain upright cylinder elsewhere.
+const wheelGeo = new THREE.CylinderGeometry(0.55, 0.55, 0.62, 8);
+const scooterWheelGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.32, 8);
+const mirrorMat = new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.5, color: 0x1a1c20 });
 function buildCarBody(bodyColor) {
   const group = new THREE.Group();
   const bodyMat = new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.5, color: bodyColor });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(4.6, 1.4, 2.1), bodyMat);
-  body.position.y = 0.95;
+  // Rear/main body (3.0 long, full 1.4 height) plus a separate, ADJACENT
+  // hood section (1.6 long, only 1.0 tall) covering the front third --
+  // same total 4.6 length and 2.3 front-face X as the old single box, so
+  // headlights/taillights below don't need to move, but the front third
+  // now sits a visible step lower than the cabin behind it (a real
+  // sedan's profile) instead of one uniform block with a greenhouse
+  // stuck on top. Adjacent, not overlapping -- two boxes sharing a
+  // volume would either z-fight or bury the shorter one inside the
+  // taller one, showing nothing for the extra geometry.
+  const body = new THREE.Mesh(new THREE.BoxGeometry(3.0, 1.4, 2.1), bodyMat);
+  body.position.set(-0.8, 0.95, 0);
   body.castShadow = true;
   group.add(body);
+  const hood = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.0, 2.0), bodyMat);
+  hood.position.set(1.5, 0.75, 0);
+  hood.castShadow = true;
+  group.add(hood);
   const cabinMat = new THREE.MeshStandardMaterial({ roughness: 0.12, metalness: 0.35, color: 0x9fd0ea, transparent: true, opacity: 0.85 });
   const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.0, 1.85), cabinMat);
   cabin.position.set(-0.3, 1.75, 0);
   group.add(cabin);
+  // Side mirrors -- small, but exactly the kind of silhouette-breaking
+  // detail a plain box shape never has.
+  for (const sz of [-1, 1]) {
+    const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.4), mirrorMat);
+    mirror.position.set(0.75, 1.55, sz * 1.15);
+    group.add(mirror);
+  }
   for (const sx of [-1, 1]) {
     for (const sz of [-1, 1]) {
-      const wheel = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.1, 1.1), wheelMat);
+      const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+      wheel.rotation.x = Math.PI / 2;
       wheel.position.set(sx * 1.55, 0.55, sz * 1.18);
       wheel.castShadow = true;
       group.add(wheel);
@@ -723,7 +753,11 @@ function buildScooter() {
   bar.position.set(1.0, 1.85, 0);
   group.add(bar);
   for (const sx of [-0.9, 0.9]) {
-    const wheel = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.3), wheelMat);
+    // Same octagonal-cylinder wheel shape as buildCarBody, smaller --
+    // its own geometry (not wheelGeo) since the scooter's wheel is a
+    // genuinely different size, not just a scaled-down car wheel.
+    const wheel = new THREE.Mesh(scooterWheelGeo, wheelMat);
+    wheel.rotation.x = Math.PI / 2;
     wheel.position.set(sx, 0.28, 0);
     wheel.castShadow = true;
     group.add(wheel);
