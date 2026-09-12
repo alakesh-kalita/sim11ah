@@ -6175,7 +6175,18 @@ function curbFilletShape(signU, signV, radius, segments = 8) {
   return shape;
 }
 const CURB_FILLET_R = 8.0;
-const filletMat = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, map: tiledClone(TEX.concrete, 1, 1) });
+// lazyMat, not a direct tiledClone(TEX.concrete, ...) -- this module-level
+// statement runs the instant world.js is first imported, synchronously
+// BEFORE app.js's main() ever awaits loadAllTextures(), so TEX.concrete
+// is still undefined here (TEX starts as {}, only populated once that
+// async load finishes) -- calling tiledClone on it throws immediately
+// (.clone() on undefined), which broke the ENTIRE page (the whole
+// module import chain fails, so app.js's poll/animate loops never even
+// start -- reported as "I don't see anything now on the web page").
+// lazyMat defers the actual map assignment to applyLoadedTextures(),
+// exactly the mechanism this file's own top-of-file comment already
+// warns every other module-level material here has to use.
+const filletMat = lazyMat('concrete', { roughness: 0.9 });
 const filletGeoBySign = {};
 for (const su of [1, -1]) {
   for (const sv of [1, -1]) {
