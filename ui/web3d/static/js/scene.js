@@ -14,7 +14,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { SKY_COLOR, tiledClone, hashSeed, mulberry32 } from './core.js';
+import { SKY_COLOR, tiledClone } from './core.js';
 import { TEX } from './textures.js';
 
 const canvas = document.getElementById('app-canvas');
@@ -214,10 +214,11 @@ export function setBattleAtmosphere(active) {
   sunSpriteMat.color.copy(sun.color);
 }
 
-// ---- sun disc + clouds ---------------------------------------------------
+// ---- sun disc -------------------------------------------------------------
 // The gradient sky above reads as atmosphere but had nothing IN it -- a
-// visible sun disc and a scattering of clouds are the two cheapest,
-// highest-impact things a sky can have that a flat gradient alone can't.
+// visible sun disc is a cheap, high-impact thing a flat gradient alone
+// can't have. (A scattered cloud layer lived here too briefly -- removed
+// per explicit request; this scene's own focus is ground level.)
 function makeSunTexture() {
   const size = 128;
   const c = document.createElement('canvas');
@@ -259,47 +260,6 @@ export function updateSunSprite() {
   sunSprite.position.copy(camera.position).addScaledVector(_sunDir, SUN_SPRITE_DIST);
 }
 updateSunSprite();
-
-// A handful of scattered cloud clusters -- the same "a few overlapping
-// low-poly icosahedra" technique world.js's addTree uses for canopies,
-// just bigger, flatter and high up. Fixed world positions (unlike the
-// sun disc above) -- these represent real objects at a real altitude
-// over a real part of the map, not something at effectively infinite
-// distance, so they DO get fogged at a distance like everything else
-// (no fog:false here) and don't need to track the camera.
-const cloudMat = new THREE.MeshStandardMaterial({ color: 0xfbfcff, roughness: 0.95, metalness: 0 });
-const cloudLobeGeo = [1, 0.82, 0.66].map((r) => new THREE.IcosahedronGeometry(r, 1));
-const cloudsGroup = new THREE.Group();
-scene.add(cloudsGroup);
-const _cloudLobeOffsets = [[0, 0, 0], [1.3, -0.15, 0.5], [-1.2, -0.1, -0.45], [0.4, 0.1, -0.9]];
-function addCloud(cx, cy, cz, scale, rng) {
-  const g = new THREE.Group();
-  for (let i = 0; i < _cloudLobeOffsets.length; i++) {
-    const [ox, oy, oz] = _cloudLobeOffsets[i];
-    const lobe = new THREE.Mesh(cloudLobeGeo[i % cloudLobeGeo.length], cloudMat);
-    lobe.position.set(ox, oy * 0.4, oz);
-    const s = 0.8 + rng() * 0.5;
-    lobe.scale.set(s * 1.6, s * 0.7, s * 1.6);
-    g.add(lobe);
-  }
-  g.position.set(cx, cy, cz);
-  g.scale.setScalar(scale);
-  cloudsGroup.add(g);
-}
-// Seeded, not Math.random() -- reproducible across reloads like every
-// other procedural layout here. Scattered in a ring from 400 to 3600
-// units out (never right overhead at the origin, where the densest node
-// cluster/camera framing usually is) so clouds read as background sky
-// dressing instead of competing with the scene itself for attention.
-{
-  const cloudRng = mulberry32(hashSeed('sim11ah-clouds'));
-  for (let i = 0; i < 18; i++) {
-    const ang = cloudRng() * Math.PI * 2;
-    const r = 400 + cloudRng() * 3200;
-    const cy = 320 + cloudRng() * 140;
-    addCloud(Math.cos(ang) * r, cy, Math.sin(ang) * r, 60 + cloudRng() * 70, cloudRng);
-  }
-}
 
 // ---- ground -------------------------------------------------------------
 // Large enough that Military Zone's mountain backdrop (placed relative to

@@ -446,6 +446,28 @@ function addHydrant(x, z) {
   propsGroup.add(g);
 }
 
+// Manhole cover -- a flat disc resting on the road surface, not standing
+// upright like every OTHER street prop here. CylinderGeometry's default
+// orientation (axis along Y, circular caps at top/bottom) is already
+// exactly this shape unrotated -- unlike a car wheel (which needs a
+// 90-degree turn to stand a cylinder up on its edge), a manhole cover
+// needs no rotation at all to lie flat. Ground-level street detail is
+// otherwise all vertical furniture (lamps/hydrants/signs); nothing here
+// was ever actually IN the road surface itself.
+const manholeMat = new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.55, color: 0x2f3237 });
+const manholeGeo = new THREE.CylinderGeometry(1.1, 1.1, 0.12, 10);
+function addManholeCover(x, z) {
+  const m = new THREE.Mesh(manholeGeo, manholeMat);
+  // 0.86, not 0.8 flush with the asphalt layer (rebuildRoads/
+  // rebuildCrossStreets put asphalt's own top at y=0.8) -- the disc's
+  // OWN half-thickness (0.06) means centring it at 0.8 would sink half
+  // of it below the road surface. 0.86 centres it exactly resting ON
+  // TOP, bottom face flush with the asphalt, no gap and no sinking.
+  m.position.set(x, 0.86, z);
+  m.receiveShadow = true;
+  propsGroup.add(m);
+}
+
 const signalDarkMat = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.3, color: 0x23262b });
 const signalPoleGeo = new THREE.BoxGeometry(0.45, 7, 0.45);
 const signalHeadGeo = new THREE.BoxGeometry(0.8, 2.3, 0.9);
@@ -2042,6 +2064,16 @@ export function rebuildProps(env, obstacles, roadLoops, nodeExtentR = 0, variant
           const p = loopEdgePoint(l, (i + 0.62) / nHyd, side * (ROAD_HALF_W + SIDEWALK_W * 0.3));
           if (loopDist(l, p.x, p.z) < ROAD_HALF_W + 0.4) continue;
           addHydrant(p.x, p.z);
+        }
+        // Manhole covers -- mid-lane (half the road's own half-width off
+        // centre, not off at the kerb like everything else placed along
+        // this loop), the one piece of street furniture that's actually
+        // IN the road surface instead of standing beside it.
+        const nManhole = Math.max(3, Math.round(perim / 90));
+        for (let i = 0; i < nManhole; i++) {
+          const p = loopEdgePoint(l, (i + 0.15) / nManhole, side * ROAD_HALF_W * 0.5);
+          if (loopDist(l, p.x, p.z) < 2) continue;
+          addManholeCover(p.x, p.z);
         }
         // Kerbside parking hugs the pavement edge, well clear of the
         // centreline the live server-driven cars drive. A truck takes two

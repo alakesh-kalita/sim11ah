@@ -47,6 +47,20 @@ def gen_grass():
     img, d = canvas()
     fill(d, "#5d9c3f")
     speckle(d, random.Random(1), ["#6bab4a", "#4f8a34", "#75b452"], 90)
+    # A couple of small darker worn-patch tufts -- this one tile repeats
+    # across the ENTIRE ground plane (up to ~2000x at scene.js's
+    # tile=6m), so pure per-pixel speckle alone reads as a single flat
+    # noisy colour at ground level rather than real, unevenly-worn turf.
+    # Organic clusters, not a regular pattern, so the repeat doesn't read
+    # as an obvious tiled grid up close (where this is actually visible
+    # now -- free-fly/chase-cam can get down to ground level).
+    rng = random.Random(40)
+    for _ in range(2):
+        cx, cy = rng.randrange(S), rng.randrange(S)
+        for _ in range(rng.randrange(5, 10)):
+            x = max(0, min(S - 1, cx + rng.randrange(-3, 4)))
+            y = max(0, min(S - 1, cy + rng.randrange(-3, 4)))
+            d.rectangle([x, y, x, y], fill=rng.choice(["#436b2e", "#4f8a34"]))
     save(img, "grass")
 
 
@@ -54,6 +68,12 @@ def gen_dirt():
     img, d = canvas()
     fill(d, "#7a5636")
     speckle(d, random.Random(2), ["#8a6642", "#6b4a2c", "#916d47"], 100)
+    # A few scattered pebbles -- bare speckle alone reads as dirt-
+    # coloured noise, not an actual ground surface with debris on it.
+    rng = random.Random(41)
+    for _ in range(4):
+        x, y = rng.randrange(S), rng.randrange(S)
+        d.rectangle([x, y, x + 1, y + 1], fill=rng.choice(["#b8a888", "#9c8a6a"]))
     save(img, "dirt")
 
 
@@ -61,6 +81,17 @@ def gen_dirt_mining():
     img, d = canvas()
     fill(d, "#5c4630")
     speckle(d, random.Random(3), ["#6b5238", "#3e2f1e", "#4a3826"], 110)
+    # Scattered gravel bits plus a faint tyre-track smear -- an
+    # industrial yard's ground is genuinely trafficked/worked, not just
+    # dirt-coloured noise.
+    rng = random.Random(42)
+    for _ in range(5):
+        x, y = rng.randrange(S), rng.randrange(S)
+        d.rectangle([x, y, x + 1, y + 1], fill=rng.choice(["#8a8074", "#7d7468"]))
+    x0 = rng.randrange(S)
+    for y in range(0, S, 2):
+        xx = max(0, min(S - 1, x0 + rng.randrange(-1, 2)))
+        d.rectangle([xx, y, xx + 1, y], fill="#2e2318")
     save(img, "dirt_mining")
 
 
@@ -248,6 +279,22 @@ def gen_concrete():
     img, d = canvas()
     fill(d, "#9199a1")
     speckle(d, random.Random(11), ["#a4abb2", "#7d848c", "#b3b9bf"], 80)
+    # A couple of soft weathering/stain patches -- Smart City's whole
+    # ground plane is this one tile repeated ~2000x (scene.js's tile=6m
+    # across GROUND_SIZE=12000), so anything too regular (a grid, say)
+    # would read as an obvious tiled pattern at that scale; irregular
+    # organic patches don't.
+    rng = random.Random(43)
+    for _ in range(2):
+        cx, cy = rng.randrange(S), rng.randrange(S)
+        # A real stain/bleach mark, not just more of the same speckle --
+        # noticeably darker (damp/oil stain) or lighter (sun-bleached)
+        # than the base tone, not a near-miss shade of it.
+        shade = rng.choice(["#5f656c", "#c3c8cc"])
+        for _ in range(rng.randrange(7, 13)):
+            x = max(0, min(S - 1, cx + rng.randrange(-4, 5)))
+            y = max(0, min(S - 1, cy + rng.randrange(-4, 5)))
+            d.rectangle([x, y, x, y], fill=shade)
     save(img, "concrete")
 
 
