@@ -6235,6 +6235,55 @@ export function rebuildIntersectionFillets(crossStreets, avenueYs) {
   }
 }
 
+// The peripheral rectangle's 4 real corners (where the outer avenue meets
+// a side leg, see ui/dashboard_tk.py's zone classification) are an "L"
+// junction -- two road arms meeting at a right angle -- not a 4-way "+"
+// crossing like every other real intersection in this grid, so they can't
+// reuse rebuildIntersectionFillets' generic cross-street x avenue pairing
+// above (that function assumes a road extends on BOTH sides of every
+// avenue/cross-street pairing it fillets, which isn't true out here: nothing
+// exists past x=perimeter_x_min/max or y=+/-perimeter_half_y). Only ONE of
+// the 4 possible corner quadrants is a real reentrant curb at an L-junction
+// -- the one diagonally OPPOSITE the quadrant the two road arms actually
+// occupy, i.e. the rectangle's own true outer corner -- so signU/signV here
+// are just which of the 4 corners of the whole rectangle this is (+1/-1
+// each), computed once server-side (ui/web3d/snapshot.py's
+// _perimeter_corners) rather than re-derived from cross-street/avenue data
+// that doesn't actually describe an L-junction's geometry. Reported back as
+// "no round corner, 90 degree turn is not physically present" -- vehicles
+// already curve through these corners exactly like every other turn
+// (turn_radius_m matches CURB_FILLET_R), the drawn curb just hadn't caught
+// up.
+let perimeterCornerMeshes = [];
+let lastPerimeterCornerKey = '';
+export function rebuildPerimeterCornerFillets(corners) {
+  const key = JSON.stringify(corners);
+  if (key === lastPerimeterCornerKey) return;
+  lastPerimeterCornerKey = key;
+  for (const child of perimeterCornerMeshes) {
+    roadGroup.remove(child);
+  }
+  perimeterCornerMeshes = [];
+  for (const c of corners || []) {
+    // Same offset-from-the-junction-point convention
+    // rebuildIntersectionFillets uses above (cornerX = cs.x +
+    // cSignX*(ROAD_HALF_W+SIDEWALK_W)) -- c.x/c.y is the raw corner
+    // point (e.g. exactly perimeter_x_max/perimeter_half_y), not yet
+    // offset out to where the pavement's own outer edge actually is.
+    const cornerX = c.x + c.signU * (ROAD_HALF_W + SIDEWALK_W);
+    const cornerY = c.y + c.signV * (ROAD_HALF_W + SIDEWALK_W);
+    const geo = filletGeoBySign[`${-c.signU},${-c.signV}`];
+    if (!geo) continue;
+    const mesh = new THREE.Mesh(geo, filletMat);
+    mesh.rotation.x = -Math.PI / 2;
+    const scenePos = toScene(cornerX, cornerY);
+    mesh.position.set(scenePos.x, 0.42, scenePos.z);
+    mesh.receiveShadow = true;
+    roadGroup.add(mesh);
+    perimeterCornerMeshes.push(mesh);
+  }
+}
+
 // ---- Industrial Site roads + moving trucks -- Smart City gets its
 // road_loops/vehicles from Python (see snapshot.py), but Industrial Site
 // has no equivalent server-side road data, so both are computed here

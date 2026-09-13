@@ -290,10 +290,10 @@ def _perimeter_cross_streets(canvas) -> List[Dict[str, float]]:
     span and never actually reaches this far out) -- drawing spurious
     rounded curb fillets in empty space. Kept out of state.cross_streets
     entirely; app.js folds this into the road-PAVEMENT build
-    (rebuildRoads/rebuildCrossStreets) but not the fillet call, so the
-    new rectangle's 4 real corners render with sharp 90-degree corners
-    instead (a minor, deliberately-scoped cosmetic gap, not a
-    correctness issue)."""
+    (rebuildRoads/rebuildCrossStreets) but not the fillet call -- the
+    rectangle's own 4 real corners get their curb rounding from
+    _perimeter_corners below instead, a dedicated per-corner list rather
+    than this generic cross-street x avenue pairing."""
     if canvas.environment != "Smart City" or canvas.sim is None:
         return []
     topo_cfg = canvas.sim.config.get("topology", {})
@@ -308,6 +308,48 @@ def _perimeter_cross_streets(canvas) -> List[Dict[str, float]]:
         {"x": float(x_min), "y_min": -half_y, "y_max": half_y},
         {"x": float(x_max), "y_min": -half_y, "y_max": half_y},
     ]
+
+
+def _perimeter_corners(canvas) -> List[Dict[str, float]]:
+    """The peripheral rectangle's 4 real corners (where the outer avenue
+    meets a side leg -- see ui/dashboard_tk.py's zone classification),
+    each with the (signU, signV) world.js's rebuildPerimeterCornerFillets
+    needs to round it correctly.
+
+    This is an "L" junction (two road arms meeting at a right angle), not
+    a 4-way "+" crossing like every real intersection in the inner grid
+    -- rebuildIntersectionFillets' generic cross-street x avenue pairing
+    assumes a road on both sides of every pairing (true for the inner
+    grid, false out here: nothing exists past x=perimeter_x_min/max or
+    y=+/-perimeter_half_y), so it can't be reused for these. Only ONE of
+    the 4 possible corner quadrants at an L junction is a real curb to
+    round -- the one diagonally opposite where the two road arms actually
+    extend, i.e. the rectangle's own true outer corner -- which is just
+    signU=+1 at x_max/-1 at x_min, signV=+1 at +half_y/-1 at -half_y
+    (matching rebuildIntersectionFillets' own cSignX/cSignY convention:
+    the direction to offset the corner point to reach this fillet's
+    placement, with its own shape then facing back the opposite way).
+
+    Reported back as "no round corner, 90 degree turn is not physically
+    present" once the peripheral road shipped -- vehicles already curve
+    through these corners exactly like every other turn (turn_radius_m
+    matches CURB_FILLET_R), only the drawn curb hadn't caught up."""
+    if canvas.environment != "Smart City" or canvas.sim is None:
+        return []
+    topo_cfg = canvas.sim.config.get("topology", {})
+    if topo_cfg.get("mode") != "cars_uavs":
+        return []
+    half_y = topo_cfg.get("perimeter_half_y_m")
+    x_min = topo_cfg.get("perimeter_x_min_m")
+    x_max = topo_cfg.get("perimeter_x_max_m")
+    if half_y is None or x_min is None or x_max is None:
+        return []
+    half_y = float(half_y)
+    corners = []
+    for x, signU in ((float(x_min), -1.0), (float(x_max), 1.0)):
+        for y, signV in ((half_y, 1.0), (-half_y, -1.0)):
+            corners.append({"x": x, "y": y, "signU": signU, "signV": signV})
+    return corners
 
 
 def _avenue_ys(canvas) -> List[float]:
@@ -570,6 +612,7 @@ def build_snapshot(dashboard) -> Dict[str, Any]:
         "road_loops": _road_loops(canvas),
         "cross_streets": _cross_streets(canvas),
         "perimeter_cross_streets": _perimeter_cross_streets(canvas),
+        "perimeter_corners": _perimeter_corners(canvas),
         "avenue_ys": _avenue_ys(canvas),
         "overbridge": _overbridge(canvas),
         "ap_links": _ap_backbone_pairs(canvas),

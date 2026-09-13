@@ -9,7 +9,7 @@ import { loadAllTextures } from './js/textures.js';
 import { camera, composer, controls, resize, applyEnvironment, updateSunSprite } from './js/scene.js';
 import {
   rebuildProps, rebuildBuildings, rebuildRoads, rebuildCrossStreets, rebuildOverbridge,
-  rebuildIntersectionFillets, setActiveCrossStreets,
+  rebuildIntersectionFillets, rebuildPerimeterCornerFillets, setActiveCrossStreets,
   industrialRoadLoops, rebuildIndustrialTraffic, stepIndustrialTraffic,
   rebuildMilitaryPatrol, stepMilitaryPatrol,
   applyLoadedTextures, siteRadius, militaryExtent,
@@ -77,6 +77,11 @@ async function poll() {
     rebuildCrossStreets(allCrossStreets, state.overbridge ?? null);
     rebuildOverbridge(state.overbridge ?? null);
     rebuildIntersectionFillets(state.cross_streets ?? [], state.avenue_ys ?? []);
+    // The peripheral rectangle's own 4 real corners -- an "L" junction,
+    // not a 4-way "+" crossing -- get their curb rounding from this
+    // dedicated per-corner list instead of the generic pairing above
+    // (see ui/web3d/snapshot.py's _perimeter_corners for why).
+    rebuildPerimeterCornerFillets(state.perimeter_corners ?? []);
     rebuildIndustrialTraffic(state.obstacles, state.environment, state.variant);
     rebuildMilitaryPatrol(state.obstacles, state.environment);
     updateNodes(state.nodes);
