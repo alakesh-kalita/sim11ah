@@ -440,7 +440,8 @@ class Dashboard(tk.Tk):
         "Paddy Field":     ["1: Delta Plains", "2: River Valley", "3: Highland Terraces"],
         "Industrial Site": ["1: Logistics Park", "2: Process Plant", "3: Business Park"],
         "Smart City":      ["1: Downtown Grid", "2: Business District", "3: Suburban Corridor",
-                            "4: Real Map (IIT ISM Campus)"],
+                            "4: Real Map (IIT ISM Campus)",
+                            "5: Smart City Multi-AP (Cars + UAVs)"],
         "Military Zone":   ["1: Forward Operating Base"],
     }
 
@@ -450,6 +451,20 @@ class Dashboard(tk.Tk):
     # signal to open the real-map (MapLibre + live AP/STA/UAV) digital twin
     # in the browser instead, so it's special-cased in _on_layout_change.
     _REAL_MAP_LAYOUT = "4: Real Map (IIT ISM Campus)"
+    # Also not a procedural layout, and not just a cosmetic canvas change
+    # like #4 either -- selecting this REBUILDS the active sim into
+    # CarsUavsBuilder's multi-AP corridor (real cars/scooters driving a
+    # road grid + UAVs flying across it), same as picking a real Network
+    # Topology value would. Previously only reachable via the standalone
+    # scripts/launch_cars_uavs.py; see _on_layout_change for the rebuild
+    # trigger and _CARS_UAVS_PARAMS below for the fixed build parameters
+    # (matching that script's own values -- a layout-picker entry point,
+    # not a general-purpose parameterized UI, per what was actually asked).
+    _CARS_UAVS_LAYOUT = "5: Smart City Multi-AP (Cars + UAVs)"
+    _CARS_UAVS_PARAMS = dict(
+        num_aps=3, ap_spacing_m=900.0,
+        num_cars=48, num_uavs=16, num_scooters=32,
+    )
 
     def __init__(self, sim, sim_builder=None, initial_settings=None):
         super().__init__()
@@ -1694,9 +1709,37 @@ class Dashboard(tk.Tk):
 
     def _on_layout_change(self, _e=None):
         label = self._layout_var.get()
-        if self._env_var.get() == "Smart City" and label == self._REAL_MAP_LAYOUT:
+        env = self._env_var.get()
+        if env == "Smart City" and label == self._REAL_MAP_LAYOUT:
             self._open_real_map_view()
             return
+
+        entering_cars_uavs = (env == "Smart City" and label == self._CARS_UAVS_LAYOUT)
+        sim_is_cars_uavs = bool(
+            self.sim is not None
+            and self.sim.config.get("topology", {}).get("mode") == "cars_uavs"
+        )
+
+        if entering_cars_uavs:
+            # Rebuilds self.sim into CarsUavsBuilder's multi-AP corridor --
+            # a real topology switch, not a cosmetic canvas change like the
+            # Real Map option above, so this triggers apply_settings()
+            # immediately (like picking a real Network Topology value
+            # would) rather than just marking pending changes.
+            self._vars["topology"].set("cars_uavs")
+            self.apply_settings()
+            return
+
+        if sim_is_cars_uavs and self._vars["topology"].get() == "cars_uavs":
+            # Leaving cars_uavs (environment changed away from Smart City,
+            # or a different Smart City layout was picked) -- restore a
+            # real topology from the Network-Topology-tab controls, which
+            # were deliberately left untouched (not resynced) while
+            # cars_uavs was active, then rebuild right now so the canvas
+            # doesn't keep showing the old car/scooter/UAV node set.
+            self._on_topology_controls_change()
+            self.apply_settings()
+
         try:
             variant = int(label.split(":", 1)[0])
         except (ValueError, IndexError):
@@ -1859,6 +1902,15 @@ class Dashboard(tk.Tk):
             except KeyError:
                 app_overrides = None
 
+        # cars_uavs needs num_aps/ap_spacing_m/num_cars/num_uavs/
+        # num_scooters, which build_sim accepts but this call otherwise
+        # never passes -- conditional on topology, not unconditional, so
+        # these fixed constants only ever appear alongside the one mode
+        # that actually uses them (build_sim's dormant multi_ap branch
+        # also reads num_aps/ap_spacing_m; unconditionally passing them
+        # would silently feed it these cars_uavs-specific values too if
+        # that branch is ever wired up later).
+        extra_kwargs = dict(self._CARS_UAVS_PARAMS) if str(sig["topology"]) == "cars_uavs" else {}
         self.sim = self.sim_builder(
             num_stas=int(sig["num_stas"]),
             seed=int(sig["seed"]),
@@ -1875,6 +1927,7 @@ class Dashboard(tk.Tk):
             raw_slot_duration=float(sig["raw_slot_duration_ms"]) / 1000.0,
             video_fps=float(sig["video_fps"]),
             app_overrides=app_overrides,
+            **extra_kwargs,
         )
         # sim_builder/RelayBuilder don't know about this -- it's purely a
         # layout-seeding concern (see topology_canvas.py's

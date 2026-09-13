@@ -24,11 +24,15 @@ tiles under live AP/vehicle markers -- ui/web3d/static/cars-uavs-map.html)
 -- three ways to watch the same live sim state. Ctrl+C or close the
 Dashboard window to stop it.
 
-No dropdown exposes this topology yet -- the interactive Network Topology
-control only composes star/relay x ground/UAV STA x grounded/aerial relay,
-and neither that nor multi_ap (built earlier, also never wired into it) has
-a GUI control surface. This launcher is the same "specific preset scene"
-pattern launch_military_zone_3d.py already uses for exactly that reason.
+This topology is ALSO reachable from inside a running Dashboard now --
+Environment: Smart City, Layout: "5: Smart City Multi-AP (Cars + UAVs)"
+(see Dashboard._CARS_UAVS_LAYOUT/_on_layout_change) -- rebuilding the same
+CarsUavsBuilder corridor with the exact same parameters
+(Dashboard._CARS_UAVS_PARAMS, sourced below rather than duplicated) as one
+more option, not a replacement: this script remains useful for opening all
+three views (2D + procedural 3D + real-map) at once with Turbo speed
+pre-selected, which picking the layout from a stock Dashboard doesn't do
+on its own.
 """
 import sys
 import os
@@ -44,8 +48,12 @@ initial = {
     "raw_enable": False,  # forced off for this topology regardless -- see CarsUavsBuilder's docstring
     "raw_policy": "static",
     "packet_size": 128, "packet_interval": 2.0, "freq_mhz": 915.0,
-    "topology": "cars_uavs", "num_aps": 3, "ap_spacing_m": 900.0,
-    "num_cars": 48, "num_uavs": 16, "num_scooters": 32,
+    "topology": "cars_uavs",
+    # Sourced from Dashboard._CARS_UAVS_PARAMS, not duplicated -- keeps
+    # this script and the in-Dashboard layout picker (_on_layout_change)
+    # from silently drifting apart, which the STA-count doubling (24/16/8
+    # -> 48/32/16) already hit once when this script alone had the values.
+    **Dashboard._CARS_UAVS_PARAMS,
 }
 sim = build_sim(
     num_stas=initial["num_stas"], seed=initial["seed"], traffic=initial["traffic"],
