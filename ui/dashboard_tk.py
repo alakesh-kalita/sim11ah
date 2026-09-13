@@ -2341,6 +2341,117 @@ class Dashboard(tk.Tk):
                 scooter_avenue_offsets = topo_cfg.get("scooter_avenue_offsets_m") or [15.0]
                 car_y_stops = tuple(sorted({o for a in car_avenue_offsets for o in (a, -a)}))
                 scooter_y_stops = tuple(sorted({o for a in scooter_avenue_offsets for o in (a, -a)}))
+
+                # The peripheral rectangle (CarsUavsBuilder.build's own
+                # "city limits" box -- see topo_cfg["perimeter_half_y_m"]
+                # etc.) used to be purely decorative (drawn, never
+                # driven); it's now a real, connected extension of the
+                # grid, reached via the corridor's own two boundary
+                # cross-streets (x=0/x=span) instead of a spoke off every
+                # interior one. grid_road_step itself needs no changes --
+                # it's a generic stepper driven entirely by whatever
+                # x_stops/y_stops it's handed -- so the only new work is
+                # picking the RIGHT stop lists per vehicle per tick,
+                # depending on which of 4 zones its persisted
+                # _grid_road_state currently puts it in. Interior-cross-
+                # street vehicles and inner-avenue vehicles must NOT see
+                # the perimeter's stop values (no pavement reaches that
+                # far from an interior x, or that far out from an inner
+                # avenue's own [0, span] span), so this can't be one
+                # shared list the way car_x_stops/car_y_stops are today.
+                perimeter_half_y = float(topo_cfg.get("perimeter_half_y_m", 0.0))
+                scooter_perimeter_half_y = float(topo_cfg.get("scooter_perimeter_half_y_m", perimeter_half_y))
+                perimeter_x_min = float(topo_cfg.get("perimeter_x_min_m", 0.0))
+                perimeter_x_max = float(topo_cfg.get("perimeter_x_max_m", span))
+                # Outer avenue's own turn points: just its two far ends
+                # (onto the side legs) plus x=0/x=span (back onto a
+                # boundary connector) -- interior cross streets don't
+                # physically reach this far out, so they're deliberately
+                # excluded here, unlike car_x_stops/scooter_x_stops above.
+                perimeter_x_stops = tuple(sorted({0.0, span, perimeter_x_min, perimeter_x_max}))
+                car_y_stops_boundary = tuple(sorted(set(car_y_stops) | {perimeter_half_y, -perimeter_half_y}))
+                scooter_y_stops_boundary = tuple(sorted(set(scooter_y_stops) | {scooter_perimeter_half_y, -scooter_perimeter_half_y}))
+                car_y_stops_side = (-perimeter_half_y, perimeter_half_y)
+                scooter_y_stops_side = (-scooter_perimeter_half_y, scooter_perimeter_half_y)
+
+                # NOT a tiny float-tolerance epsilon -- a real, deliberately
+                # wide margin. A vehicle turning OFF a zone-boundary stop
+                # (x=0/span, y=+/-perimeter_half_y, etc.) via a real,
+                # non-degenerate curved-turn arc lands its new fixed lane
+                # up to turn_radius_m (8.0, see grid_road_step's own
+                # default) PAST that "clean" reference value -- e.g.
+                # exactly 1808.0, not 1800.0, after turning off the x=span
+                # boundary cross-street. A tight epsilon here (an earlier
+                # version of this code used 1e-3) misses that and falls
+                # through to "inner" classification for a vehicle that's
+                # actually still on the boundary/perimeter -- which then
+                # hands it car_x_stops/car_y_stops (the narrow inner
+                # lists) instead of the wider ones it actually needs,
+                # and grid_road_step's own "nxt is None" recovery (see its
+                # docstring) corrects against THAT wrong, narrow list --
+                # producing a multi-hundred-metre snap instead of a small
+                # one. 20.0 is comfortably above the 8.0 worst case yet
+                # far below the real spacing between any two distinct
+                # stops in this topology (avenues >=220m apart, interior
+                # cross streets >=100m from either boundary), so it can't
+                # misclassify a genuinely different, real stop as this
+                # one. Found via extended-duration multi-seed stress
+                # testing of the peripheral-road connectivity work.
+                _ZONE_EPS = 20.0
+
+                def _zone_stops(sim, cid, x_stops_inner, y_stops_inner, y_stops_boundary, y_stops_side, half_y):
+                    """Classify vehicle `cid` into one of 4 zones from its
+                    persisted grid_road_step state + current position, and
+                    return the (x_stops, y_stops) pair to drive it with
+                    this tick. A vehicle mid-arc ignores whichever stops
+                    it's handed anyway (grid_road_step short-circuits
+                    straight into arc processing before ever touching
+                    stops/moving/lane), so this only needs to be correct
+                    at decision points, not on every single tick."""
+                    state = getattr(sim, "_grid_road_state", None)
+                    entry = state.get(cid) if state else None
+                    if entry is None:
+                        return x_stops_inner, y_stops_inner
+                    x, y = sim.nodes[cid].pos
+                    if entry.get("axis") == "x":
+                        if abs(abs(y) - half_y) < _ZONE_EPS:
+                            # Outer avenue. y_stops is unused for THIS
+                            # tick's own movement (axis=="x" only reads
+                            # x_stops) -- but NOT unused overall: if this
+                            # vehicle turns off the outer avenue this same
+                            # call, grid_road_step's own overshoot-
+                            # recovery (see its "nxt is None" handling)
+                            # snaps to *this* list's own extreme when the
+                            # arc's turn_radius_m offset runs past it.
+                            # y_stops_boundary and y_stops_side share the
+                            # exact same extreme (+/-half_y), so either
+                            # works -- y_stops_inner (max 685) does NOT,
+                            # and passing it here was a real bug: it let
+                            # that recovery snap the vehicle's y all the
+                            # way back to 685 (a ~400m+ jump) instead of
+                            # the intended ~turn_radius_m one. Found via
+                            # extended multi-seed stress testing.
+                            return perimeter_x_stops, y_stops_boundary
+                        return x_stops_inner, y_stops_inner
+                    if abs(x - perimeter_x_min) < _ZONE_EPS or abs(x - perimeter_x_max) < _ZONE_EPS:
+                        # Side leg -- same reasoning as the outer-avenue
+                        # branch above, mirrored onto x: x_stops_inner's
+                        # extreme (0/span) is the wrong recovery target
+                        # for a vehicle actually anchored at
+                        # perimeter_x_min/max; perimeter_x_stops shares
+                        # that real extreme.
+                        return perimeter_x_stops, y_stops_side
+                    if abs(x - 0.0) < _ZONE_EPS or abs(x - span) < _ZONE_EPS:
+                        # Boundary connector. x_stops_inner is safe to
+                        # leave as-is here (unlike the two branches above):
+                        # its own extreme (0/span) IS this vehicle's real
+                        # lane value, so grid_road_step's overshoot
+                        # recovery -- if it ever fires for this axis --
+                        # corrects by at most turn_radius_m, not a
+                        # cross-network jump.
+                        return x_stops_inner, y_stops_boundary
+                    return x_stops_inner, y_stops_inner
+
                 if car_ids:
                     car_speed_mps = 15.0  # ~54 km/h
                     cross_j = 0
@@ -2357,16 +2468,20 @@ class Dashboard(tk.Tk):
                             # started on.
                             lane_offset = cross_off if cross_j % 2 == 0 else -cross_off
                             cross_j += 1
+                            xs, ys = _zone_stops(self.sim, cid, car_x_stops, car_y_stops,
+                                                 car_y_stops_boundary, car_y_stops_side, perimeter_half_y)
                             grid_road_step(
                                 self.sim, cid, dt, car_speed_mps,
-                                x_stops=car_x_stops, y_stops=car_y_stops,
+                                x_stops=xs, y_stops=ys,
                                 init_axis="y", init_dir=lane_offset,
                             )
                         else:
                             lane_y = self.sim.nodes[cid].pos[1]
+                            xs, ys = _zone_stops(self.sim, cid, car_x_stops, car_y_stops,
+                                                 car_y_stops_boundary, car_y_stops_side, perimeter_half_y)
                             grid_road_step(
                                 self.sim, cid, dt, car_speed_mps,
-                                x_stops=car_x_stops, y_stops=car_y_stops,
+                                x_stops=xs, y_stops=ys,
                                 init_axis="x", init_dir=lane_y,
                             )
                 # Scooters share the exact same grid_road_step primitive
@@ -2384,16 +2499,22 @@ class Dashboard(tk.Tk):
                         if sid in scooter_cross_ids:
                             lane_offset = scooter_cross_off if cross_j % 2 == 0 else -scooter_cross_off
                             cross_j += 1
+                            xs, ys = _zone_stops(self.sim, sid, scooter_x_stops, scooter_y_stops,
+                                                 scooter_y_stops_boundary, scooter_y_stops_side,
+                                                 scooter_perimeter_half_y)
                             grid_road_step(
                                 self.sim, sid, dt, scooter_speed_mps,
-                                x_stops=scooter_x_stops, y_stops=scooter_y_stops,
+                                x_stops=xs, y_stops=ys,
                                 init_axis="y", init_dir=lane_offset,
                             )
                         else:
                             lane_y = self.sim.nodes[sid].pos[1]
+                            xs, ys = _zone_stops(self.sim, sid, scooter_x_stops, scooter_y_stops,
+                                                 scooter_y_stops_boundary, scooter_y_stops_side,
+                                                 scooter_perimeter_half_y)
                             grid_road_step(
                                 self.sim, sid, dt, scooter_speed_mps,
-                                x_stops=scooter_x_stops, y_stops=scooter_y_stops,
+                                x_stops=xs, y_stops=ys,
                                 init_axis="x", init_dir=lane_y,
                             )
                 if uav_ids2:

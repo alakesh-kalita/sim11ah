@@ -475,6 +475,22 @@ class CarsUavsBuilder:
         # into the sparse outskirts alongside them.
         outer_avenue = car_avenue_offsets[-1] if car_avenue_offsets else car_lane_offset_m
         cross_street_y_reach = outer_avenue + 21.0 + 10.0
+
+        # perimeter_half_y_m/perimeter_x_min_m/perimeter_x_max_m: the outer
+        # "city limits" rectangle ui/web3d/snapshot.py's _stable_bounds
+        # already computes for UAV containment/building placement -- same
+        # formula (max(uav_margin_m, widest avenue)), sourced once here
+        # instead of independently, since a real peripheral road (this
+        # build's own boundary cross-streets extended, plus two brand-new
+        # ones) now has to line up with this exact box, not approximate
+        # it. outer_avenue above is already the max across BOTH car and
+        # scooter avenue offsets (scooter_avenue_offsets are always inset
+        # from car_avenue_offsets by a non-negative scooter_inset), so no
+        # separate scooter-side max is needed.
+        perimeter_half_y_m = max(uav_margin_m, outer_avenue)
+        scooter_perimeter_half_y_m = perimeter_half_y_m - scooter_inset
+        perimeter_x_min_m = -uav_margin_m
+        perimeter_x_max_m = span + uav_margin_m
         n_cross_streets = max(1, int(span / cross_street_spacing_m))
         interior_cross_street_xs = [
             (i + 0.5) * (span / n_cross_streets) for i in range(n_cross_streets)
@@ -625,6 +641,15 @@ class CarsUavsBuilder:
         topo_cfg["car_avenue_offsets_m"] = [float(o) for o in car_avenue_offsets]
         topo_cfg["scooter_avenue_offsets_m"] = [float(o) for o in scooter_avenue_offsets]
         topo_cfg["uav_margin_m"] = float(uav_margin_m)
+        # The real, drivable peripheral rectangle (see mobility-side zone
+        # classification in ui/dashboard_tk.py, and
+        # ui/web3d/snapshot.py's _perimeter_cross_streets) -- coincides
+        # exactly with _stable_bounds'/uav_region's own box under today's
+        # defaults, computed once above instead of independently.
+        topo_cfg["perimeter_half_y_m"] = float(perimeter_half_y_m)
+        topo_cfg["scooter_perimeter_half_y_m"] = float(scooter_perimeter_half_y_m)
+        topo_cfg["perimeter_x_min_m"] = float(perimeter_x_min_m)
+        topo_cfg["perimeter_x_max_m"] = float(perimeter_x_max_m)
 
         return all_nodes
 

@@ -52,7 +52,19 @@ async function poll() {
     // loops, so they were never being avoided at all (reported: "you put
     // trees and buildings on the road"). No-op (empty array) for every
     // other environment.
-    setActiveCrossStreets(state.cross_streets ?? []);
+    // perimeter_cross_streets (the two brand-new far-out streets closing
+    // the peripheral rectangle's east/west sides, ui/web3d/snapshot.py's
+    // _perimeter_cross_streets) are real, drivable pavement -- folded
+    // into the SAME arrays as state.cross_streets for prop/building
+    // avoidance and road-mesh drawing, but deliberately kept OUT of the
+    // rebuildIntersectionFillets call below: that function pairs every
+    // cross-street entry against every avenue_ys value with no idea an
+    // inner avenue's real pavement stops at x=0/span, so including these
+    // two there would draw spurious rounded-curb fillets in empty space
+    // far past where any inner avenue actually reaches (see
+    // _perimeter_cross_streets' own docstring).
+    const allCrossStreets = [...(state.cross_streets ?? []), ...(state.perimeter_cross_streets ?? [])];
+    setActiveCrossStreets(allCrossStreets);
     rebuildProps(state.environment, state.obstacles, roadLoops, nodeExtentRadius(state.nodes), state.variant);
     rebuildBuildings(state.obstacles, state.environment, state.variant, roadLoops);
     rebuildRoads(roadLoops);
@@ -62,7 +74,7 @@ async function poll() {
     // updates world.js's own live bridge-config state that
     // bridgeDeckHeightAt reads, and updateNodes is what actually
     // positions car/scooter meshes using that lookup this same poll.
-    rebuildCrossStreets(state.cross_streets ?? [], state.overbridge ?? null);
+    rebuildCrossStreets(allCrossStreets, state.overbridge ?? null);
     rebuildOverbridge(state.overbridge ?? null);
     rebuildIntersectionFillets(state.cross_streets ?? [], state.avenue_ys ?? []);
     rebuildIndustrialTraffic(state.obstacles, state.environment, state.variant);

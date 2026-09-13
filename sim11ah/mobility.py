@@ -294,11 +294,34 @@ def grid_road_step(
         nxt = min((s for s in stops if s > moving + 1e-9), default=None) if forward \
             else max((s for s in stops if s < moving - 1e-9), default=None)
         if nxt is None:
-            # Already at (or past, from float error) the outermost stop
-            # with nowhere further to go -- force a turn in place (an
-            # instant pivot, not an arc -- there's no natural "R before"
-            # entry point for this rare defensive path) rather than
-            # drive off the edge of the grid.
+            # Already at (or past) the outermost stop with nowhere
+            # further to go -- force a turn in place (an instant pivot,
+            # not an arc -- there's no natural "R before" entry point for
+            # this rare defensive path) rather than drive off the edge of
+            # the grid. Snap `moving` back to the list's own extreme
+            # first -- not just a float-error nicety: a NON-degenerate arc
+            # (turn_radius_m > 0) turning off a lane that's itself this
+            # list's own extreme value legitimately exits turn_radius_m
+            # PAST that extreme (that's the whole point of curving off
+            # the edge), and without this snap the vehicle is left sitting
+            # off-grid at that overshot value -- the very next turn
+            # attempt from there overshoots AGAIN by another
+            # turn_radius_m, compounding every time, drifting arbitrarily
+            # far from the real road network with no way back (found via
+            # extended-duration stress testing of the peripheral-road
+            # work; the original curved-turn verification never drove
+            # enough traffic through the true outermost avenue to catch
+            # it). Unconditional, not just for large overshoots: at
+            # turn_radius_m=0 the overshoot this corrects is already
+            # sub-1e-9 (arithmetically exact, per _grid_turn_arc's own
+            # derivation), so this snap is a no-op there, at far tighter
+            # tolerance than the turn_radius_m=0 equivalence test itself
+            # checks against -- it cannot regress that guarantee.
+            moving = stops[-1] if forward else stops[0]
+            if state["axis"] == "x":
+                x = moving
+            else:
+                y = moving
             state["axis"] = "y" if state["axis"] == "x" else "x"
             state["dir"] = 1.0 if rng.random() < 0.5 else -1.0
             state["commit"] = None
@@ -326,6 +349,41 @@ def grid_road_step(
                     moving += state["dir"] * decision_room
                     rp = min(turn_r, room)
                     d2 = 1.0 if rng.random() < 0.5 else -1.0
+                    # If `lane` (about to become the NEW axis's own
+                    # moving coordinate) is itself the extreme value of
+                    # the list that axis will be searched against
+                    # (other_stops -- ys if turning off the x-axis, xs if
+                    # off the y-axis; this is exactly the SAME x_stops/
+                    # y_stops the caller passed in for this whole call,
+                    # so it's already whatever list is semantically
+                    # correct for wherever this vehicle actually is, e.g.
+                    # the wider boundary/perimeter lists a caller doing
+                    # its own zone-based stop-list construction would
+                    # supply near a zone's own edge), a d2 that curves
+                    # FURTHER past that extreme overshoots every stop
+                    # that list has by rp. The immediately-following
+                    # decision on the new axis then finds no `nxt` at
+                    # all (the "nxt is None" recovery below DOES correct
+                    # it, but only by snapping back after already paying
+                    # for a real, if small, teleport) -- forcing d2 to
+                    # curve the other way here avoids that overshoot
+                    # ever happening in the first place, so a real
+                    # per-tick distance-bound violation never occurs
+                    # for this reason. Only meaningful for a genuine
+                    # (non-degenerate) arc -- at rp<=1e-9 the exit lands
+                    # at `lane` regardless of d2's sign, so this would be
+                    # a no-op anyway. Found via extended multi-seed
+                    # stress testing of the peripheral-road connectivity
+                    # work (turning off the true outermost avenue, or
+                    # off the new perimeter's own edges, at roughly 50%
+                    # of such turns where the random d2 pointed outward).
+                    if rp > 1e-9:
+                        other_stops = ys if state["axis"] == "x" else xs
+                        if other_stops:
+                            if lane >= other_stops[-1] - 1e-6:
+                                d2 = -1.0
+                            elif lane <= other_stops[0] + 1e-6:
+                                d2 = 1.0
                     if state["axis"] == "x":
                         x, y = moving, lane
                     else:

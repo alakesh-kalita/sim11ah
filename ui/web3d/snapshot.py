@@ -201,6 +201,13 @@ def _road_loops(canvas) -> List[Dict[str, float]]:
              "period_s": 20.0 + 3.0 * i}
             for i, off in enumerate(avenues)
         ]
+        # This outermost rectangle is no longer purely decorative -- it's
+        # also the real peripheral road cars/scooters can drive and turn
+        # onto (see ui/dashboard_tk.py's zone classification and
+        # _perimeter_cross_streets below), reached via the corridor's own
+        # two boundary cross-streets. Its shape/size here is unchanged;
+        # only the mobility/routing side had to catch up to what this
+        # was already drawing.
         loops.append({"cx": cx_w, "cy": cy_w, "hw": wxs / 2.0, "hh": wys / 2.0, "period_s": 40.0})
         return loops
 
@@ -240,15 +247,67 @@ def _cross_streets(canvas) -> List[Dict[str, float]]:
     exact streets (see grid_road_step), so the drawn geometry and
     where vehicles actually drive have to be the SAME numbers, not two
     independently-tuned copies of the same spacing formula that could
-    silently drift apart."""
+    silently drift apart.
+
+    The two BOUNDARY entries (x=0/x=span, i.e. min(xs)/max(xs)) reach all
+    the way out to perimeter_half_y_m, not just cross_street_y_reach --
+    ui/dashboard_tk.py's zone classification now lets a vehicle already on
+    one of these two keep going past the outermost real avenue onto the
+    peripheral rectangle instead of being forced to turn at
+    cross_street_y_reach, so the drawn pavement has to reach that far too.
+    Interior entries are unchanged -- they don't connect to the perimeter
+    (see _perimeter_cross_streets below for the two new far-out streets
+    that close its other two sides, kept as a SEPARATE list so they never
+    reach world.js's rebuildIntersectionFillets and get spuriously paired
+    against every inner avenue -- see that function's own docstring)."""
     if canvas.environment != "Smart City" or canvas.sim is None:
         return []
     topo_cfg = canvas.sim.config.get("topology", {})
     if topo_cfg.get("mode") != "cars_uavs":
         return []
     xs = topo_cfg.get("cross_street_xs") or []
+    if not xs:
+        return []
     y_reach = float(topo_cfg.get("cross_street_y_reach", 0.0))
-    return [{"x": float(x), "y_min": -y_reach, "y_max": y_reach} for x in xs]
+    perimeter_half_y = float(topo_cfg.get("perimeter_half_y_m", y_reach))
+    x_min, x_max = min(xs), max(xs)
+    out = []
+    for x in xs:
+        reach = perimeter_half_y if (x == x_min or x == x_max) else y_reach
+        out.append({"x": float(x), "y_min": -reach, "y_max": reach})
+    return out
+
+
+def _perimeter_cross_streets(canvas) -> List[Dict[str, float]]:
+    """The two brand-new cross streets that close the peripheral
+    rectangle's east/west sides (x=perimeter_x_min_m/perimeter_x_max_m,
+    see CarsUavsBuilder.build) -- deliberately a SEPARATE list from
+    _cross_streets/state.cross_streets rather than folded into it: were
+    these added to the same list, world.js's rebuildIntersectionFillets
+    would pair them against every INNER avenue in avenue_ys (it only
+    checks whether an avenue's y falls inside a cross street's y_min/
+    y_max, with no idea the inner avenues' own pavement stops at x=0/
+    span and never actually reaches this far out) -- drawing spurious
+    rounded curb fillets in empty space. Kept out of state.cross_streets
+    entirely; app.js folds this into the road-PAVEMENT build
+    (rebuildRoads/rebuildCrossStreets) but not the fillet call, so the
+    new rectangle's 4 real corners render with sharp 90-degree corners
+    instead (a minor, deliberately-scoped cosmetic gap, not a
+    correctness issue)."""
+    if canvas.environment != "Smart City" or canvas.sim is None:
+        return []
+    topo_cfg = canvas.sim.config.get("topology", {})
+    if topo_cfg.get("mode") != "cars_uavs":
+        return []
+    half_y = float(topo_cfg.get("perimeter_half_y_m", 0.0))
+    x_min = topo_cfg.get("perimeter_x_min_m")
+    x_max = topo_cfg.get("perimeter_x_max_m")
+    if x_min is None or x_max is None:
+        return []
+    return [
+        {"x": float(x_min), "y_min": -half_y, "y_max": half_y},
+        {"x": float(x_max), "y_min": -half_y, "y_max": half_y},
+    ]
 
 
 def _avenue_ys(canvas) -> List[float]:
@@ -510,6 +569,7 @@ def build_snapshot(dashboard) -> Dict[str, Any]:
         "vehicles": _vehicles(canvas),
         "road_loops": _road_loops(canvas),
         "cross_streets": _cross_streets(canvas),
+        "perimeter_cross_streets": _perimeter_cross_streets(canvas),
         "avenue_ys": _avenue_ys(canvas),
         "overbridge": _overbridge(canvas),
         "ap_links": _ap_backbone_pairs(canvas),
