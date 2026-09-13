@@ -3164,117 +3164,24 @@ def _run_main() -> None:
     if _root not in sys.path:
         sys.path.insert(0, _root)
 
-    from sim11ah.config import default_config
-    from sim11ah.simulator import Simulator
-    from sim11ah.topology import StarBuilder, RelayBuilder, MultiApBuilder
-    from sim11ah.app import (
-        PeriodicTraffic, PoissonTraffic, CBRTraffic,
-        BurstyTraffic, OnOffTraffic,
-    )
-
-    def _make_traffic(cfg, traffic):
-        ac = cfg.get("app", {})
-        t = str(traffic).lower()
-        if t == "periodic":
-            return PeriodicTraffic(float(ac.get("periodic_interval", 5.0)))
-        if t == "poisson":
-            return PoissonTraffic(float(ac.get("poisson_lambda", 0.5)))
-        if t == "cbr":
-            return CBRTraffic(rate_bps=float(ac.get("cbr_rate_bps", 2000.0)),
-                              packet_size_bytes=int(ac.get("packet_size_bytes", 128)))
-        if t == "bursty":
-            return BurstyTraffic(burst_size=int(ac.get("burst_size", 3)),
-                                  intra_gap=float(ac.get("burst_intra_gap_s", 0.01)),
-                                  off_time=float(ac.get("burst_off_time_s", 2.0)))
-        if t == "onoff":
-            return OnOffTraffic(lambda_on=float(ac.get("onoff_lambda_on", 2.0)),
-                                on_time=float(ac.get("onoff_on_time_s", 1.0)),
-                                off_time=float(ac.get("onoff_off_time_s", 3.0)))
-        if t == "video":
-            # Matches ApplicationLayer._build_traffic_model's "video" branch
-            # (sim11ah/app.py) -- only the interval-generator half; size_mode/
-            # size_table/traffic_type were already set correctly on node.app
-            # during its own construction and set_traffic_model() (the
-            # caller) only replaces the traffic-model object.
-            fps = max(0.1, float(ac.get("video_fps", 5.0)))
-            return PeriodicTraffic(1.0 / fps, float(ac.get("video_jitter_s", 0.0)))
-        return PeriodicTraffic(float(ac.get("periodic_interval", 5.0)))
-
-    def _build_sim(
-        num_stas=50, seed=0, traffic="periodic", raw_enable=True,
-        raw_policy="static", packet_size=128, packet_interval=5.0,
-        topology="star", num_relays=2, freq_mhz=915.0,
-        raw_num_groups=4, raw_num_slots=8, raw_slot_duration=0.014,
-        video_fps=5.0, app_overrides=None,
-        num_aps=2, ap_spacing_m=400.0,
-    ):
-        # See scripts/main_gui.py's build_sim() for why the effective
-        # traffic mode must come from app_overrides (a sensor profile)
-        # when one is given, not the plain traffic= argument.
-        effective_traffic = str((app_overrides or {}).get("traffic", traffic))
-        cfg = default_config(raw_enable=raw_enable, traffic_mode=effective_traffic)
-        cfg["mac"]["raw_policy"] = raw_policy
-        cfg["mac"]["raw_num_groups"] = int(raw_num_groups)
-        cfg["mac"]["raw_num_slots"] = int(raw_num_slots)
-        cfg["mac"]["raw_slot_duration"] = float(raw_slot_duration)
-        # See scripts/main_gui.py's build_sim() for why this must scale
-        # with num_stas / raw_num_groups instead of trusting the static
-        # default -- otherwise a low group count with many STAs silently
-        # strands STAs outside the covered AID range.
-        cfg["mac"]["raw_nodes_per_group"] = max(
-            125, -(-int(num_stas) // max(1, int(raw_num_groups)))
-        )
-        cfg["app"]["packet_size_bytes"] = int(packet_size)
-        cfg["app"]["periodic_interval"] = float(packet_interval)
-        cfg["app"]["video_fps"] = float(video_fps)
-        cfg["phy"]["freq_mhz"] = float(freq_mhz)
-        if app_overrides:
-            cfg["app"].update(app_overrides)
-
-        sim = Simulator(config=cfg, seed=seed)
-        access = {"rate_bps": 300_000, "prop_delay": 3e-4, "per": 0.0}
-
-        if topology in ("relay", "aerial_relay", "aerial_relay_uav", "relay_uav"):
-            nr = max(1, int(num_relays))
-            ns = max(nr, int(num_stas))
-            RelayBuilder.build(
-                sim, num_relays=nr, num_stas=ns,
-                backhaul_cfg={"rate_bps": 600_000, "prop_delay": 1e-4, "per": 0.0},
-                access_cfg=access,
-            )
-            if topology != "relay":
-                sim.config.setdefault("topology", {})["mode"] = topology
-        elif topology == "multi_ap":
-            MultiApBuilder.build(
-                sim, num_aps=max(1, int(num_aps)), ap_spacing_m=float(ap_spacing_m),
-                num_stas=int(num_stas), link_cfg=access,
-            )
-        else:
-            StarBuilder.build(sim, num_stas=int(num_stas), link_cfg=access)
-            if topology == "uav":
-                sim.config.setdefault("topology", {})["mode"] = "uav"
-
-        for nid, node in sim.nodes.items():
-            if node.is_ap or node.role == "RELAY":
-                node.app.set_traffic_model(None)
-            else:
-                node.app.set_traffic_model(_make_traffic(cfg, effective_traffic))
-
-        # Every AP starts beaconing with its own phase offset, not just node
-        # 0 -- see scripts/main_gui.py's build_sim() for the full rationale
-        # (ap_ids only set by MultiApBuilder; ap_start_beacons() is
-        # idempotent so this explicit call, run before node.start(), wins
-        # over MacLayer.start()'s automatic offset-0.0 follow-up call).
-        ap_ids = sim.config.get("topology", {}).get("ap_ids", [0] if 0 in sim.nodes else [])
-        beacon_interval = float(cfg["mac"]["beacon_interval"])
-        for idx, ap_id in enumerate(ap_ids):
-            sim.nodes[ap_id].mac.ap_start_beacons(
-                phase_offset_s=idx * beacon_interval / max(1, len(ap_ids))
-            )
-
-        for node in sim.nodes.values():
-            node.start()
-        return sim
+    # scripts.main_gui.build_sim, not a local reimplementation. This
+    # function used to carry its own standalone copy of build_sim (plus a
+    # _make_traffic helper) instead of importing scripts/main_gui.py's,
+    # apparently to sidestep that module's own `from ui.dashboard_tk
+    # import Dashboard` -- which looks circular at a glance, but isn't at
+    # runtime: _run_main() only ever runs from this file's own `if
+    # __name__ == "__main__":` block, after the whole module (including
+    # the Dashboard class above) has finished loading, so by the time this
+    # import executes, Python's import system just hands scripts.main_gui
+    # back the ui.dashboard_tk it already has in sys.modules -- confirmed
+    # directly, no cycle. That duplicate copy is exactly how this entry
+    # point silently missed the "cars_uavs" topology branch entirely:
+    # Dashboard._on_layout_change's "Smart City Multi-AP (Cars + UAVs)"
+    # layout option called it with num_cars/num_uavs/num_scooters and hit
+    # a TypeError, since the local copy had never been told cars_uavs
+    # existed. One implementation now, not two that can silently drift
+    # apart again.
+    from scripts.main_gui import build_sim as _build_sim
 
     _defaults = {
         "num_stas": 50, "seed": 0, "traffic": "periodic",
