@@ -20,6 +20,7 @@ A discrete-event simulator for the IEEE 802.11ah (Wi-Fi HaLow) sub-1 GHz MAC/PHY
 - [Sensor Profiles](#sensor-profiles)
 - [Topology Modes](#topology-modes)
 - [Deployment Scenarios](#deployment-scenarios)
+  - [Animated 3D Scenes](#animated-3d-scenes)
 - [RAW Scheduling Policies](#raw-scheduling-policies)
   - [Benchmark Schemes (Reimplemented Baselines)](#benchmark-schemes-reimplemented-baselines)
 - [Project Structure](#project-structure)
@@ -312,6 +313,23 @@ The 3D visualizer (`ui/web3d/`) ships with preset node-deployment scenes spannin
 </table>
 
 Each scene overlays live simulation stats (PDR, throughput, avg. delay, node count) and an AP/Relay/Associated-STA/Unassociated-STA legend directly on the 3D view.
+
+### Animated 3D Scenes
+
+Orbit-camera recordings of the 3D view while the simulation runs, with live AP–STA links and per-link distance/RSSI labels:
+
+<table>
+<tr>
+<td align="center"><img src="layout_gifs/14_smart_city_cars_uavs_multi_ap_3d.gif" width="400"><br><sub><b>Smart City</b> — Multi-AP (Cars + UAVs): 3 APs, 48 cars, 32 scooters and 16 UAVs handing over between APs</sub></td>
+<td align="center"><img src="layout_gifs/15_military_zone_forward_operating_base_3d.gif" width="400"><br><sub><b>Military Zone</b> — Forward Operating Base</sub></td>
+</tr>
+<tr>
+<td align="center"><img src="layout_gifs/16_smart_city_downtown_grid_3d.gif" width="400"><br><sub><b>Smart City</b> — Downtown Grid</sub></td>
+<td align="center"><img src="layout_gifs/17_industrial_site_process_plant_3d.gif" width="400"><br><sub><b>Industrial Site</b> — Process Plant</sub></td>
+</tr>
+</table>
+
+The Multi-AP (Cars + UAVs) scene can be launched with `python3 scripts/launch_cars_uavs.py`, or from the Dashboard via Environment *Smart City* → Layout *5: Smart City Multi-AP (Cars + UAVs)*.
 
 ---
 
