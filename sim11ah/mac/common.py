@@ -195,9 +195,18 @@ def sta_belongs_to_ap(ctx: Any, sta_node: Any) -> bool:
     if int(peer) == int(my_id):
         return True
     sim_nodes = getattr(ctx.sim, "nodes", {})
-    peer_node = sim_nodes.get(int(peer))
-    if getattr(peer_node, "role", None) == "RELAY":
-        relay_ctx = getattr(getattr(peer_node, "mac", None), "ctx", None)
-        relay_upstream = getattr(relay_ctx, "_assoc_peer_id", None) if relay_ctx is not None else None
-        return relay_upstream is not None and int(relay_upstream) == int(my_id)
+    # Walk up through relays (any number of hops in a multi-hop relay tree;
+    # exactly one for a relay uplinked straight to the AP) to the AP that
+    # ultimately serves this STA.
+    seen = set()
+    node = sim_nodes.get(int(peer))
+    while getattr(node, "role", None) == "RELAY" and len(seen) < 32:
+        seen.add(node.node_id)
+        relay_ctx = getattr(getattr(node, "mac", None), "ctx", None)
+        upstream = getattr(relay_ctx, "_assoc_peer_id", None) if relay_ctx is not None else None
+        if upstream is None or int(upstream) in seen:
+            return False
+        if int(upstream) == int(my_id):
+            return True
+        node = sim_nodes.get(int(upstream))
     return False  # associated with a different AP directly -- not mine

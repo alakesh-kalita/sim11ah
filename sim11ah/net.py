@@ -25,7 +25,11 @@ from sim11ah.models import NetPDU, Packet
 # call on the STA ids in both modes) -- routing is unaffected either way,
 # since it already reads each STA's live association peer rather than
 # assuming it stays put.
-_RELAY_MODES = ("relay", "aerial_relay", "aerial_relay_uav", "relay_uav")
+_RELAY_MODES = ("relay", "aerial_relay", "aerial_relay_uav", "relay_uav", "multihop_relay")
+
+# Upper bound on relay-tree depth walked by the routing helpers below (a
+# guard against a transient association loop, not a protocol limit).
+_MAX_TREE_WALK = 32
 
 
 class NetworkLayer:
@@ -61,6 +65,12 @@ class NetworkLayer:
         }
         # _my_relay_id: the relay this node should route through (STAs only)
         self._my_relay_id: Optional[int] = self.relay_assignment.get(node.node_id)
+        # relay_parent: {relay_node_id -> upstream node_id}; only multi-hop
+        # relay trees set it (a relay one hop from the AP has parent 0).
+        self.relay_parent = {
+            int(k): int(v)
+            for k, v in topo_cfg.get("relay_parent", {}).items()
+        }
 
         self._seen_cache_max = int(net_cfg.get("seen_cache_max", 256))
         self._seen_net_seqs: Dict[int, set] = {}
@@ -124,6 +134,41 @@ class NetworkLayer:
         if peer is None or int(peer) == 0:
             return None
         return int(peer)
+
+    def _peer_of(self, node_id: int) -> Optional[int]:
+        """Live association peer (parent) of any node, or None."""
+        n = self.sim.nodes.get(int(node_id))
+        ctx = getattr(getattr(n, "mac", None), "ctx", None) if n is not None else None
+        peer = getattr(ctx, "_assoc_peer_id", None) if ctx is not None else None
+        return int(peer) if peer is not None else None
+
+    def _next_hop_down(self, dst: int) -> Optional[int]:
+        """Child of THIS node on the live association path to `dst`, or None
+        if `dst` is not below this node. Walks dst's parent chain upward
+        (dst -> its peer -> that relay's peer -> ...) until it reaches this
+        node; with relays one hop from the AP this reduces to the old rule
+        ("send to the relay dst is associated with")."""
+        me = self.node.node_id
+        child = int(dst)
+        for _ in range(_MAX_TREE_WALK):
+            parent = self._peer_of(child)
+            if parent is None:
+                return None
+            if parent == me:
+                return child
+            child = parent
+        return None
+
+    def _uplink_hop(self) -> int:
+        """Next hop toward the AP: this node's live association peer, else
+        the build-time parent, else node 0."""
+        peer = self._live_assoc_peer()
+        if peer is not None:
+            return int(peer)
+        parent = self.relay_parent.get(self.node.node_id)
+        if parent is not None:
+            return int(parent)
+        return self._my_relay_id if self._my_relay_id is not None else 0
 
     def _log(
         self,
@@ -249,24 +294,24 @@ class NetworkLayer:
             return self._my_relay_id if self._my_relay_id is not None else 0
 
         if self._is_ap():
-            # AP -> STA: route via whichever relay that STA is actually,
-            # live, associated with right now (mirrors the STA-side live-
-            # peer rule _live_assoc_peer() already applies to uplink) --
-            # not the fixed topology-build-time relay_assignment, so a
-            # completed handover changes downlink routing too, not just
-            # uplink.
-            relay_for_dst = self._live_relay_for(dst)
-            if relay_for_dst is not None:
-                return relay_for_dst
-            # AP → relay directly
-            if dst in self.relay_ids:
-                return dst
+            # AP -> STA: route to the child on dst's live association path
+            # (the relay dst is associated with when relays are one hop
+            # from the AP; the first relay of the branch in a multi-hop
+            # tree) -- live, so a completed handover changes downlink
+            # routing too, not just uplink.
+            child = self._next_hop_down(dst)
+            if child is not None:
+                return child
             return dst                             # fallback: dst has no live relay (direct on AP, or unassociated)
 
         if self._is_relay():
-            if dst == 0:
-                return 0                           # upstream to AP
-            return dst                             # downstream to STA (direct link)
+            child = self._next_hop_down(dst)
+            if child is not None:
+                return child                       # downstream along the tree
+            dst_node = self.sim.nodes.get(int(dst))
+            if int(dst) == 0 or getattr(dst_node, "is_ap", False):
+                return self._uplink_hop()          # upstream toward the AP
+            return dst                             # direct link (legacy behaviour)
 
         # STA: route toward whichever peer it's actually associated with
         # right now (an AP's node_id, 0 under single-AP, directly on the
@@ -572,9 +617,14 @@ class NetworkLayer:
 
     def _relay_forward(self, pdu_in: NetPDU) -> None:
         """
-        Store-and-forward at the relay node.
-          Uplink  (STA -> AP):  relay receives from STA, forwards to AP.
-          Downlink (AP -> STA): relay receives from AP, forwards to the target STA.
+        Store-and-forward at a relay, for relay trees of any depth.
+          Uplink  (toward the AP): to this relay's live parent (its own
+                  association peer; node 0 for a relay one hop from the AP).
+          Downlink (toward a node below this relay): to the child on the
+                  destination's live association path.
+        Uplink is recognised by an AP-sink packet (dst_mode "ap": the STA
+        stamps its *own* peer as dst, so dst may name this relay or a relay
+        further down), a packet addressed to an AP, or an uplink broadcast.
         """
         hops = self._bump_hops(pdu_in)
         if hops > self.max_hops:
@@ -588,39 +638,34 @@ class NetworkLayer:
 
         src = int(pdu_in.src)
         dst = int(pdu_in.dst)
+        me = self.node.node_id
+        meta = self._ensure_meta(pdu_in.packet)
+        dst_node = self.sim.nodes.get(dst)
+        to_ap = dst == 0 or bool(getattr(dst_node, "is_ap", False))
+        from_above = src == 0 or bool(getattr(self.sim.nodes.get(src), "is_ap", False))
 
-        if dst == 0:
-            # Uplink: STA -> this relay -> AP
-            next_hop = 0
-        elif dst == -1 and src != 0:
-            # Uplink broadcast from STA (uncommon)
-            next_hop = 0
-        elif src == 0 and dst != -1:
-            # Downlink: AP -> this relay -> STA
-            # Only forward if dst is actually, live, associated with THIS
-            # relay right now (not just assigned to it at topology-build
-            # time -- the AP already used the same live check in its own
-            # resolve_next_hop() to decide to send it here in the first
-            # place, so this should normally agree; re-checking catches
-            # the race where dst handed over in between).
-            if self._live_relay_for(dst) != self.node.node_id:
+        if meta.get("ap_sink") or (to_ap and dst != -1):
+            # Uplink: STA (or child relay) -> this relay -> parent
+            next_hop = self._uplink_hop()
+        elif dst == -1 and not from_above:
+            # Uplink broadcast from below (uncommon)
+            next_hop = self._uplink_hop()
+        elif dst == -1:
+            # Broadcast from above: re-broadcast on the access side
+            next_hop = -1
+        else:
+            # Downlink: forward only if dst is (live) below this relay; the
+            # sender already used the same live check, so a miss means dst
+            # handed over in between.
+            child = self._next_hop_down(dst)
+            if child is None:
                 self._log(
                     "RELAY_IGNORE",
-                    {"src": src, "dst": dst, "reason": "dst_not_my_sta"},
+                    {"src": src, "dst": dst, "reason": "dst_not_below_me"},
                     net_pdu=pdu_in,
                 )
                 return
-            next_hop = dst
-        elif dst == -1:
-            # Broadcast from AP: re-broadcast on access side
-            next_hop = -1
-        else:
-            self._log(
-                "RELAY_IGNORE",
-                {"src": src, "dst": dst, "reason": "unhandled_relay_case"},
-                net_pdu=pdu_in,
-            )
-            return
+            next_hop = child
 
         pdu_out = NetPDU(
             net_seq=int(pdu_in.net_seq),
@@ -632,7 +677,7 @@ class NetworkLayer:
 
         self._log(
             "RELAY_FWD",
-            {"src": src, "dst": dst, "next_hop": next_hop, "hops": hops},
+            {"src": src, "dst": dst, "next_hop": next_hop, "hops": hops, "via": me},
             net_pdu=pdu_out,
         )
         self.sim.stats.net_forwarded += 1
@@ -698,7 +743,11 @@ class NetworkLayer:
             # self-referential forward-to-myself loop (caught empirically:
             # RX_LINK_MISSING frames with src==dst==next_hop all equal to
             # the non-zero AP's own id).
-            if int(net_pdu.dst) == self.node.node_id or int(net_pdu.dst) == -1:
+            # In relay modes an uplink AP-sink packet names the STA's own
+            # peer (a relay) as dst; it is meant for whichever AP it reaches.
+            ap_sink = (self.topo_mode in _RELAY_MODES
+                       and bool(self._ensure_meta(net_pdu.packet).get("ap_sink")))
+            if int(net_pdu.dst) == self.node.node_id or int(net_pdu.dst) == -1 or ap_sink:
                 if self._is_duplicate_pdu(net_pdu):
                     self.sim.stats.net_duplicates += 1
                     self._log(

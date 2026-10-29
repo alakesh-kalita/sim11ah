@@ -161,9 +161,16 @@ def default_config(raw_enable: bool, traffic_mode: str) -> Dict[str, Any]:
 
 
 
-            "cluster_adaptive_demand_gain": 2.5,
+            # G_D: a gain common to all groups cancels in the relative demand,
+            # so it has no effect on the schedule (1.0 = removed, as in the paper).
+            "cluster_adaptive_demand_gain": 1.0,
             "cluster_adaptive_size_gain": 0.012,
             "cluster_adaptive_burst_gain": 1.25,
+            # G_Lambda in Eq. (10): demand *= 1 + G_Lambda * total predicted load.
+            "cluster_adaptive_load_gain": 0.03,
+            # h_cluster in Eq. (9): per-STA predicted-load burst threshold
+            # (packets per beacon interval), independent of adaptive_raw_cusum_h.
+            "cluster_adaptive_h_cluster": 1.0,
             # Floored at raw_num_slots (4) rather than 1: a below-average-
             # demand cluster must still get at least as many slots as the
             # "adaptive" baseline gives every group unconditionally, or it

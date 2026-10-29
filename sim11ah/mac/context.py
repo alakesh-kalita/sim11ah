@@ -294,6 +294,12 @@ def clear_queue_hint(ctx: MacContext, dst: int) -> None:
 
 def build_mac_context(node: Any, cfg: Dict[str, Any]) -> MacContext:
     mac_cfg = cfg["mac"]
+    # Opt-in: relays forward outside the RAW schedule (like the AP) instead
+    # of only inside the slot their own AID maps to. They still cache and
+    # re-advertise the RPS in their beacons, so their STAs keep using RAW.
+    raw_on = bool(mac_cfg["raw_enable"])
+    if raw_on and getattr(node, "role", "") == "RELAY" and bool(mac_cfg.get("raw_relay_exempt", False)):
+        raw_on = False
 
     ctx = MacContext(
         node=node,
@@ -325,7 +331,7 @@ def build_mac_context(node: Any, cfg: Dict[str, Any]) -> MacContext:
         ndpa_size_bytes=int(mac_cfg.get("ndpa_size_bytes", 20)),
         probe_req_size_bytes=int(mac_cfg.get("probe_req_size_bytes", 40)),
 
-        raw_enable=bool(mac_cfg["raw_enable"]),
+        raw_enable=raw_on,
         beacon_interval=float(mac_cfg["beacon_interval"]),
         dtim_period=int(mac_cfg["dtim_period"]),
         raw_slot_duration=float(mac_cfg["raw_slot_duration"]),
@@ -360,7 +366,7 @@ def build_mac_context(node: Any, cfg: Dict[str, Any]) -> MacContext:
 
         twt_enable=bool(mac_cfg.get("twt_enable", False)),
 
-        raw_allowed=(not bool(mac_cfg["raw_enable"])) or node.is_ap,
+        raw_allowed=(not raw_on) or node.is_ap,
         _cw=int(mac_cfg.get("cw_min", 15)),
         _util_window_s=float(mac_cfg.get("util_window_s", 1.0)),
     )

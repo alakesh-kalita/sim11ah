@@ -16,16 +16,19 @@ from sim11ah.mac.etaroa_traffic_estimator import EtaroaTrafficEstimator
 
 class ClusterAdaptiveRawPolicy:
     """
-    Cluster-Adaptive Dual RAW Allocation.
+    MA-PRAW RAW allocation (paper, Section III-D to III-F).
 
     Uses:
-    - CSV-based cluster grouping
-    - runtime queue + CSV fallback load estimation
-    - EWMA-CUSUM demand prediction
-    - priority-weighted cluster demand
-    - Bianchi contention estimate
-    - adaptive number of RAW slots per cluster
-    - adaptive slot duration per cluster
+    - CSV-based cluster grouping (predicted-position clusters)
+    - EWMA-CUSUM prediction of the packets received from each UAV per
+      beacon interval, Eqs. (14)-(18), and the cluster burst state, Eq. (22)
+    - priority-weighted cluster demand with size/burst/load factors, Eq. (23)
+    - number of RAW slots per cluster from the relative demand
+    - slot duration from the frame-exchange airtime (safety floor)
+    - per-beacon RAW airtime budget with proportional scaling
+    Optional, off by default: Bianchi contention estimate
+    (cluster_adaptive_contention_model="bianchi") and the E-TAROA estimator
+    (cluster_adaptive_traffic_estimator="etaroa").
     """
 
     def __init__(self, ctx, log_fn) -> None:
@@ -91,8 +94,25 @@ class ClusterAdaptiveRawPolicy:
         self.cusum_k = float(self.mac_cfg.get("adaptive_raw_cusum_k", 0.10))
         self.cusum_h = float(self.mac_cfg.get("adaptive_raw_cusum_h", 1.0))
 
+        # Per-UAV traffic prediction. "ewma_cusum" (default) is the MA-PRAW
+        # predictor of the paper, Eqs. (14)-(18), with the cluster burst
+        # state of Eq. (22); "etaroa" is the E-TAROA estimator used by
+        # earlier versions of this policy.
+        self.traffic_estimator = str(
+            self.mac_cfg.get("cluster_adaptive_traffic_estimator", "ewma_cusum")
+        ).lower()
+        self._sta_ewma: Dict[int, float] = {}
+        self._sta_cusum: Dict[int, float] = {}
+        self._last_rx_count: Dict[int, int] = {}
+
         self.bianchi_eps = float(self.mac_cfg.get("adaptive_raw_bianchi_eps", 1e-4))
         self.bianchi_imax = int(self.mac_cfg.get("adaptive_raw_bianchi_imax", 50))
+        # Ablation switch for the contention model in Eq. (39): "bianchi"
+        # (default) or "none", where every packet costs one successful
+        # exchange (l_bar / P_succ -> l_s) with no idle/collision overhead.
+        self.contention_model = str(
+            self.mac_cfg.get("cluster_adaptive_contention_model", "none")
+        ).lower()
 
         self.tmax_s = float(self.mac_cfg.get("adaptive_raw_tmax_s", self.max_slot_us / 1e6))
         self.lth_slots = int(
@@ -108,9 +128,18 @@ class ClusterAdaptiveRawPolicy:
             "normal": float(self.mac_cfg.get("priority_weight_normal", 1.0)),
         }
 
-        self.demand_gain = float(self.mac_cfg.get("cluster_adaptive_demand_gain", 2.5))
+        self.demand_gain = float(self.mac_cfg.get("cluster_adaptive_demand_gain", 1.0))
         self.size_gain = float(self.mac_cfg.get("cluster_adaptive_size_gain", 0.012))
         self.burst_gain = float(self.mac_cfg.get("cluster_adaptive_burst_gain", 1.25))
+        # G_Lambda in Eq. (10): scales cluster demand by the cluster's total
+        # predicted load, a second-order correction beyond the per-STA
+        # burst term. Was hardcoded at 0.03.
+        self.load_gain = float(self.mac_cfg.get("cluster_adaptive_load_gain", 0.03))
+        # h_cluster in Eq. (9): burst threshold on a STA's PREDICTED LOAD
+        # (packets per beacon interval). Previously reused cusum_h, which
+        # thresholds a different quantity (the CUSUM statistic) in the
+        # other adaptive policies -- the two are calibrated independently.
+        self.h_cluster = float(self.mac_cfg.get("cluster_adaptive_h_cluster", 1.0))
 
         # config.py documents raw_num_groups as "SAME for adaptive / cluster /
         # static" -- the other RAW policies always split the connected
@@ -183,6 +212,10 @@ class ClusterAdaptiveRawPolicy:
         self._estimator = EtaroaTrafficEstimator(self.ctx, default_t_int_beacons=1.0)
         self._last_group_slots: Dict[int, int] = {}
 
+        # Parse the CSV once at init; filter by connected_aids at call time
+        # (it was re-read from disk every beacon interval).
+        self._csv_rows_all: List[Dict[str, Any]] = self._parse_cluster_csv()
+
     def init_configs(self) -> List["RawConfig"]:
         aids = self._effective_connected_aids([])
         max_aid = max(aids) if aids else max(1, int(getattr(self.ctx, "raw_nodes_per_group", 64)))
@@ -234,16 +267,21 @@ class ClusterAdaptiveRawPolicy:
                 group_debug[cluster_id] = self._empty_debug(Dgk, nact)
                 continue
 
-            tau, p = self._solve_bianchi_fixed_point(nact)
-
-            p_idle = (1.0 - tau) ** nact
-            p_succ = nact * tau * ((1.0 - tau) ** (nact - 1))
-            p_col = max(0.0, 1.0 - p_idle - p_succ)
-
             ts, tc = self._get_success_collision_times_s()
             l_s = ts / sigma
             l_c = tc / sigma
-            l_bar = p_idle * 1.0 + p_succ * l_s + p_col * l_c
+
+            if self.contention_model == "none":
+                tau, p = 0.0, 0.0
+                p_idle, p_succ, p_col = 0.0, 1.0, 0.0
+                l_bar = l_s
+            else:
+                tau, p = self._solve_bianchi_fixed_point(nact)
+
+                p_idle = (1.0 - tau) ** nact
+                p_succ = nact * tau * ((1.0 - tau) ** (nact - 1))
+                p_col = max(0.0, 1.0 - p_idle - p_succ)
+                l_bar = p_idle * 1.0 + p_succ * l_s + p_col * l_c
 
             raw_L = int(math.ceil(Dgk * l_bar / max(1e-9, p_succ)))
             raw_L = max(1, min(raw_L, lmax_slots))
@@ -565,37 +603,31 @@ class ClusterAdaptiveRawPolicy:
             "demand_gain": self.demand_gain,
             "size_gain": self.size_gain,
             "burst_gain": self.burst_gain,
+            "load_gain": self.load_gain,
+            "h_cluster": self.h_cluster,
         }
 
-    def _load_cluster_csv(self, connected_aids: List[int]) -> List[Dict[str, Any]]:
-        connected = set(int(a) for a in connected_aids)
+    def _parse_cluster_csv(self) -> List[Dict[str, Any]]:
+        """Read and parse the CSV file once. Returns static rows (no runtime state)."""
         rows: List[Dict[str, Any]] = []
-
-        rates = self._estimator.update(sorted(connected))
 
         with open(self.cluster_csv_path, "r", newline="") as f:
             reader = csv.DictReader(f)
 
             for row in reader:
-                aid = int(row["aid"])
-                if aid not in connected:
-                    continue
-
                 priority = str(row.get("priority", "normal")).strip().lower()
                 if priority not in self.priority_weights:
                     priority = "normal"
 
-                observed = self._estimate_sta_observed_load(aid, row)
-                pred_load = float(rates.get(aid, 0.0))
-
                 rows.append(
                     {
-                        "aid": aid,
+                        "aid": int(row["aid"]),
                         "cluster_id": int(row["cluster_id"]),
                         "priority": priority,
                         "tx_rate_bps": float(row.get("tx_rate_bps", 150000.0)),
-                        "queue_len": float(observed),
-                        "pred_load": float(pred_load),
+                        # Left unconverted: only read as a fallback when the
+                        # runtime queue is unavailable.
+                        "csv_queue_len": row.get("queue_len", 0.0),
                         "packet_size_bytes": int(
                             row.get("packet_size_bytes", self.app_cfg.get("packet_size_bytes", 128))
                         ),
@@ -603,6 +635,60 @@ class ClusterAdaptiveRawPolicy:
                 )
 
         return rows
+
+    def _load_cluster_csv(self, connected_aids: List[int]) -> List[Dict[str, Any]]:
+        """Filter the cached CSV rows by connected_aids and inject runtime state."""
+        connected = set(int(a) for a in connected_aids)
+        rows: List[Dict[str, Any]] = []
+
+        rates = self._predict_traffic(sorted(connected))
+
+        for base in self._csv_rows_all:
+            aid = base["aid"]
+            if aid not in connected:
+                continue
+
+            observed = self._estimate_sta_observed_load(aid, {"queue_len": base["csv_queue_len"]})
+            pred_load = float(rates.get(aid, 0.0))
+
+            rows.append(
+                {
+                    "aid": aid,
+                    "cluster_id": base["cluster_id"],
+                    "priority": base["priority"],
+                    "tx_rate_bps": base["tx_rate_bps"],
+                    "queue_len": float(observed),
+                    "pred_load": float(pred_load),
+                    "packet_size_bytes": base["packet_size_bytes"],
+                }
+            )
+
+        return rows
+
+    def _predict_traffic(self, aids: List[int]) -> Dict[int, float]:
+        """Predicted packets per beacon interval for each connected AID."""
+        if self.traffic_estimator != "ewma_cusum":
+            return self._estimator.update(aids)
+
+        rx_by_src = getattr(self.ctx, "_rx_count_by_src", None) or {}
+        pred: Dict[int, float] = {}
+        for aid in aids:
+            # a_i(t): DATA packets received from this UAV since the last
+            # beacon interval (no control packet needed).
+            current = int(rx_by_src.get(aid, 0))
+            observed = float(max(0, current - self._last_rx_count.get(aid, current)))
+            self._last_rx_count[aid] = current
+
+            prev_ewma = self._sta_ewma.get(aid, observed)                         # a_bar_i(t)
+            ewma = self.ewma_alpha * observed + (1.0 - self.ewma_alpha) * prev_ewma  # Eq. (14)
+            err = observed - prev_ewma                                             # Eq. (15)
+            cusum = max(0.0, self._sta_cusum.get(aid, 0.0) + err - self.cusum_k)  # Eq. (16)
+            burst = max(0.0, cusum - self.cusum_h)                                 # Eq. (17)
+            pred[aid] = max(0.0, ewma + burst)                                     # Eq. (18)
+
+            self._sta_ewma[aid] = ewma
+            self._sta_cusum[aid] = cusum
+        return pred
 
     def _estimate_sta_observed_load(self, aid: int, row: Dict[str, Any] | None = None) -> float:
         try:
@@ -740,7 +826,11 @@ class ClusterAdaptiveRawPolicy:
             demand += weight * pred
             total_pred += pred
 
-            if pred > self.cusum_h:
+            if self.traffic_estimator == "ewma_cusum":
+                burst_i = self._sta_cusum.get(int(r["aid"]), 0.0) > self.cusum_h  # Eq. (22)
+            else:
+                burst_i = pred > self.h_cluster
+            if burst_i:
                 has_burst = True
 
         demand *= self.demand_gain
@@ -749,7 +839,7 @@ class ClusterAdaptiveRawPolicy:
         if has_burst:
             demand *= self.burst_gain
 
-        demand *= 1.0 + 0.03 * total_pred
+        demand *= 1.0 + self.load_gain * total_pred
 
         return max(0.0, demand), has_burst
 

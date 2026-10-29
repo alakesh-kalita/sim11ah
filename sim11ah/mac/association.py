@@ -349,6 +349,16 @@ class AssocManager:
         if self._is_ap() or not self._assoc_enable:
             return
 
+        # Multi-hop relay tree: a relay joins only its configured parent, so
+        # it can never attach below itself (e.g. to its own child's beacon
+        # after a missed-beacon link loss), which would create a loop.
+        if self._node.role == "RELAY":
+            parent = self._sim.config.get("topology", {}).get("relay_parent", {}).get(
+                self._node.node_id, self._sim.config.get("topology", {}).get("relay_parent", {}).get(
+                    str(self._node.node_id)))
+            if parent is not None and int(beacon_frame.src) != int(parent):
+                return
+
         # Whether the SOURCE of this beacon is an AP-role node, not
         # specifically node 0 -- with an old hardcoded ==0 check, a beacon
         # from any AP other than node 0 was misclassified as "not from an
@@ -1030,13 +1040,23 @@ class AssocManager:
             # silently mirrored into the wrong AP's table as soon as a
             # relay could be uplinked to anything other than the one AP
             # that happened to be node 0.
+            # In a multi-hop relay tree the peer may itself be a relay, so
+            # mirror into every ancestor up to the AP (one hop from the AP
+            # this is exactly the old single mirror into the AP).
             target_ap_id = getattr(self._ctx, "_assoc_peer_id", None)
             if target_ap_id is None:
                 target_ap_id = 0
-            ap_node = self._sim.nodes.get(target_ap_id)
-            ap_mac = getattr(ap_node, "mac", None)
-            if ap_mac is not None:
+            seen = set()
+            while target_ap_id is not None and target_ap_id not in seen and len(seen) < 32:
+                seen.add(target_ap_id)
+                ap_node = self._sim.nodes.get(target_ap_id)
+                ap_mac = getattr(ap_node, "mac", None)
+                if ap_mac is None:
+                    break
                 ap_mac.ctx._associated_stas[sta_id] = aid
+                if getattr(ap_node, "is_ap", False):
+                    break
+                target_ap_id = getattr(ap_mac.ctx, "_assoc_peer_id", None)
         self._log("AP_ASSOC_REQ", {"sta": sta_id, "aid_assigned": aid,
                                     "via_relay": self._node.node_id if not self._is_ap() else None})
 

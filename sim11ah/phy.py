@@ -78,6 +78,19 @@ class PhyLayer:
         # CCA / energy detection / RX sensitivity
         self.cca_threshold_dbm = float(phy_cfg.get("cca_threshold_dbm", -96.0))
         self.rx_sensitivity_dbm = float(phy_cfg.get("rx_sensitivity_dbm", -98.0))
+        # CCA detection latency: another node's transmission only registers
+        # as busy this long after it starts (aCCATime < aSlotTime). Without
+        # it, two STAs whose backoff ends on the same slot boundary can never
+        # collide -- whichever event runs first grabs the medium and the
+        # other sees it busy at the same instant. 0.0 keeps that legacy
+        # zero-latency behaviour.
+        self.cca_sense_delay_s = max(0.0, float(phy_cfg.get("cca_sense_delay_s", 0.0)))
+        # Keep each in-progress reception on the *receiving* node's PHY, where
+        # the collision/capture check and the RX_END cleanup look for it.
+        # False keeps the legacy behaviour of filing it on the sender's PHY,
+        # where overlapping frames at a receiver are never compared (so they
+        # never collide) and the records are never removed.
+        self.rx_state_on_receiver = bool(phy_cfg.get("rx_state_on_receiver", False))
 
         # TX power / EIRP
         self.tx_power_dbm = float(phy_cfg.get("tx_power_dbm", 20.0))
@@ -380,6 +393,8 @@ class PhyLayer:
                 continue
             if txr.tx_id == node_id:
                 return True
+            if now < txr.start_time + rx_phy.cca_sense_delay_s:
+                continue
             rssi = self._rssi_dbm(txr.tx_id, node_id, txr.eirp_dbm)
             if rssi >= rx_phy.cca_threshold_dbm:
                 return True
@@ -596,7 +611,8 @@ class PhyLayer:
                 rr.half_duplex_collision = True
                 rr.collided = True
 
-        self._active_rx[rx_id].append(rr)
+        rx_store = rx_phy if self.rx_state_on_receiver else self
+        rx_store._active_rx[rx_id].append(rr)
 
         if rx_phy.collision_model == "pessimistic":
             rx_phy._apply_pessimistic_overlap(rx_id)

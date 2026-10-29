@@ -169,6 +169,113 @@ class RelayBuilder:
         return all_nodes
 
 
+class MultiHopRelayBuilder:
+    """
+    Build a multi-hop relay tree: the AP feeds `num_branches` chains of
+    `depth` relays each, so relay-to-relay links carry traffic over up to
+    `depth` relay hops (STA -> relay_d -> ... -> relay_1 -> AP).
+
+    Node layout:
+      0                       : AP at the origin
+      1 .. B*H                : relays, branch-major (branch b, tier h at
+                                distance h*hop_spacing_m on ray 2*pi*b/B)
+      B*H+1 ..                : STAs, `stas_per_relay` uniformly in a disk of
+                                `sta_radius_m` around each relay, plus
+                                `stas_at_ap` around the AP
+
+    Links follow the tree only (AP<->tier-1 relay, relay<->next-tier relay,
+    relay<->its STAs, AP<->its STAs), so each node can reach -- and associate
+    with -- its tree parent only; carrier sensing still uses geometry. The
+    build writes topology mode "multihop_relay", relay_ids, relay_assignment
+    (STA -> serving relay), relay_parent (relay -> upstream node), and raises
+    net.max_hops to depth + 1.
+    """
+
+    @staticmethod
+    def build(
+        sim: "Simulator",
+        num_branches: int,
+        depth: int,
+        stas_per_relay: int,
+        link_cfg: Dict[str, Any],
+        stas_at_ap: int = 0,
+        hop_spacing_m: float = 700.0,
+        sta_radius_m: float = 300.0,
+        seed: int = 0,
+    ) -> List["Node"]:
+        import math
+        import random
+
+        from sim11ah.node import Node  # local import to avoid circular
+
+        B, H, K = int(num_branches), int(depth), int(stas_per_relay)
+        if B < 1 or H < 1 or K < 0 or stas_at_ap < 0:
+            raise ValueError("need num_branches >= 1, depth >= 1, stas >= 0")
+        for k in ("rate_bps", "prop_delay", "per"):
+            if k not in link_cfg:
+                raise ValueError(f"Missing link_cfg[{k!r}]")
+        rate, prop, per = int(link_cfg["rate_bps"]), float(link_cfg["prop_delay"]), float(link_cfg["per"])
+
+        topo = Topology()
+        sim.topology = topo
+        sim.nodes = {}
+        rng = random.Random(20_000 + int(seed))
+
+        def _disk(cx: float, cy: float) -> Tuple[float, float]:
+            r = sta_radius_m * math.sqrt(rng.random())
+            a = rng.random() * 2.0 * math.pi
+            return (cx + r * math.cos(a), cy + r * math.sin(a))
+
+        ap = Node(node_id=0, sim=sim, pos=(0.0, 0.0))
+        nodes: List["Node"] = [ap]
+        relay_parent: Dict[int, int] = {}
+        relay_tier: Dict[int, int] = {}
+        relays: List["Node"] = []
+        for b in range(B):
+            theta = 2.0 * math.pi * b / B
+            parent = 0
+            for h in range(1, H + 1):
+                rid = 1 + b * H + (h - 1)
+                pos = (h * hop_spacing_m * math.cos(theta), h * hop_spacing_m * math.sin(theta))
+                r = Node(node_id=rid, sim=sim, role="RELAY", pos=pos)
+                relays.append(r)
+                relay_parent[rid] = parent
+                relay_tier[rid] = h
+                topo.add_link(parent, rid, rate_bps=rate, prop_delay=prop, per=per)
+                parent = rid
+        nodes += relays
+
+        relay_assignment: Dict[int, int] = {}
+        next_id = 1 + B * H
+        for _ in range(int(stas_at_ap)):
+            sta = Node(node_id=next_id, sim=sim, pos=_disk(0.0, 0.0))
+            topo.add_link(0, next_id, rate_bps=rate, prop_delay=prop, per=per)
+            nodes.append(sta)
+            next_id += 1
+        for r in relays:
+            for _ in range(K):
+                sta = Node(node_id=next_id, sim=sim, pos=_disk(*r.pos))
+                topo.add_link(r.node_id, next_id, rate_bps=rate, prop_delay=prop, per=per)
+                relay_assignment[next_id] = r.node_id
+                nodes.append(sta)
+                next_id += 1
+
+        sim.nodes = {n.node_id: n for n in nodes}
+
+        topo_cfg = sim.config.setdefault("topology", {})
+        topo_cfg["mode"] = "multihop_relay"
+        topo_cfg["relay_ids"] = [r.node_id for r in relays]
+        topo_cfg["relay_assignment"] = relay_assignment
+        topo_cfg["relay_parent"] = relay_parent
+        topo_cfg["relay_tier"] = relay_tier
+        net_cfg = sim.config.setdefault("net", {})
+        net_cfg["max_hops"] = max(int(net_cfg.get("max_hops", 2)), H + 1)
+
+        for n in nodes:
+            n.build_layers(sim.config)
+        return nodes
+
+
 class MultiApBuilder:
     """
     Build a multi-AP topology: K independent AP nodes in a 1D chain, N STA

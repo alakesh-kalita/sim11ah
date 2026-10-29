@@ -76,6 +76,12 @@ class ClusterCsvAdaptiveRawPolicy:
 
         self.bianchi_eps = float(self.mac_cfg.get("adaptive_raw_bianchi_eps", 1e-4))
         self.bianchi_imax = int(self.mac_cfg.get("adaptive_raw_bianchi_imax", 50))
+        # Ablation switch for the contention model: "bianchi" (default) or
+        # "none", where every packet costs one successful exchange
+        # (l_bar / P_succ -> l_s) with no idle/collision overhead.
+        self.contention_model = str(
+            self.mac_cfg.get("cluster_csv_contention_model", "bianchi")
+        ).lower()
 
         self.tmax_s = float(self.mac_cfg.get("adaptive_raw_tmax_s", self.max_slot_us / 1e6))
         self.lth_slots = int(
@@ -228,16 +234,21 @@ class ClusterCsvAdaptiveRawPolicy:
                 group_debug[cluster_id] = self._empty_debug(Dgk, nact)
                 continue
 
-            tau, p = self._solve_bianchi_fixed_point(nact)
-
-            p_idle = (1.0 - tau) ** nact
-            p_succ = nact * tau * ((1.0 - tau) ** (nact - 1))
-            p_col = max(0.0, 1.0 - p_idle - p_succ)
-
             ts, tc = self._get_success_collision_times_s(rows)
             l_s = ts / sigma
             l_c = tc / sigma
-            l_bar = p_idle * 1.0 + p_succ * l_s + p_col * l_c
+
+            if self.contention_model == "none":
+                tau, p = 0.0, 0.0
+                p_idle, p_succ, p_col = 0.0, 1.0, 0.0
+                l_bar = l_s
+            else:
+                tau, p = self._solve_bianchi_fixed_point(nact)
+
+                p_idle = (1.0 - tau) ** nact
+                p_succ = nact * tau * ((1.0 - tau) ** (nact - 1))
+                p_col = max(0.0, 1.0 - p_idle - p_succ)
+                l_bar = p_idle * 1.0 + p_succ * l_s + p_col * l_c
 
             p_succ_eff = max(1e-9, p_succ)
 

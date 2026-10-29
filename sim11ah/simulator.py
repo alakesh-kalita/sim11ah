@@ -27,6 +27,11 @@ class Simulator:
         self.packet_seq_ctr: int = 0
 
         sim_cfg = config.get("sim", {})
+        # Headless batch runs can switch the cross-layer event trace off:
+        # every metric is kept in SimStats as it happens, and no protocol
+        # logic reads the trace, so only trace consumers (Dashboard, Packet
+        # Trace, CSV export) need it.
+        self.log_enable: bool = bool(sim_cfg.get("log_enable", True))
         self.frame_seq_max: int = int(sim_cfg.get("frame_seq_max", 0))
         self.packet_seq_max: int = int(sim_cfg.get("packet_seq_max", 0))
 
@@ -107,6 +112,8 @@ class Simulator:
         net_pdu: Optional[NetPDU] = None,
         packet: Optional[Packet] = None,
     ) -> None:
+        if not self.log_enable:
+            return
         d = dict(details) if details else {}
 
         top: Dict[str, Any] = {

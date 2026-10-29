@@ -676,7 +676,10 @@ class MacLayer:
 
         ctrl = frame.ctrl or {}
 
-        if self.node.role == "RELAY" and frame.src == 0 and "rps" in ctrl:
+        # A relay re-advertises the RPS it hears from the AP, or -- deeper in
+        # a multi-hop tree, where the AP is out of reach -- from its parent.
+        if (self.node.role == "RELAY" and "rps" in ctrl
+                and (frame.src == 0 or frame.src == getattr(self.ctx, "_assoc_peer_id", None))):
             self.ctx._relay_cached_rps = ctrl["rps"]
             self.ctx._relay_cached_raw_guard = float(ctrl.get("raw_guard", self.ctx.raw_guard))
 
